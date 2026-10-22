@@ -137,6 +137,12 @@ func (s *Service) Authenticate(ctx context.Context, username, password, clientTo
 		CreatedAt:   s.now(),
 		ExpiresAt:   s.now().Add(s.tokenTTL),
 	}
+	// Legacy parity (analysis/authlib-injector.md:221, yggdrasil-connect.md
+	// :380): a single profile is auto-bound to the token; multiple profiles
+	// leave the choice to the client (refresh with selectedProfile).
+	if len(players) == 1 {
+		t.SelectedPID = players[0].ID
+	}
 	if err := s.store.SaveToken(ctx, t); err != nil {
 		return Token{}, nil, err
 	}
