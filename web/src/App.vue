@@ -2,9 +2,10 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { api, uploadTexture } from './api.js'
 import SkinPreview from './components/SkinPreview.vue'
+import AdminPanel from './components/AdminPanel.vue'
 
 const user = ref(null)
-const view = ref('login') // login | register | dashboard
+const view = ref('login') // login | register | dashboard | admin
 const error = ref('')
 const success = ref('')
 
@@ -103,6 +104,9 @@ onMounted(boot)
       </div>
       <div v-if="user" class="row">
         <span class="badge">{{ user.nickname }}</span>
+        <button class="secondary" @click="view = view === 'admin' ? 'dashboard' : 'admin'">
+          {{ view === 'admin' ? '返回' : '管理' }}
+        </button>
         <button class="secondary" @click="doLogout">退出</button>
       </div>
     </div>
@@ -138,6 +142,10 @@ onMounted(boot)
     </div>
 
     <!-- DASHBOARD -->
+    <template v-else-if="view === 'admin'">
+      <AdminPanel />
+    </template>
+
     <template v-else>
       <!-- upload -->
       <div class="card">
