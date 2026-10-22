@@ -40,7 +40,7 @@ JWT access token 实测形状：`aud="2"（shared_client_id）、sub=uid、scope
 
 ## 4. 功能缺口优先级（blessing 1:1 复刻主干）
 
-- **P1**：衣柜 closet（迁移切流前置）· 改密端点 · 邮箱验证流/找回密码（含 SMTP）· 管理面（用户改密/删除、角色管理、选项面板）· ygg_rate_limit
+- **P1**：衣柜 closet（迁移切流前置）· 改密端点 · 邮箱验证流/找回密码（含 SMTP；join 验证门已配置化 `SKIN_REQUIRE_VERIFICATION`，默认关）· 管理面（用户改密/删除、角色管理、选项面板）· ygg_rate_limit
 - **P2**：举报/通知/纹理广场 · OAuth 社交登录 · API PAT 面 · 插件宿主 · 正版绑定 · 纹理删除
 - **P3**：`/api` 根装饰 · 验证码 · 积分商城 · 2FA
 
