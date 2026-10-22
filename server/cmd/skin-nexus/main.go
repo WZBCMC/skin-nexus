@@ -26,6 +26,7 @@ import (
 	"skin-nexus/server/internal/publicapi"
 	"skin-nexus/server/internal/store"
 	"skin-nexus/server/internal/texture"
+	"skin-nexus/server/internal/union"
 	"skin-nexus/server/internal/webapi"
 	"skin-nexus/server/internal/ygg"
 )
@@ -78,7 +79,56 @@ func main() {
 	}
 	log.Printf("signing key fingerprint: %s", signer.KeyFingerprint())
 
-	yggSvc := ygg.NewService(st, signer)
+	// Phase 2: MUA Union member module. Switchable — when disabled (default)
+	// nothing is mounted and the texture signer stays local (zero surface).
+	var activeSigner ygg.Signer = signer
+	var unionAPI *union.API
+	var unionGrant *union.Grantor
+	var unionOut *union.Outbound
+	if cfg.UnionEnabled {
+		hostPub, err := os.ReadFile(cfg.UnionHostPublicKeyPath)
+		if err != nil {
+			log.Fatalf("union host pubkey: %v", err)
+		}
+		sigPEM, err := os.ReadFile(cfg.UnionSigPrivateKey)
+		if err != nil {
+			log.Fatalf("union oauth2 sig key: %v", err)
+		}
+		audit := func(event string, detail map[string]any) {
+			log.Printf("union audit: %s %v", event, detail)
+		}
+		ucfg := union.Config{
+			Enabled:               true,
+			ApiRoot:               cfg.UnionAPIRoot,
+			MemberKey:             cfg.UnionMemberKey,
+			HostPublicKeyPEM:      string(hostPub),
+			AllowUpdateBackendKey: cfg.UnionAllowUpdateBkKey,
+			QueryEmailMode:        cfg.UnionQueryEmailMode,
+			HubOrigin:             cfg.UnionHubOrigin,
+			SigPrivateKeyPEM:      string(sigPEM),
+			YggdrasilApiVersion:   version,
+			UnionOAuth2:           true,
+		}
+		out, err := union.NewOutbound(ucfg, nil)
+		if err != nil {
+			log.Fatalf("union outbound: %v", err)
+		}
+		usigner := union.NewUnionSigner(ucfg, out, signer, audit)
+		grant, err := union.NewGrantor(ucfg)
+		if err != nil {
+			log.Fatalf("union grantor: %v", err)
+		}
+		unionAPI, err = union.NewAPI(ucfg, out, usigner, grant, union.Hooks{}, audit)
+		if err != nil {
+			log.Fatalf("union api: %v", err)
+		}
+		unionGrant, unionOut = grant, out
+		activeSigner = usigner                                         // hub-distributed key with local fallback
+		go usigner.StartRotation(context.Background(), 12*time.Minute) // 10–15min base + internal jitter
+		log.Printf("union: enabled (hub %s, queryemail %s)", cfg.UnionAPIRoot, cfg.UnionQueryEmailMode)
+	}
+
+	yggSvc := ygg.NewService(st, activeSigner)
 	oidcDiscoveryURL := ""
 	var oidcProvider *oidc.Provider
 	if cfg.OIDCEnabled {
@@ -118,11 +168,11 @@ func main() {
 		log.Printf("oidc: enabled (issuer %s, shared client %s)", cfg.OIDCIssuer, cfg.SharedClientID)
 	}
 	yggAPI := ygg.NewAPI(yggSvc, ygg.MetadataConfig{
-		ServerName:  cfg.ServerName,
-		Version:     version,
-		Homepage:    cfg.BaseURL,
-		Register:    cfg.BaseURL + "/auth/register",
-		SkinDomains: cfg.SkinDomains,
+		ServerName:             cfg.ServerName,
+		Version:                version,
+		Homepage:               cfg.BaseURL,
+		Register:               cfg.BaseURL + "/auth/register",
+		SkinDomains:            cfg.SkinDomains,
 		OpenIDConfigurationURL: oidcDiscoveryURL,
 	})
 	backend := webapi.New(st, ts, yggSvc)
@@ -133,6 +183,10 @@ func main() {
 	root.Handle("/api/yggdrasil/", yggAPI.Handler())
 	if oidcProvider != nil {
 		root.Handle("GET /api/yggdrasil/.well-known/openid-configuration", oidcProvider.DiscoveryHandler())
+	}
+	if unionAPI != nil {
+		root.Handle("/api/union/", unionAPI.Handler())
+		root.Handle("GET /api/union/member/oauth2/grant", unionGrantHandler(unionGrant, unionOut, st, cfg.UnionAPIRoot))
 	}
 	root.Handle("/api/v1/", backend.Handler())
 	root.Handle("/api/admin/v1/", admin.Handler())
@@ -153,6 +207,40 @@ func main() {
 	if err := http.ListenAndServe(addr, root); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// unionGrantHandler is the login-state glue for the Union OAuth2 grant
+// (analysis/yggdrasil-connect.md §4.5): fetch the hub encryption key, build
+// the signed+encrypted userInfo token, 302 to the hub continuation URL.
+func unionGrantHandler(grant *union.Grantor, out *union.Outbound, st *store.Mysql, apiRoot string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := r.Cookie("skin_session")
+		if err != nil {
+			http.Error(w, "login required", http.StatusUnauthorized)
+			return
+		}
+		uid, err := st.SessionUser(r.Context(), c.Value)
+		if err != nil {
+			http.Error(w, "login required", http.StatusUnauthorized)
+			return
+		}
+		u, err := st.UserBrief(r.Context(), uid)
+		if err != nil {
+			http.Error(w, "user lookup failed", http.StatusInternalServerError)
+			return
+		}
+		hubKey, err := out.OAuth2BackendKey(r.Context())
+		if err != nil {
+			http.Error(w, "hub key unavailable", http.StatusBadGateway)
+			return
+		}
+		token, err := grant.GrantToken(uid, u.Nickname, u.Email, hubKey.PublicKey)
+		if err != nil {
+			http.Error(w, "grant failed", http.StatusInternalServerError)
+			return
+		}
+		http.Redirect(w, r, grant.GrantRedirectURL(token, apiRoot+"/oauth2/continue", r.URL.Query()), http.StatusFound)
+	})
 }
 
 // textureHandler serves stored textures byte-exact with strict hash validation.
