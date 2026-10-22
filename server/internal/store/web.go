@@ -148,6 +148,22 @@ func (m *Mysql) PlayerTextureIDs(ctx context.Context, pid int64) (skin, cape int
 	return s.Int64, c.Int64, err
 }
 
+// PlayerTextureHashes returns the raw texture hashes for legacy-compat
+// endpoints (CustomSkinAPI / USM / legacy-api need hashes, not URLs).
+func (m *Mysql) PlayerTextureHashes(ctx context.Context, pid int64) (skinHash, skinModel, capeHash string, err error) {
+	row := m.db.QueryRowContext(ctx,
+		`SELECT COALESCE(ts.hash,''), COALESCE(ts.model,'default'), COALESCE(tc.hash,'')
+		 FROM players p
+		 LEFT JOIN textures ts ON ts.id = p.tid_skin
+		 LEFT JOIN textures tc ON tc.id = p.tid_cape
+		 WHERE p.id = ?`, pid)
+	err = row.Scan(&skinHash, &skinModel, &capeHash)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = ErrNotFound
+	}
+	return
+}
+
 // ---- players ----
 
 // CreatePlayer adds a character. Generates a UUID per the legacy v3 rule

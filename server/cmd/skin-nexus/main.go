@@ -20,6 +20,7 @@ import (
 	"skin-nexus/server/internal/auth"
 	"skin-nexus/server/internal/config"
 	"skin-nexus/server/internal/migrate"
+	"skin-nexus/server/internal/publicapi"
 	"skin-nexus/server/internal/store"
 	"skin-nexus/server/internal/texture"
 	"skin-nexus/server/internal/webapi"
@@ -76,10 +77,16 @@ func main() {
 		SkinDomains: cfg.SkinDomains,
 	})
 	backend := webapi.New(st, ts, yggSvc)
+	pub := publicapi.New(st, ts)
 
 	root := http.NewServeMux()
 	root.Handle("/api/yggdrasil/", yggAPI.Handler())
 	root.Handle("/api/v1/", backend.Handler())
+	root.Handle("/api/public/", pub.Handler())
+	root.Handle("/usm/", pub.Handler())
+	root.Handle("/skin/", pub.Handler())
+	root.Handle("/cape/", pub.Handler())
+	root.Handle("GET /{player}.json", pub.CustomSkinAPIHandler())
 	root.Handle("GET /textures/{hash}", textureHandler(ts))
 	root.Handle("/", spaHandler())
 
