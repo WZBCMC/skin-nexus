@@ -79,6 +79,42 @@ func (m *Mysql) GetClient(ctx context.Context, id string) (oidc.ClientRecord, er
 	if err != nil {
 		return oidc.ClientRecord{}, err
 	}
+	return decodeClientRecord(rec, redirectURIs, grantTypes, scopes)
+}
+
+// ListClients returns every registered client (admin surface), ordered by id.
+func (m *Mysql) ListClients(ctx context.Context) ([]oidc.ClientRecord, error) {
+	rows, err := m.db.QueryContext(ctx,
+		`SELECT client_id, secret_hash, name, redirect_uris, grant_types, scopes
+		 FROM oidc_clients ORDER BY client_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]oidc.ClientRecord, 0)
+	for rows.Next() {
+		var rec oidc.ClientRecord
+		var redirectURIs, grantTypes, scopes string
+		if err := rows.Scan(&rec.ID, &rec.SecretHash, &rec.Name, &redirectURIs, &grantTypes, &scopes); err != nil {
+			return nil, err
+		}
+		dec, err := decodeClientRecord(rec, redirectURIs, grantTypes, scopes)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, dec)
+	}
+	return out, rows.Err()
+}
+
+// DeleteClient removes a client row (idempotent: missing rows are a no-op).
+func (m *Mysql) DeleteClient(ctx context.Context, id string) error {
+	_, err := m.db.ExecContext(ctx, `DELETE FROM oidc_clients WHERE client_id = ?`, id)
+	return err
+}
+
+func decodeClientRecord(rec oidc.ClientRecord, redirectURIs, grantTypes, scopes string) (oidc.ClientRecord, error) {
+	var err error
 	if rec.RedirectURIs, err = decodeStringList(redirectURIs); err != nil {
 		return oidc.ClientRecord{}, err
 	}

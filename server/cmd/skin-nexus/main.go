@@ -95,13 +95,22 @@ func main() {
 		if err != nil {
 			log.Fatalf("union oauth2 sig key: %v", err)
 		}
+		// T3.2: audit rows go to the DB (plus the log); actor_uid NULL = system.
 		audit := func(event string, detail map[string]any) {
 			log.Printf("union audit: %s %v", event, detail)
+			st.InsertAudit(context.Background(), 0, "union."+event, detail)
+		}
+		// member key rotation persistence (T3.3): a rotated key survives
+		// restarts via options and overrides the env initial value.
+		memberKey := cfg.UnionMemberKey
+		if k, ok, err := st.GetOption(context.Background(), "union_member_key"); err == nil && ok && k != "" {
+			memberKey = k
+			log.Printf("union: member key restored from options (rotated)")
 		}
 		ucfg := union.Config{
 			Enabled:               true,
 			ApiRoot:               cfg.UnionAPIRoot,
-			MemberKey:             cfg.UnionMemberKey,
+			MemberKey:             memberKey,
 			HostPublicKeyPEM:      string(hostPub),
 			AllowUpdateBackendKey: cfg.UnionAllowUpdateBkKey,
 			QueryEmailMode:        cfg.UnionQueryEmailMode,
@@ -119,7 +128,29 @@ func main() {
 		if err != nil {
 			log.Fatalf("union grantor: %v", err)
 		}
-		unionAPI, err = union.NewAPI(ucfg, out, usigner, grant, union.Hooks{}, audit)
+		// T3.3: member data hooks — profile sync list, UUID remap, queryemail.
+		hooks := union.Hooks{
+			OnServerList: func(list any, version string) {
+				_ = st.SetOption(context.Background(), "union_server_list_version", version)
+			},
+			OnMemberKeyRotated: func(newKey string) {
+				if err := st.SetOption(context.Background(), "union_member_key", newKey); err != nil {
+					audit("member_key_persist_failed", map[string]any{"error": err.Error()})
+					return
+				}
+				audit("member_key_rotated", nil)
+			},
+			OnRemapUUID: func(remap map[string]string) error {
+				return st.RemapUUIDs(context.Background(), remap)
+			},
+			ProfileListFunc: func() (map[string]string, error) {
+				return st.ProfileNameByUUID(context.Background())
+			},
+			QueryEmailFunc: func(name string) (string, bool, error) {
+				return st.EmailByPlayerName(context.Background(), name)
+			},
+		}
+		unionAPI, err = union.NewAPI(ucfg, out, usigner, grant, hooks, audit)
 		if err != nil {
 			log.Fatalf("union api: %v", err)
 		}
@@ -160,6 +191,10 @@ func main() {
 			log.Fatalf("oidc: %v", err)
 		}
 		oidcProvider.SessionResolver = st.SessionUser
+		oidcProvider.Audit = func(event string, detail map[string]any) {
+			log.Printf("oidc audit: %s %v", event, detail)
+			st.InsertAudit(context.Background(), 0, event, detail)
+		}
 		oidc.SetClientSecretVerifier(func(hash, secret string) bool { return auth.VerifyPHC(secret, hash) })
 		if err := oidcProvider.SeedSharedClient(context.Background()); err != nil {
 			log.Fatalf("oidc seed client: %v", err)
@@ -182,6 +217,7 @@ func main() {
 	}
 	pub := publicapi.New(st, ts)
 	admin := adminapi.New(st, yggSvc)
+	admin.SetSharedClientID(cfg.SharedClientID) // guards shared launcher client deletion
 	if unionSigner != nil {
 		admin.MountUnion(adminapi.UnionDeps{
 			Status: func() map[string]any {

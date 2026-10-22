@@ -19,10 +19,11 @@ import (
 )
 
 type Backend struct {
-	Store    *store.Mysql
-	Ygg      *ygg.Service
-	AdminTok string
-	union    UnionDeps // nil until MountUnion (module disabled = no routes)
+	Store          *store.Mysql
+	Ygg            *ygg.Service
+	AdminTok       string
+	union          UnionDeps // nil until MountUnion (module disabled = no routes)
+	sharedClientID string    // guard: shared launcher client cannot be deleted
 }
 
 func New(st *store.Mysql, yggSvc *ygg.Service) *Backend {
@@ -39,6 +40,11 @@ func (b *Backend) Handler() http.Handler {
 		mux.HandleFunc("GET /api/admin/v1/union/status", b.auth(b.handleUnionStatus))
 		mux.HandleFunc("POST /api/admin/v1/union/rotation/resume", b.auth(b.handleUnionRotationResume))
 	}
+	// OIDC client management (works regardless of module flag; the shared
+	// launcher client deletion is guarded by sharedClientID).
+	mux.HandleFunc("GET /api/admin/v1/oidc/clients", b.auth(b.handleOIDCClientsList))
+	mux.HandleFunc("POST /api/admin/v1/oidc/clients", b.auth(b.handleOIDCClientsCreate))
+	mux.HandleFunc("DELETE /api/admin/v1/oidc/clients/{id}", b.auth(b.handleOIDCClientsDelete))
 	return mux
 }
 
@@ -71,7 +77,7 @@ func (b *Backend) handleOverview(w http.ResponseWriter, r *http.Request) {
 	textures, _ := b.Store.CountTextures(ctx)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"users": users, "players": players, "textures": textures,
-		"weakHashUsers": weak, // 「弱哈希余量」看板核心指标
+		"weakHashUsers":      weak, // 「弱哈希余量」看板核心指标
 		"signKeyFingerprint": b.Ygg.SignerFingerprint(),
 	})
 }

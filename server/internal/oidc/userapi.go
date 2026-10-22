@@ -72,6 +72,7 @@ func (p *Provider) revokeToken(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, map[string]any{"error": "吊销失败"})
 			return
 		}
+		p.auditEvent("oidc.tokens_revoke_all", map[string]any{"uid": uid})
 		writeJSON(w, map[string]any{"ok": true, "scope": "all"})
 		return
 	}
@@ -91,5 +92,8 @@ func (p *Provider) revokeToken(w http.ResponseWriter, r *http.Request) {
 	}
 	// Refresh table carries no jti: revoke the uid+client refresh scope.
 	_ = p.backend.RevokeClientRefreshTokens(r.Context(), uid, rec.ClientID)
+	p.auditEvent("oidc.token_revoke", map[string]any{
+		"uid": uid, "jti": body.JTI, "client_id": rec.ClientID,
+	})
 	writeJSON(w, map[string]any{"ok": true, "scope": "jti+client_refresh"})
 }

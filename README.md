@@ -2,7 +2,7 @@
 
 > 下一代 Minecraft 皮肤站：Yggdrasil 外置登录兼容、一键迁移 blessing-skin-server、自托管优先。
 
-**状态**（每轮开发收尾同步 · 2026-10-23）：一期开发完成（M0–M5）· 二期核心完成（免密登录 + Union 可开关模块）· 轻量池（前端/管理/集成）进行中 · 迁移切流窗口待排期
+**状态**（每轮开发收尾同步 · 2026-10-23）：一期开发完成（M0–M5）· 二期开发完成（免密登录 + Union 可开关模块 + 前端/管理/集成全量）· 真机验收（A2）待执行 · 迁移切流窗口待排期
 **许可**：AGPL-3.0 · **发起人/著作权人**：YMZS
 
 ## 这是什么
@@ -26,8 +26,8 @@ SkinNexus（肤枢）是对年久失修的 [blessing-skin-server](https://github
 | 二期 S0 | 契约侦察（Janus 快照、SJMCL/WZBC-Launcher 客户端分析）与选型 | ✅ 完成（选型 zitadel/oidc v3.51） |
 | 二期 H1 | 免密登录核心：OIDC provider、token 双态、契约测试 | ✅ 完成 |
 | 二期 H2 | Union 可开关模块：验签 / 入站出站 / OAuth2 grant / UnionSigner | ✅ 完成 |
-| 二期 L1–L4 | 免密前端、Union 面板、管理集成、回归与验收辅助 | ⏳ 进行中 |
-| 真机验收 | SJMCL + WZBC-Launcher OAuth 免密登录→选角→进服 | ⬜ 待 L 池完成 |
+| 二期 L1–L4 | 免密前端、Union 面板、管理集成、回归与验收辅助 | ✅ 完成（2026-10-23）：device 验证页/授权管理页、Union 绑定页+admin 面板、OIDC client CRUD、审计落库、H2 集成钩子、CI（含 MySQL 集成 job）、验收脚本 `scripts/acceptance-yggc.ps1` |
+| 真机验收 | SJMCL + WZBC-Launcher OAuth 免密登录→选角→进服 | ⬜ 待执行（清单：开发过程文档 phase2 计划 §7.1，需 YMZS 参与） |
 | 正版绑定 / 插件宿主 | Auth Source 第二实现 / goja 宿主运行时 | ⬜ 后置规划 |
 
 ## 文档

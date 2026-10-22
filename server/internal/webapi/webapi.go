@@ -26,8 +26,8 @@ import (
 )
 
 var (
-	nickRe  = regexp.MustCompile(`^[A-Za-z0-9_一-龥]{2,24}$`)
-	mailRe  = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+	nickRe = regexp.MustCompile(`^[A-Za-z0-9_一-龥]{2,24}$`)
+	mailRe = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 )
 
 // Backend bundles dependencies for the web API.
@@ -304,7 +304,9 @@ func (b *Backend) handleCreatePlayer(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "not logged in")
 		return
 	}
-	var req struct{ Name string `json:"name"` }
+	var req struct {
+		Name string `json:"name"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid JSON")
 		return
@@ -319,12 +321,30 @@ func (b *Backend) handleCreatePlayer(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusConflict, "角色名已被占用")
 		return
 	}
+	// Union: announce the new profile to the hub (async, 5s bound, never
+	// blocks or fails the user response). Rename/delete endpoints don't exist
+	// yet in webapi — wire SyncProfileRename/SyncProfileDelete when they land.
+	if b.union != nil && b.union.Enabled() {
+		name, u := req.Name, uuid
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := b.union.SyncProfileCreate(ctx, u, name); err != nil {
+				b.Store.InsertAudit(ctx, 0, "union_sync_create_failed",
+					map[string]interface{}{"uuid": u, "name": name, "error": err.Error()})
+			}
+		}()
+	}
 	writeJSON(w, http.StatusCreated, map[string]interface{}{"id": pid, "name": req.Name, "uuid": uuid})
 }
 
 // handleSetSkin / handleSetCape point a player at one of the user's textures.
-func (b *Backend) handleSetSkin(w http.ResponseWriter, r *http.Request) { b.setPlayerTexture(w, r, "skin") }
-func (b *Backend) handleSetCape(w http.ResponseWriter, r *http.Request) { b.setPlayerTexture(w, r, "cape") }
+func (b *Backend) handleSetSkin(w http.ResponseWriter, r *http.Request) {
+	b.setPlayerTexture(w, r, "skin")
+}
+func (b *Backend) handleSetCape(w http.ResponseWriter, r *http.Request) {
+	b.setPlayerTexture(w, r, "cape")
+}
 
 func (b *Backend) setPlayerTexture(w http.ResponseWriter, r *http.Request, kind string) {
 	uid, err := b.currentUser(r)

@@ -34,7 +34,8 @@ Environment=SKIN_LISTEN=127.0.0.1:8080
 Environment=SKIN_BASE_URL=https://skin.wzbcmc.cn
 Environment=SKIN_DATABASE_DSN=skin:PASS@tcp(127.0.0.1:3306)/skin-nexus?parseTime=true&charset=utf8mb4
 Environment=SKIN_SERVER_NAME=温州商学院皮肤站
-Environment=SKIN_SKIN_DOMAINS=skin.wzbcmc.cn,（其余 54 个域名，逗号分隔，见蓝图 §1 实测清单）
+# skinDomains 实测版（2026-10-23 抓旧站 /api/yggdrasil/ 共 53 域；与联盟清单逐字一致，改动会破坏联盟互认）
+Environment=SKIN_SKIN_DOMAINS=skin.yitmc.cn,skin.cauc.fun,skin.cduestc.fun,skin.cqumc.cn,csu-mc.magicalsheep.cn,mcweb.unsafe.top,skin.ecnumc.cn,mcskin.ecustvr.top,auth.fdcraft.fishp.xyz,skin.ghm.mualliance.cn,skin.gxucraft.cn,skin.gzszmc.cn,bobbyskin.com,skin.hljumc.cn,skin.starkettle.com,skin.metaconstr.net,skin.imucraft.cn,skin.jsumc.fun,mc.jxufe.edu.cn,mcskin.mevisual.top,skin.mualliance.ltd,skin.twinklestars.top,club.barrierslink.cn,skin.nmo.net.cn,skin.nnumc.com.cn,skin.npucraft.com,skin.nudtmc.cn,skin.nufe.wiki,skin.nuistcraft.com,skin.nwafu.com.cn,skin.chancelethay.top,skin.qutcraft.cn,skin.sducraft.cn,skin.sdustmc.cn,skin.sitmc.club,skin.mc.sjtu.cn,skin.nekoplay.fun,user.suesmc.ltd,union-test.gpa.ac.cn,skin.tongji-mc.cn,hall.mc.taru.xj.cn,skin.mc.taru.xj.cn,www.ustb.world,skin.wzbcmc.cn,skin.xauatcraft.com,www.xducraft.cn,skin.xjtumc.com,skin.xmc.net.cn,cop.imu.nm.cn,skin.ybumua.homes,skin.uemcraft.cn,skin.ysumc.net,skin.zjutmc.top
 Environment=SKIN_TEXTURES_DIR=/opt/skin-nexus/data/textures
 Environment=SKIN_SIGN_KEY=/opt/skin-nexus/data/sign-key.pem
 Environment=SKIN_LEGACY_ENV=/opt/skin-nexus/legacy.env

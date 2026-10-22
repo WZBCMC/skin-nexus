@@ -23,6 +23,32 @@ jobs:
       - name: Test
         run: go test ./...
 
+  # MySQL round-trip suite for the 0003/0004 schemas (build tag `integration`).
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: skin_nexus_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -proot"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+    defaults:
+      run:
+        working-directory: server
+    env:
+      SKIN_TEST_DSN: 'root:root@tcp(127.0.0.1:3306)/skin_nexus_test?parseTime=true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Integration test
+        run: go test -tags integration ./internal/store/
+
   poc:
     runs-on: ubuntu-latest
     defaults:

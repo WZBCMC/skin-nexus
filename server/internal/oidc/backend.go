@@ -95,6 +95,12 @@ type DeviceAuthRecord struct {
 type Backend interface {
 	// clients
 	GetClient(ctx context.Context, id string) (ClientRecord, error)
+	// ListClients returns every registered client (admin surface). Upsert is
+	// the optional EnsureOidcClient assertion (same pattern as SeedSharedClient).
+	ListClients(ctx context.Context) ([]ClientRecord, error)
+	// DeleteClient removes a client row; the shared launcher client must be
+	// protected by the caller, not here.
+	DeleteClient(ctx context.Context, id string) error
 
 	// authorization-code flow (P1; wired now so grants share one ledger)
 	SaveAuthRequest(ctx context.Context, rec AuthRequestRecord) error

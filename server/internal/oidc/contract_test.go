@@ -53,6 +53,24 @@ func (m *memBackend) GetClient(_ context.Context, id string) (ClientRecord, erro
 	return c, nil
 }
 
+func (m *memBackend) ListClients(_ context.Context) ([]ClientRecord, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]ClientRecord, 0, len(m.clients))
+	for _, c := range m.clients {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
+func (m *memBackend) DeleteClient(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.clients, id)
+	return nil
+}
+
 func (m *memBackend) EnsureOidcClient(_ context.Context, rec ClientRecord) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

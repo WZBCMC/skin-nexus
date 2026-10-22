@@ -6,6 +6,10 @@ const overview = ref(null)
 const users = ref([])
 const unionStatus = ref(null)
 const unionError = ref('')
+const oidcClients = ref([])
+const oidcError = ref('')
+const newClient = ref({ client_id: '', name: '', redirect_uris: '', public: true })
+const lastSecret = ref('') // shown once after create
 const error = ref('')
 
 async function fetchJSON(path, opts) {
@@ -34,6 +38,42 @@ async function load() {
     unionStatus.value = null
     unionError.value = e.message
   }
+  // OIDC clients
+  oidcError.value = ''
+  try {
+    const c = await fetchJSON('/api/admin/v1/oidc/clients')
+    oidcClients.value = c.clients || []
+  } catch (e) { oidcError.value = e.message }
+}
+
+async function createClient() {
+  oidcError.value = ''; lastSecret.value = ''
+  const body = {
+    client_id: newClient.value.client_id.trim(),
+    name: newClient.value.name.trim() || newClient.value.client_id.trim(),
+    redirect_uris: newClient.value.redirect_uris.split('\n').map(s => s.trim()).filter(Boolean),
+    grant_types: ['authorization_code', 'refresh_token'],
+    public: newClient.value.public,
+  }
+  if (!body.client_id) { oidcError.value = 'client_id 必填'; return }
+  try {
+    const d = await fetchJSON('/api/admin/v1/oidc/clients', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    })
+    if (d.secret) lastSecret.value = d.secret // only visible now — copy it!
+    newClient.value = { client_id: '', name: '', redirect_uris: '', public: true }
+    const c = await fetchJSON('/api/admin/v1/oidc/clients')
+    oidcClients.value = c.clients || []
+  } catch (e) { oidcError.value = e.message }
+}
+
+async function deleteClient(id) {
+  if (!confirm(`删除 OAuth 客户端 ${id}？使用它的应用将无法登录。`)) return
+  oidcError.value = ''
+  try {
+    await fetchJSON(`/api/admin/v1/oidc/clients/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    oidcClients.value = oidcClients.value.filter(c => c.client_id !== id)
+  } catch (e) { oidcError.value = e.message }
 }
 
 async function resumeRotation() {
@@ -106,6 +146,36 @@ onMounted(() => { if (token.value) load() })
         任何成员站都可使用同一签名密钥发布纹理。请仅在加入联盟组织时启用本模块。
       </div>
       <div class="error" v-if="unionError">{{ unionError }}</div>
+    </div>
+
+    <!-- OIDC clients -->
+    <div class="card">
+      <h2>OAuth 客户端（{{ oidcClients.length }}）</h2>
+      <div class="row">
+        <input v-model="newClient.client_id" placeholder="client_id" style="max-width: 180px;" />
+        <input v-model="newClient.name" placeholder="名称" style="max-width: 180px;" />
+        <label style="display: flex; align-items: center; gap: 4px; white-space: nowrap;">
+          <input type="checkbox" v-model="newClient.public" /> 公开客户端
+        </label>
+        <button @click="createClient">创建</button>
+      </div>
+      <textarea v-model="newClient.redirect_uris" placeholder="redirect_uris（每行一个，机密客户端用）" rows="2"
+                style="margin-top: 8px; width: 100%;"></textarea>
+      <div class="success" v-if="lastSecret" style="margin-top: 8px;">
+        客户端密钥（仅显示这一次，请立即保存）：<code>{{ lastSecret }}</code>
+      </div>
+      <div class="error" v-if="oidcError">{{ oidcError }}</div>
+      <table v-if="oidcClients.length" style="margin-top: 10px;">
+        <tr><th>client_id</th><th>名称</th><th>类型</th><th>授权类型</th><th>redirect_uris</th><th></th></tr>
+        <tr v-for="c in oidcClients" :key="c.client_id">
+          <td><code>{{ c.client_id }}</code></td>
+          <td>{{ c.name }}</td>
+          <td><span class="badge">{{ c.public ? '公开' : '机密' }}</span></td>
+          <td class="muted" style="font-size: 12px;">{{ (c.grant_types || []).join(', ') }}</td>
+          <td class="muted" style="font-size: 12px;">{{ (c.redirect_uris || []).join(', ') || '—' }}</td>
+          <td><button class="secondary" @click="deleteClient(c.client_id)">删除</button></td>
+        </tr>
+      </table>
     </div>
   </div>
 </template>

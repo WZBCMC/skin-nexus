@@ -39,6 +39,17 @@ type Provider struct {
 	// SessionResolver maps a site session cookie value to a user id
 	// (wired from webapi's session store in main).
 	SessionResolver func(ctx context.Context, sessionToken string) (int64, error)
+
+	// Audit receives security-relevant events (device approve/deny, token
+	// revocation). Nil = silent (tests); wired to the audit_log in main.
+	Audit func(event string, detail map[string]any)
+}
+
+// auditEvent is a nil-safe fire-and-forget emit.
+func (p *Provider) auditEvent(event string, detail map[string]any) {
+	if p.Audit != nil {
+		p.Audit(event, detail)
+	}
 }
 
 // New builds the provider and its engine. Clients and keys are persisted via
@@ -336,11 +347,17 @@ func (p *Provider) deviceSubmit(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, map[string]any{"error": "批准失败"})
 			return
 		}
+		p.auditEvent("oidc.device_approve", map[string]any{
+			"uid": uid, "user_code": userCode, "client_id": rec.ClientID, "pid": pid,
+		})
 	case "deny":
 		if err := p.DenyDevice(r.Context(), userCode); err != nil {
 			writeJSON(w, map[string]any{"error": "拒绝失败"})
 			return
 		}
+		p.auditEvent("oidc.device_deny", map[string]any{
+			"uid": uid, "user_code": userCode, "client_id": rec.ClientID,
+		})
 	default:
 		writeJSON(w, map[string]any{"error": "bad decision"})
 		return
