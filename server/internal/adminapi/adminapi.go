@@ -22,6 +22,7 @@ type Backend struct {
 	Store    *store.Mysql
 	Ygg      *ygg.Service
 	AdminTok string
+	union    UnionDeps // nil until MountUnion (module disabled = no routes)
 }
 
 func New(st *store.Mysql, yggSvc *ygg.Service) *Backend {
@@ -34,6 +35,10 @@ func (b *Backend) Handler() http.Handler {
 	mux.HandleFunc("GET /api/admin/v1/users", b.auth(b.handleUsers))
 	mux.HandleFunc("GET /api/admin/v1/textures", b.auth(b.handleTextures))
 	mux.HandleFunc("GET /api/admin/v1/audit", b.auth(b.handleAudit))
+	if b.union.Status != nil {
+		mux.HandleFunc("GET /api/admin/v1/union/status", b.auth(b.handleUnionStatus))
+		mux.HandleFunc("POST /api/admin/v1/union/rotation/resume", b.auth(b.handleUnionRotationResume))
+	}
 	return mux
 }
 

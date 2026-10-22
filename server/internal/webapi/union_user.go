@@ -1,0 +1,278 @@
+// union_user.go is the session-authenticated user surface of the MUA Union
+// member module: server list, profile detail, bind/bindto/unbind, UUID remap.
+//
+// It mounts ONLY when the Union module is enabled (SKIN_UNION_ENABLED) —
+// disabled deployments keep a zero surface (routes simply do not exist).
+// All mutating calls enforce ownership: the target uuid must belong to the
+// logged-in user, so a stolen session cannot bind other players' profiles.
+package webapi
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
+	"skin-nexus/server/internal/union"
+)
+
+// MountUnion registers /api/v1/union/* on the web mux when outbound is live.
+func (b *Backend) MountUnion(out *union.Outbound) {
+	b.union = out
+	b.unionSrv = &unionServerCache{}
+}
+
+// unionServerCache caches the hub server list for 60s (the list changes on
+// hub-side rotation, not per request; the UI shows it on every page open).
+type unionServerCache struct {
+	mu        sync.Mutex
+	doc       *union.ServerList
+	fetchedAt time.Time
+}
+
+func (c *unionServerCache) get(ctx context.Context, out *union.Outbound) (*union.ServerList, error) {
+	c.mu.Lock()
+	if c.doc != nil && time.Since(c.fetchedAt) < time.Minute {
+		doc := c.doc
+		c.mu.Unlock()
+		return doc, nil
+	}
+	c.mu.Unlock()
+	doc, err := out.ServerList(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	c.doc, c.fetchedAt = doc, time.Now()
+	c.mu.Unlock()
+	return doc, nil
+}
+
+// ownedPlayer resolves uuid -> player and enforces uid ownership. Accepts
+// dashed or undashed hex; returns the canonical stored uuid.
+func (b *Backend) ownedPlayer(ctx context.Context, uid int64, uuid string) (string, error) {
+	norm := strings.ReplaceAll(strings.ToLower(uuid), "-", "")
+	if norm == "" {
+		return "", errUnionBadInput
+	}
+	p, err := b.Store.PlayerByUUID(ctx, norm)
+	if err != nil {
+		return "", err
+	}
+	if p.UID != uid {
+		return "", errUnionNotOwned
+	}
+	return p.UUID, nil
+}
+
+var (
+	errUnionBadInput = errors.New("bad uuid")
+	errUnionNotOwned = errors.New("player not owned")
+)
+
+// unionUpstreamStatus maps outbound failures to the user API: hub errors are
+// 502 (the UI tells the user "联盟服务暂不可用"), ownership 403, input 400.
+func unionUpstreamStatus(err error) (int, string) {
+	var ae *union.APIError
+	switch {
+	case errors.Is(err, union.ErrDisabled):
+		return http.StatusNotFound, "Union 未启用"
+	case errors.As(err, &ae):
+		return http.StatusBadGateway, "联盟服务暂不可用"
+	default:
+		return http.StatusBadGateway, "联盟服务暂不可用"
+	}
+}
+
+func (b *Backend) unionUser(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	uid, err := b.currentUser(r)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, "请先登录")
+		return 0, false
+	}
+	return uid, true
+}
+
+// GET /api/v1/union/servers — hub server list (60s cache).
+func (b *Backend) handleUnionServers(w http.ResponseWriter, r *http.Request) {
+	if _, ok := b.unionUser(w, r); !ok {
+		return
+	}
+	doc, err := b.unionSrv.get(r.Context(), b.union)
+	if err != nil {
+		st, msg := unionUpstreamStatus(err)
+		writeErr(w, st, msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"servers": doc.Servers, "version": doc.Version})
+}
+
+// GET /api/v1/union/detail?uuid= — hub-side profile detail (raw fields kept).
+func (b *Backend) handleUnionDetail(w http.ResponseWriter, r *http.Request) {
+	uid, ok := b.unionUser(w, r)
+	if !ok {
+		return
+	}
+	canon, err := b.ownedPlayer(r.Context(), uid, r.URL.Query().Get("uuid"))
+	if err != nil {
+		b.unionOwnErr(w, err)
+		return
+	}
+	doc, err := b.union.DetailByUUID(r.Context(), canon)
+	if err != nil {
+		st, msg := unionUpstreamStatus(err)
+		writeErr(w, st, msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, doc)
+}
+
+// GET /api/v1/union/unmapped?name= — name-conflict candidates for bindto.
+func (b *Backend) handleUnionUnmapped(w http.ResponseWriter, r *http.Request) {
+	if _, ok := b.unionUser(w, r); !ok {
+		return
+	}
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		writeErr(w, http.StatusBadRequest, "missing name")
+		return
+	}
+	list, err := b.union.UnmappedByName(r.Context(), name)
+	if err != nil {
+		st, msg := unionUpstreamStatus(err)
+		writeErr(w, st, msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"profiles": list})
+}
+
+// POST /api/v1/union/bind {uuid} -> {token} (hub 2-minute TTL).
+func (b *Backend) handleUnionBind(w http.ResponseWriter, r *http.Request) {
+	uid, ok := b.unionUser(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		UUID string `json:"uuid"`
+	}
+	if err := jsonDecode(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	canon, err := b.ownedPlayer(r.Context(), uid, body.UUID)
+	if err != nil {
+		b.unionOwnErr(w, err)
+		return
+	}
+	tok, err := b.union.Bind(r.Context(), canon)
+	if err != nil {
+		st, msg := unionUpstreamStatus(err)
+		writeErr(w, st, msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"token": tok.Token})
+}
+
+// POST /api/v1/union/bindto {uuid, token} — bind via a hub-side code token.
+func (b *Backend) handleUnionBindTo(w http.ResponseWriter, r *http.Request) {
+	uid, ok := b.unionUser(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		UUID  string `json:"uuid"`
+		Token string `json:"token"`
+	}
+	if err := jsonDecode(r, &body); err != nil || body.Token == "" {
+		writeErr(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	canon, err := b.ownedPlayer(r.Context(), uid, body.UUID)
+	if err != nil {
+		b.unionOwnErr(w, err)
+		return
+	}
+	if err := b.union.BindTo(r.Context(), canon, body.Token); err != nil {
+		st, msg := unionUpstreamStatus(err)
+		writeErr(w, st, msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// POST /api/v1/union/unbind {uuid}
+func (b *Backend) handleUnionUnbind(w http.ResponseWriter, r *http.Request) {
+	uid, ok := b.unionUser(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		UUID string `json:"uuid"`
+	}
+	if err := jsonDecode(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	canon, err := b.ownedPlayer(r.Context(), uid, body.UUID)
+	if err != nil {
+		b.unionOwnErr(w, err)
+		return
+	}
+	if err := b.union.Unbind(r.Context(), canon); err != nil {
+		st, msg := unionUpstreamStatus(err)
+		writeErr(w, st, msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// POST /api/v1/union/remapuuid {me, target} — both profiles must be owned.
+func (b *Backend) handleUnionRemapUUID(w http.ResponseWriter, r *http.Request) {
+	uid, ok := b.unionUser(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Me     string `json:"me"`
+		Target string `json:"target"`
+	}
+	if err := jsonDecode(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	me, err := b.ownedPlayer(r.Context(), uid, body.Me)
+	if err != nil {
+		b.unionOwnErr(w, err)
+		return
+	}
+	target, err := b.ownedPlayer(r.Context(), uid, body.Target)
+	if err != nil {
+		b.unionOwnErr(w, err)
+		return
+	}
+	if err := b.union.RemapUUID(r.Context(), me, target); err != nil {
+		st, msg := unionUpstreamStatus(err)
+		writeErr(w, st, msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (b *Backend) unionOwnErr(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, errUnionNotOwned):
+		writeErr(w, http.StatusForbidden, "该角色不属于当前账号")
+	case errors.Is(err, errUnionBadInput):
+		writeErr(w, http.StatusBadRequest, "bad uuid")
+	default:
+		writeErr(w, http.StatusNotFound, "未找到该角色")
+	}
+}
+
+// jsonDecode is a one-shot JSON body decoder shared by union handlers.
+func jsonDecode(r *http.Request, v any) error {
+	return json.NewDecoder(r.Body).Decode(v)
+}

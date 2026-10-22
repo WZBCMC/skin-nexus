@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -133,6 +134,19 @@ func (m *memBackend) RevokeUserAccessTokens(_ context.Context, uid int64) error 
 	return nil
 }
 
+func (m *memBackend) ListUserAccessTokens(_ context.Context, uid int64) ([]AccessTokenRecord, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]AccessTokenRecord, 0)
+	for _, r := range m.tokens {
+		if r.UserID == uid && r.RevokedAt.IsZero() && r.ExpiresAt.After(time.Now()) {
+			out = append(out, r)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out, nil
+}
+
 func (m *memBackend) SaveRefreshToken(_ context.Context, rec RefreshTokenRecord) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -167,6 +181,30 @@ func (m *memBackend) RevokeRefreshToken(_ context.Context, token string) error {
 	if r, ok := m.refresh[token]; ok {
 		r.Revoked = true
 		m.refresh[token] = r
+	}
+	return nil
+}
+
+func (m *memBackend) RevokeUserRefreshTokens(_ context.Context, uid int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for k, r := range m.refresh {
+		if r.UserID == uid {
+			r.Revoked = true
+			m.refresh[k] = r
+		}
+	}
+	return nil
+}
+
+func (m *memBackend) RevokeClientRefreshTokens(_ context.Context, uid int64, clientID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for k, r := range m.refresh {
+		if r.UserID == uid && r.ClientID == clientID {
+			r.Revoked = true
+			m.refresh[k] = r
+		}
 	}
 	return nil
 }
@@ -596,4 +634,106 @@ func TestYggResolverGates(t *testing.T) {
 func ResolveForTest(ctx context.Context, p *Provider, access string) (ygg.Token, error) {
 	resolver := NewYggTokenResolver(p.backend, p.cfg.Issuer, &p.cfg.Key.PublicKey)
 	return resolver(ctx, access)
+}
+
+// ---- authorized-apps management API (T1.2) ----
+
+func TestTokensListAndRevoke(t *testing.T) {
+	p, b := testProvider(t)
+	p.SessionResolver = func(context.Context, string) (int64, error) { return 42, nil }
+	h := p.Wrap(http.NotFoundHandler())
+
+	// Seed one live token (uid 42, shared client) and one other-user token.
+	live := AccessTokenRecord{
+		JTI: "jti-live", UserID: 42, ClientID: "2",
+		Scopes:    []string{"openid", "Yggdrasil.Server.Join"},
+		ExpiresAt: time.Now().Add(time.Hour), CreatedAt: time.Now(),
+	}
+	if err := b.SaveAccessToken(context.Background(), live); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SaveAccessToken(context.Background(), AccessTokenRecord{
+		JTI: "jti-other", UserID: 7, ClientID: "2",
+		ExpiresAt: time.Now().Add(time.Hour), CreatedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SaveRefreshToken(context.Background(), RefreshTokenRecord{
+		Token: "rt-live", UserID: 42, ClientID: "2",
+		ExpiresAt: time.Now().Add(time.Hour), CreatedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// List: only the caller's live entry, shape per work card T1.2.
+	req := httptest.NewRequest("GET", "/api/v1/oidc/tokens", nil)
+	req.AddCookie(&http.Cookie{Name: "skin_session", Value: "s1"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("tokens list status %d: %s", rec.Code, rec.Body.String())
+	}
+	var list struct {
+		Tokens []struct {
+			JTI      string   `json:"jti"`
+			ClientID string   `json:"client_id"`
+			Scopes   []string `json:"scopes"`
+		} `json:"tokens"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Tokens) != 1 || list.Tokens[0].JTI != "jti-live" {
+		t.Fatalf("tokens = %s", rec.Body.String())
+	}
+
+	// Revoke someone else's jti -> not-found (ownership gate).
+	other := func(jti string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "/api/v1/oidc/tokens/revoke", strings.NewReader(`{"jti":"`+jti+`"}`))
+		r.Header.Set("Content-Type", "application/json")
+		r.AddCookie(&http.Cookie{Name: "skin_session", Value: "s1"})
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	if w := other("jti-other"); !strings.Contains(w.Body.String(), "未找到") {
+		t.Fatalf("cross-user revoke = %s", w.Body.String())
+	}
+
+	// Revoke own jti -> ok, ledger entry marked revoked, client refresh revoked.
+	if w := other("jti-live"); !strings.Contains(w.Body.String(), `"ok":true`) {
+		t.Fatalf("revoke = %s", w.Body.String())
+	}
+	revoked, err := b.GetAccessToken(context.Background(), "jti-live")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if revoked.RevokedAt.IsZero() {
+		t.Fatal("jti ledger entry not marked revoked")
+	}
+	rt, err := b.GetRefreshToken(context.Background(), "rt-live")
+	if err != nil || !rt.Revoked {
+		t.Fatalf("client refresh not revoked: %+v %v", rt, err)
+	}
+
+	// Revoke-all path.
+	if err := b.SaveAccessToken(context.Background(), live); err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest("POST", "/api/v1/oidc/tokens/revoke", strings.NewReader(`{"all":true}`))
+	r.Header.Set("Content-Type", "application/json")
+	r.AddCookie(&http.Cookie{Name: "skin_session", Value: "s1"})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if !strings.Contains(w.Body.String(), `"scope":"all"`) {
+		t.Fatalf("revoke all = %s", w.Body.String())
+	}
+
+	// Unauthenticated -> 401.
+	r2 := httptest.NewRequest("GET", "/api/v1/oidc/tokens", nil)
+	w2 := httptest.NewRecorder()
+	h.ServeHTTP(w2, r2)
+	if w2.Code != 401 {
+		t.Fatalf("unauth tokens list = %d", w2.Code)
+	}
 }

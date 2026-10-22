@@ -24,6 +24,25 @@ export const api = {
   setCape: (pid, textureId) => req('PUT', `/api/v1/me/players/${pid}/cape`, { textureId }),
 }
 
+// OIDC device flow + authorized-apps management.
+export const oidc = {
+  deviceInfo: (userCode) => req('GET', `/api/v1/oidc/device/info?user_code=${encodeURIComponent(userCode)}`),
+  deviceSubmit: (userCode, decision, pid) => req('POST', '/api/v1/oidc/device/submit', { user_code: userCode, decision, pid }),
+  tokens: () => req('GET', '/api/v1/oidc/tokens'),
+  revokeToken: (body) => req('POST', '/api/v1/oidc/tokens/revoke', body),
+}
+
+// MUA Union member surface (routes exist only when the module is enabled).
+export const union = {
+  servers: () => req('GET', '/api/v1/union/servers'),
+  detail: (uuid) => req('GET', `/api/v1/union/detail?uuid=${encodeURIComponent(uuid)}`),
+  unmapped: (name) => req('GET', `/api/v1/union/unmapped?name=${encodeURIComponent(name)}`),
+  bind: (uuid) => req('POST', '/api/v1/union/bind', { uuid }),
+  bindto: (uuid, token) => req('POST', '/api/v1/union/bindto', { uuid, token }),
+  unbind: (uuid) => req('POST', '/api/v1/union/unbind', { uuid }),
+  remapuuid: (me, target) => req('POST', '/api/v1/union/remapuuid', { me, target }),
+}
+
 export async function uploadTexture(type, file, model, description) {
   const fd = new FormData()
   fd.append('type', type)

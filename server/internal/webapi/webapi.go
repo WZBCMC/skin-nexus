@@ -21,6 +21,7 @@ import (
 	"skin-nexus/server/internal/auth"
 	"skin-nexus/server/internal/store"
 	"skin-nexus/server/internal/texture"
+	"skin-nexus/server/internal/union"
 	"skin-nexus/server/internal/ygg"
 )
 
@@ -35,6 +36,11 @@ type Backend struct {
 	Textures *texture.Store
 	Ygg      *ygg.Service
 	MaxChars int // per-user player limit
+
+	// union is the MUA Union hub client (nil or disabled -> no /api/v1/union/*
+	// routes exist at all: zero surface for non-alliance deployments).
+	union    *union.Outbound
+	unionSrv *unionServerCache
 }
 
 func New(st *store.Mysql, ts *texture.Store, yggSvc *ygg.Service) *Backend {
@@ -57,6 +63,16 @@ func (b *Backend) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/v1/me/players/{id}/skin", b.handleSetSkin)
 	mux.HandleFunc("PUT /api/v1/me/players/{id}/cape", b.handleSetCape)
 	mux.HandleFunc("GET /api/v1/stats", b.handleStats)
+	// Union user surface: only when the module is enabled (zero surface off).
+	if b.union != nil && b.union.Enabled() {
+		mux.HandleFunc("GET /api/v1/union/servers", b.handleUnionServers)
+		mux.HandleFunc("GET /api/v1/union/detail", b.handleUnionDetail)
+		mux.HandleFunc("GET /api/v1/union/unmapped", b.handleUnionUnmapped)
+		mux.HandleFunc("POST /api/v1/union/bind", b.handleUnionBind)
+		mux.HandleFunc("POST /api/v1/union/bindto", b.handleUnionBindTo)
+		mux.HandleFunc("POST /api/v1/union/unbind", b.handleUnionUnbind)
+		mux.HandleFunc("POST /api/v1/union/remapuuid", b.handleUnionRemapUUID)
+	}
 	return mux
 }
 

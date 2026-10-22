@@ -4,12 +4,14 @@ import { ref, onMounted } from 'vue'
 const token = ref(localStorage.getItem('admin_token') || '')
 const overview = ref(null)
 const users = ref([])
+const unionStatus = ref(null)
+const unionError = ref('')
 const error = ref('')
 
-async function fetchJSON(path) {
-  const res = await fetch(path, { headers: { 'X-Admin-Token': token.value } })
+async function fetchJSON(path, opts) {
+  const res = await fetch(path, { ...opts, headers: { 'X-Admin-Token': token.value, ...(opts && opts.headers) } })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`)
+  if (!res.ok) throw new Error(data.message || data.error || `HTTP ${res.status}`)
   return data
 }
 
@@ -24,6 +26,22 @@ async function load() {
     overview.value = o
     users.value = u.users || []
   } catch (e) { error.value = e.message }
+  // Union status: absent (404) when the module is disabled — that's expected.
+  unionError.value = ''
+  try {
+    unionStatus.value = await fetchJSON('/api/admin/v1/union/status')
+  } catch (e) {
+    unionStatus.value = null
+    unionError.value = e.message
+  }
+}
+
+async function resumeRotation() {
+  if (!confirm('恢复签名钥轮换？（日变更超限后的手动恢复通道）')) return
+  try {
+    await fetchJSON('/api/admin/v1/union/rotation/resume', { method: 'POST' })
+    await load()
+  } catch (e) { unionError.value = e.message }
 }
 
 onMounted(() => { if (token.value) load() })
@@ -65,6 +83,29 @@ onMounted(() => { if (token.value) load() })
           <td class="muted">{{ (u.createdAt || '').slice(0, 10) }}</td>
         </tr>
       </table>
+    </div>
+
+    <!-- MUA Union module status -->
+    <div class="card" v-if="unionStatus">
+      <h2>Union 联盟模块</h2>
+      <div class="row">
+        <span class="badge">模式 {{ unionStatus.mode }}</span>
+        <span class="badge">签名钥指纹 {{ unionStatus.key_fingerprint || '—' }}</span>
+        <span class="badge">钥版本 {{ unionStatus.private_key_version || '—' }}</span>
+        <span class="badge">服务器列表 v{{ unionStatus.server_list_version || '—' }}</span>
+        <span class="badge">queryemail {{ unionStatus.queryemail_mode }}</span>
+        <span class="badge" :style="unionStatus.rotation_suspended ? 'border-color: var(--danger); color: var(--danger);' : ''">
+          轮换{{ unionStatus.rotation_suspended ? '已暂停' : '正常' }}
+        </span>
+      </div>
+      <div class="row" style="margin-top: 10px;" v-if="unionStatus.rotation_suspended">
+        <button class="secondary" @click="resumeRotation">恢复签名钥轮换</button>
+      </div>
+      <div class="muted" style="margin-top: 10px; font-size: 12px;">
+        ⚠️ 信任声明：加入 MUA Union 后，本站的纹理签名私钥与联盟全网共享——
+        任何成员站都可使用同一签名密钥发布纹理。请仅在加入联盟组织时启用本模块。
+      </div>
+      <div class="error" v-if="unionError">{{ unionError }}</div>
     </div>
   </div>
 </template>

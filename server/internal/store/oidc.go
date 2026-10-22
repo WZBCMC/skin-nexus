@@ -290,6 +290,36 @@ func (m *Mysql) RevokeUserAccessTokens(ctx context.Context, uid int64) error {
 	return err
 }
 
+// ListUserAccessTokens returns the user's live ledger entries (not revoked,
+// not expired), newest first. Backs the authorized-apps management UI.
+func (m *Mysql) ListUserAccessTokens(ctx context.Context, uid int64) ([]oidc.AccessTokenRecord, error) {
+	rows, err := m.db.QueryContext(ctx,
+		`SELECT jti, uid, client_id, scopes, selected_pid, expires_at, created_at
+		 FROM oidc_access_tokens
+		 WHERE uid = ? AND revoked_at IS NULL AND expires_at > NOW(3)
+		 ORDER BY created_at DESC LIMIT 100`, uid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]oidc.AccessTokenRecord, 0)
+	for rows.Next() {
+		var rec oidc.AccessTokenRecord
+		var scopes string
+		var sel sql.NullInt64
+		if err := rows.Scan(&rec.JTI, &rec.UserID, &rec.ClientID, &scopes, &sel,
+			&rec.ExpiresAt, &rec.CreatedAt); err != nil {
+			return nil, err
+		}
+		if rec.Scopes, err = decodeStringList(scopes); err != nil {
+			return nil, err
+		}
+		rec.SelectedPID = sel.Int64
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
 // ---- refresh tokens ----
 
 // SaveRefreshToken stores an opaque refresh token.
@@ -369,6 +399,24 @@ func (m *Mysql) RotateRefreshToken(ctx context.Context, old, new oidc.RefreshTok
 func (m *Mysql) RevokeRefreshToken(ctx context.Context, token string) error {
 	_, err := m.db.ExecContext(ctx,
 		`UPDATE oidc_refresh_tokens SET revoked = 1 WHERE token = ?`, token)
+	return err
+}
+
+// RevokeUserRefreshTokens revokes every live refresh token of one user.
+func (m *Mysql) RevokeUserRefreshTokens(ctx context.Context, uid int64) error {
+	_, err := m.db.ExecContext(ctx,
+		`UPDATE oidc_refresh_tokens SET revoked = 1 WHERE uid = ? AND revoked = 0`, uid)
+	return err
+}
+
+// RevokeClientRefreshTokens revokes live refresh tokens of one user for one
+// client. The refresh table carries no jti column, so a single access-token
+// revocation extends to the uid+client refresh scope (documented in the API
+// response); this is the narrowest defensible granularity.
+func (m *Mysql) RevokeClientRefreshTokens(ctx context.Context, uid int64, clientID string) error {
+	_, err := m.db.ExecContext(ctx,
+		`UPDATE oidc_refresh_tokens SET revoked = 1 WHERE uid = ? AND client_id = ? AND revoked = 0`,
+		uid, clientID)
 	return err
 }
 

@@ -85,6 +85,7 @@ func main() {
 	var unionAPI *union.API
 	var unionGrant *union.Grantor
 	var unionOut *union.Outbound
+	var unionSigner *union.UnionSigner
 	if cfg.UnionEnabled {
 		hostPub, err := os.ReadFile(cfg.UnionHostPublicKeyPath)
 		if err != nil {
@@ -122,7 +123,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("union api: %v", err)
 		}
-		unionGrant, unionOut = grant, out
+		unionGrant, unionOut, unionSigner = grant, out, usigner
 		activeSigner = usigner                                         // hub-distributed key with local fallback
 		go usigner.StartRotation(context.Background(), 12*time.Minute) // 10–15min base + internal jitter
 		log.Printf("union: enabled (hub %s, queryemail %s)", cfg.UnionAPIRoot, cfg.UnionQueryEmailMode)
@@ -176,8 +177,29 @@ func main() {
 		OpenIDConfigurationURL: oidcDiscoveryURL,
 	})
 	backend := webapi.New(st, ts, yggSvc)
+	if unionOut != nil {
+		backend.MountUnion(unionOut) // registers /api/v1/union/* (zero surface when disabled)
+	}
 	pub := publicapi.New(st, ts)
 	admin := adminapi.New(st, yggSvc)
+	if unionSigner != nil {
+		admin.MountUnion(adminapi.UnionDeps{
+			Status: func() map[string]any {
+				return map[string]any{
+					"enabled":             true,
+					"mode":                unionSigner.Mode(),
+					"key_fingerprint":     unionSigner.KeyFingerprint(),
+					"private_key_version": unionSigner.PrivateKeyVersion(),
+					"server_list_version": unionAPI.ServerListVersion(),
+					"rotation_suspended":  unionSigner.RotationSuspended(),
+					"queryemail_mode":     cfg.UnionQueryEmailMode,
+					"hub_origin":          cfg.UnionHubOrigin,
+					"allow_update_bk_key": cfg.UnionAllowUpdateBkKey,
+				}
+			},
+			ResumeRotation: unionSigner.ResumeRotation,
+		})
+	}
 
 	root := http.NewServeMux()
 	root.Handle("/api/yggdrasil/", yggAPI.Handler())

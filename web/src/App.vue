@@ -3,9 +3,13 @@ import { ref, onMounted, nextTick } from 'vue'
 import { api, uploadTexture } from './api.js'
 import SkinPreview from './components/SkinPreview.vue'
 import AdminPanel from './components/AdminPanel.vue'
+import DevicePage from './pages/DevicePage.vue'
+import AuthorizedAppsPage from './pages/AuthorizedAppsPage.vue'
+import UnionBindPage from './pages/UnionBindPage.vue'
 
 const user = ref(null)
-const view = ref('login') // login | register | dashboard | admin
+// login | register | dashboard | admin | device | apps | union
+const view = ref('login')
 const error = ref('')
 const success = ref('')
 
@@ -25,7 +29,26 @@ const uploadFile = ref(null)
 const uploading = ref(false)
 
 async function boot() {
-  try { user.value = await api.me(); await load() } catch { view.value = 'login' }
+  // Launcher verification page: /device?user_code=… is path-probed so the
+  // minimal /device.html fallback and the SPA share one URL contract.
+  const isDevice = location.pathname === '/device'
+  try {
+    user.value = await api.me()
+    await load()
+  } catch {
+    view.value = 'login'
+  }
+  if (isDevice) view.value = 'device'
+}
+
+async function goApps() {
+  view.value = 'apps'
+}
+
+function backToDashboard() {
+  // restore the site root URL when leaving the device page
+  if (location.pathname === '/device') history.replaceState(null, '', '/')
+  view.value = 'dashboard'
 }
 
 async function load() {
@@ -38,7 +61,8 @@ async function doLogin() {
   error.value = ''
   try {
     user.value = await api.login(identifier.value, password.value)
-    view.value = 'dashboard'
+    // returning from login initiated on the device page keeps the flow alive
+    view.value = location.pathname === '/device' ? 'device' : 'dashboard'
     await load()
   } catch (e) { error.value = e.message }
 }
@@ -104,6 +128,9 @@ onMounted(boot)
       </div>
       <div v-if="user" class="row">
         <span class="badge">{{ user.nickname }}</span>
+        <button v-if="view === 'dashboard'" class="secondary" @click="goApps">授权管理</button>
+        <button v-if="view === 'dashboard'" class="secondary" @click="view = 'union'">联盟绑定</button>
+        <button v-if="view === 'apps' || view === 'union'" class="secondary" @click="view = 'dashboard'">返回</button>
         <button class="secondary" @click="view = view === 'admin' ? 'dashboard' : 'admin'">
           {{ view === 'admin' ? '返回' : '管理' }}
         </button>
@@ -140,6 +167,31 @@ onMounted(boot)
         <button class="secondary" @click="view = 'login'">返回登录</button>
       </div>
     </div>
+
+    <!-- DEVICE verification (launcher OAuth) -->
+    <template v-else-if="view === 'device'">
+      <div v-if="!user" class="card" style="max-width: 420px;">
+        <h2>登录后继续</h2>
+        <p class="muted">批准启动器登录前，需要先登录皮肤站账号。</p>
+        <button @click="view = 'login'">去登录</button>
+      </div>
+      <template v-else>
+        <DevicePage />
+        <div class="row" style="margin-top: 12px;">
+          <button class="secondary" @click="backToDashboard">返回个人页</button>
+        </div>
+      </template>
+    </template>
+
+    <!-- AUTHORIZED APPS -->
+    <template v-else-if="view === 'apps'">
+      <AuthorizedAppsPage />
+    </template>
+
+    <!-- UNION BINDING -->
+    <template v-else-if="view === 'union'">
+      <UnionBindPage />
+    </template>
 
     <!-- DASHBOARD -->
     <template v-else-if="view === 'admin'">

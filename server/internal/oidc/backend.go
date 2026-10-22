@@ -107,6 +107,9 @@ type Backend interface {
 	GetAccessToken(ctx context.Context, jti string) (AccessTokenRecord, error)
 	RevokeAccessToken(ctx context.Context, jti string) error
 	RevokeUserAccessTokens(ctx context.Context, uid int64) error
+	// ListUserAccessTokens returns the user's live (non-revoked, non-expired)
+	// ledger entries, newest first. Backs the "authorized apps" management UI.
+	ListUserAccessTokens(ctx context.Context, uid int64) ([]AccessTokenRecord, error)
 
 	// refresh tokens
 	SaveRefreshToken(ctx context.Context, rec RefreshTokenRecord) error
@@ -114,6 +117,13 @@ type Backend interface {
 	// RotateRefreshToken revokes old and stores new atomically.
 	RotateRefreshToken(ctx context.Context, old, new RefreshTokenRecord) error
 	RevokeRefreshToken(ctx context.Context, token string) error
+	// RevokeUserRefreshTokens revokes every live refresh token of one user
+	// ("sign out everywhere" companion to RevokeUserAccessTokens).
+	RevokeUserRefreshTokens(ctx context.Context, uid int64) error
+	// RevokeClientRefreshTokens revokes live refresh tokens of one user for one
+	// client. The refresh table has no jti column, so single-token revocation
+	// scopes to uid+client (documented in the API response).
+	RevokeClientRefreshTokens(ctx context.Context, uid int64, clientID string) error
 
 	// device flow
 	// SaveDeviceAuth must return ErrDuplicateUserCode semantics via

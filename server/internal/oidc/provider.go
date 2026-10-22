@@ -117,7 +117,9 @@ func (p *Provider) Wrap(next http.Handler) http.Handler {
 	mux.Handle("/.well-known/openid-configuration", p.DiscoveryHandler())
 	mux.Handle("/userinfo", p.UserinfoHandler())
 	mux.Handle("/yggc/userinfo", p.UserinfoHandler())
-	mux.Handle("/device", p.DeviceFormHandler())
+	// /device is the SPA verification page (DevicePage.vue, path-probed in
+	// App.vue); the minimal no-JS fallback moved to /device.html.
+	mux.Handle("/device.html", p.DeviceFormHandler())
 	mux.Handle("/api/v1/oidc/", p.DeviceAPIHandler())
 	mux.Handle("/authorize", p.engine.HttpHandler())
 	mux.Handle("/oauth/token", p.tokenWrapper(p.engine.HttpHandler()))
@@ -221,23 +223,32 @@ func (p *Provider) UserinfoHandler() http.Handler {
 	})
 }
 
-// DeviceFormHandler serves the verification page (login + consent + profile
-// select). H1 ships a minimal HTML page; the Vue version is light-pool L1.
+// DeviceFormHandler serves the no-JS-fallback verification page (moved from
+// /device to /device.html when the SPA DevicePage took over /device). Its
+// buttons now fetch() the JSON submit endpoint in place.
 func (p *Provider) DeviceFormHandler() http.Handler {
 	const page = `<!doctype html><html><head><meta charset="utf-8"><title>设备授权</title></head><body>
 <div id="app">加载中…</div>
 <script>
 const code = new URLSearchParams(location.search).get("user_code") || "";
 function esc(s){return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function submit(decision){
+  const sel=document.querySelector('input[name=pid]:checked');
+  fetch("/api/v1/oidc/device/submit",{method:"POST",credentials:"include",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({user_code:code,decision:decision,pid:sel?Number(sel.value):0})})
+   .then(r=>r.json()).then(d=>{
+     document.getElementById("app").textContent = d.ok ? "已处理，可返回启动器。" : ("失败："+(d.error||"未知错误"));
+   }).catch(e=>{document.getElementById("app").textContent="提交失败："+e;});
+}
 fetch("/api/v1/oidc/device/info?user_code="+encodeURIComponent(code),{credentials:"include"})
  .then(r=>r.json()).then(d=>{
    if(d.error){document.getElementById("app").textContent=d.error;return;}
    const players=(d.players||[]).map(p=>'<label><input type="radio" name="pid" value="'+p.id+'" '+(p.id===d.default_pid?'checked':'')+'>'+esc(p.name)+' ('+esc(p.uuid)+')</label><br>').join("");
    document.getElementById("app").innerHTML='<h2>授权 '+esc(d.client_name||d.client_id)+'</h2>'
      +'<p>用户码：<b>'+esc(d.user_code)+'</b></p><p>请求权限：'+(d.scopes||[]).map(esc).join(", ")+'</p>'
-     +'<form method="post" action="/api/v1/oidc/device/submit">'+players
-     +'<input name="user_code" value="'+esc(d.user_code)+'" type="hidden">'
-     +'<button name="decision" value="approve">同意</button> <button name="decision" value="deny">拒绝</button></form>';
+     +players
+     +'<button onclick="submit(\'approve\')">同意</button> <button onclick="submit(\'deny\')">拒绝</button>';
  }).catch(e=>{document.getElementById("app").textContent="加载失败："+e;});
 </script></body></html>`
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -252,6 +263,8 @@ func (p *Provider) DeviceAPIHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/oidc/device/info", p.deviceInfo)
 	mux.HandleFunc("POST /api/v1/oidc/device/submit", p.deviceSubmit)
+	mux.HandleFunc("GET /api/v1/oidc/tokens", p.listTokens)
+	mux.HandleFunc("POST /api/v1/oidc/tokens/revoke", p.revokeToken)
 	return mux
 }
 
@@ -288,34 +301,51 @@ func (p *Provider) deviceSubmit(w http.ResponseWriter, r *http.Request) {
 		unauthorized(w)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad form", http.StatusBadRequest)
-		return
+	// Accepts JSON (SPA DevicePage) and form-encoded (fallback page);
+	// always answers JSON {ok:true}|{error}.
+	var userCode, decision string
+	var pid int64
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		var body struct {
+			UserCode string `json:"user_code"`
+			Decision string `json:"decision"`
+			PID      int64  `json:"pid"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, map[string]any{"error": "bad body"})
+			return
+		}
+		userCode, decision, pid = body.UserCode, body.Decision, body.PID
+	} else {
+		if err := r.ParseForm(); err != nil {
+			writeJSON(w, map[string]any{"error": "bad form"})
+			return
+		}
+		userCode = r.FormValue("user_code")
+		decision = r.FormValue("decision")
+		pid, _ = strconv.ParseInt(r.FormValue("pid"), 10, 64)
 	}
-	userCode := r.FormValue("user_code")
 	rec, err := p.backend.GetDeviceAuthByUserCode(r.Context(), userCode)
 	if err != nil || rec.Done || rec.Denied {
-		http.Error(w, "invalid user code", http.StatusBadRequest)
+		writeJSON(w, map[string]any{"error": "无效的用户码"})
 		return
 	}
-	switch r.FormValue("decision") {
+	switch decision {
 	case "approve":
-		pid, _ := strconv.ParseInt(r.FormValue("pid"), 10, 64)
 		if err := p.ApproveDevice(r.Context(), uid, userCode, pid); err != nil {
-			http.Error(w, "approve failed", http.StatusInternalServerError)
+			writeJSON(w, map[string]any{"error": "批准失败"})
 			return
 		}
 	case "deny":
 		if err := p.DenyDevice(r.Context(), userCode); err != nil {
-			http.Error(w, "deny failed", http.StatusInternalServerError)
+			writeJSON(w, map[string]any{"error": "拒绝失败"})
 			return
 		}
 	default:
-		http.Error(w, "bad decision", http.StatusBadRequest)
+		writeJSON(w, map[string]any{"error": "bad decision"})
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte("<!doctype html><meta charset=utf-8><p>已处理，可返回启动器。</p>"))
+	writeJSON(w, map[string]any{"ok": true})
 }
 
 // ApproveDevice marks a device authorization as approved (subject + profile).
