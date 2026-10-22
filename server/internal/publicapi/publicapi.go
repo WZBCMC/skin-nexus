@@ -32,21 +32,56 @@ func New(st *store.Mysql, ts *texture.Store) *Backend {
 }
 
 // Handler mounts public + legacy-compat routes (CORS open for官网 integration).
+// Go 1.22+ ServeMux panics on wildcard segments with a literal suffix
+// ("{player}.json"): a wildcard must end its segment. The suffix routes are
+// therefore registered as prefix patterns and parsed in-handler by
+// playerFromPath — URL semantics are unchanged.
 func (b *Backend) Handler() http.Handler {
 	mux := http.NewServeMux()
 	// SkinNexus public API
 	mux.HandleFunc("GET /api/public/v1/players/byname/{name}", b.handleByName)
 	mux.HandleFunc("GET /api/public/v1/players/byuuid/{uuid}", b.handleByUUID)
-	// Legacy compat (existing callers)
-	mux.HandleFunc("GET /{player}.json", b.handleCustomSkinAPI)
-	mux.HandleFunc("GET /usm/{player}.json", b.handleUSM)
-	mux.HandleFunc("GET /skin/{player}.png", b.handleLegacyPNG("skin"))
-	mux.HandleFunc("GET /cape/{player}.png", b.handleLegacyPNG("cape"))
+	// Legacy compat (existing callers): /usm/{player}.json, /skin|cape/{player}.png
+	mux.HandleFunc("GET /usm/", b.handleUSM)
+	mux.HandleFunc("GET /skin/", b.handleLegacyPNG("skin"))
+	mux.HandleFunc("GET /cape/", b.handleLegacyPNG("cape"))
 	return cors(mux)
 }
 
-// CustomSkinAPIHandler serves the root-level /{player}.json route from the
-// top-level mux (CustomSkinAPI R1 lives at site root, not under a prefix).
+// WrapRoot serves CustomSkinAPI R1 at the site root (GET|HEAD /{player}.json)
+// and delegates everything else to next. It wraps the top-level mux because
+// ServeMux cannot express "{player}.json" alongside the "/" SPA catch-all.
+func (b *Backend) WrapRoot(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			if _, ok := playerFromPath(r.URL.Path, "/", ".json"); ok {
+				cors(http.HandlerFunc(b.handleCustomSkinAPI)).ServeHTTP(w, r)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// playerFromPath extracts <player> from "<prefix><player><suffix>" URLs.
+// Exactly one path segment counts as a match (legacy single-name surface).
+func playerFromPath(path, prefix, suffix string) (string, bool) {
+	if !strings.HasPrefix(path, prefix) {
+		return "", false
+	}
+	rest := path[len(prefix):]
+	if !strings.HasSuffix(rest, suffix) {
+		return "", false
+	}
+	name := strings.TrimSuffix(rest, suffix)
+	if name == "" || strings.ContainsAny(name, "/\\") {
+		return "", false
+	}
+	return name, true
+}
+
+// CustomSkinAPIHandler serves GET|HEAD /{player}.json when mounted at root.
+// Prefer WrapRoot for the top-level mux (it falls through to the SPA).
 func (b *Backend) CustomSkinAPIHandler() http.Handler {
 	return cors(http.HandlerFunc(b.handleCustomSkinAPI))
 }
@@ -68,6 +103,9 @@ func cors(next http.Handler) http.Handler {
 // resolve looks up a player by name (case-insensitive via store) and returns
 // its texture hashes. Missing player -> (nil, false).
 func (b *Backend) resolve(ctx context.Context, name string) (*ygg.Player, string, string, string, bool) {
+	if b.Store == nil {
+		return nil, "", "", "", false
+	}
 	p, err := b.Store.PlayerByName(ctx, name)
 	if err != nil {
 		return nil, "", "", "", false
@@ -132,7 +170,12 @@ func (b *Backend) profileJSON(p *ygg.Player, skinHash, model, capeHash string) m
 // ---- CustomSkinAPI R1 ----
 
 func (b *Backend) handleCustomSkinAPI(w http.ResponseWriter, r *http.Request) {
-	p, skinHash, model, capeHash, ok := b.resolve(r.Context(), r.PathValue("player"))
+	name, ok := playerFromPath(r.URL.Path, "/", ".json")
+	if !ok {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	p, skinHash, model, capeHash, ok := b.resolve(r.Context(), name)
 	if !ok {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -158,7 +201,12 @@ func (b *Backend) handleCustomSkinAPI(w http.ResponseWriter, r *http.Request) {
 // ---- USM API ----
 
 func (b *Backend) handleUSM(w http.ResponseWriter, r *http.Request) {
-	p, skinHash, model, capeHash, ok := b.resolve(r.Context(), r.PathValue("player"))
+	name, ok := playerFromPath(r.URL.Path, "/usm/", ".json")
+	if !ok {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	p, skinHash, model, capeHash, ok := b.resolve(r.Context(), name)
 	if !ok {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -185,8 +233,17 @@ func (b *Backend) handleUSM(w http.ResponseWriter, r *http.Request) {
 // ---- legacy-api raw PNG ----
 
 func (b *Backend) handleLegacyPNG(kind string) http.HandlerFunc {
+	prefix := "/skin/"
+	if kind == "cape" {
+		prefix = "/cape/"
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		_, skinHash, _, capeHash, ok := b.resolve(r.Context(), r.PathValue("player"))
+		name, ok := playerFromPath(r.URL.Path, prefix, ".png")
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_, skinHash, _, capeHash, ok := b.resolve(r.Context(), name)
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
 			return

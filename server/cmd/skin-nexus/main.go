@@ -300,7 +300,8 @@ func main() {
 	root.Handle("/usm/", pub.Handler())
 	root.Handle("/skin/", pub.Handler())
 	root.Handle("/cape/", pub.Handler())
-	root.Handle("GET /{player}.json", pub.CustomSkinAPIHandler())
+	// CustomSkinAPI R1 (GET /{player}.json) is served by pub.WrapRoot below:
+	// ServeMux cannot register "{player}.json" next to the "/" SPA catch-all.
 	root.Handle("GET /textures/{hash}", textureHandler(ts))
 	// Phase 3 public surface: health probe, SEO outputs, theme assets.
 	root.Handle("GET /healthz", healthzHandler(st))
@@ -315,7 +316,7 @@ func main() {
 
 	addr := cfg.Listen
 	log.Printf("skin-nexus %s listening on %s (base %s)", version, addr, cfg.BaseURL)
-	if err := http.ListenAndServe(addr, root); err != nil {
+	if err := http.ListenAndServe(addr, pub.WrapRoot(root)); err != nil {
 		log.Fatal(err)
 	}
 }
