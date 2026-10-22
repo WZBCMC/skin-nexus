@@ -31,7 +31,8 @@ SkinNexus（肤枢）是对年久失修的 [blessing-skin-server](https://github
 | 二期 H1 | 免密登录核心：OIDC provider、token 双态、契约测试 | ✅ 完成 |
 | 二期 H2 | Union 可开关模块：验签 / 入站出站 / OAuth2 grant / UnionSigner | ✅ 完成 |
 | 二期 L1–L4 | 免密前端、Union 面板、管理集成、回归与验收辅助 | ✅ 完成（2026-10-23）：device 验证页/授权管理页、Union 绑定页+admin 面板、OIDC client CRUD、审计落库、H2 集成钩子、CI（含 MySQL 集成 job）、验收脚本 `scripts/acceptance-yggc.ps1` |
-| 真机验收 | SJMCL + WZBC-Launcher OAuth 免密登录→选角→进服 | 🔶 测试实例已就绪（2026-10-23）：`https://test-skin.wzbcmc.cn`（外部 MySQL 空库+自动迁移+/setup 待初始化），待 YMZS 按清单执行（开发过程文档 phase2 计划 §7.1） |
+| 真机验收 | SJMCL + WZBC-Launcher OAuth 免密登录→选角→进服 | 🔶 测试实例运行中（`https://test-skin.wzbcmc.cn`）：A2 预检已修 4 处契约断点（见兼容矩阵），待 YMZS 按清单执行（开发过程文档 phase2 计划 §7.1） |
+| 兼容矩阵 | blessing/yggdrasil-connect 1:1 复刻缺口（2026-10-23 实测基线） | ✅ 36 端点全量只读实测完成：Yggdrasil/yggc-OIDC/兼容面协议全对齐（join 双形态、refresh 选角、discovery 双挂载已修）；功能缺口按 P1–P3 排定（衣柜/改密/邮箱验证流为 P1 主干） |
 | 三期骨架 | i18n / SEO 一键配置 / 主题与自定义 CSS-JS / Docker Compose / 空库初始化 | ✅ 骨架完成（2026-10-23）：vue-i18n 双语言包、SEO 注入+sitemap/robots、theme.json 主题包（docs/theme-spec.md 含 AI 提示词模板）、Dockerfile+compose 双 DB 模式、自动迁移+安装向导；功能填充见开发过程文档 phase3 计划 §6 |
 | 部署管线 | CI 构建生产镜像→GHCR，部署机只拉不编 | ✅ 完成（2026-10-23）：CI docker job（多阶段 Dockerfile 每轮实证，`:latest`+`:sha-*`），升级=`compose pull && up -d`，数据卷持久化 |
 | 正版绑定 / 插件宿主 | Auth Source 第二实现 / goja 宿主运行时 | ⬜ 后置规划 |
@@ -41,6 +42,7 @@ SkinNexus（肤枢）是对年久失修的 [blessing-skin-server](https://github
 - [`docs/blueprint.md`](docs/blueprint.md) —— 设计蓝图：目标、架构、迁移方案、技术路线对比、开源协议（设计决策记录，实时状态以本文为准）
 - [`docs/standards.md`](docs/standards.md) —— 协作开发规范与 Agent 开发指南
 - [`docs/deploy.md`](docs/deploy.md) —— 部署、环境变量与切流预案
+- [`docs/compat-matrix.md`](docs/compat-matrix.md) —— blessing / yggdrasil-connect 兼容矩阵与缺口优先级（实测基线）
 - [`AGENTS.md`](AGENTS.md) —— 仓库协作说明、结构与铁律
 
 ## 作者与署名
