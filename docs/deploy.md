@@ -13,14 +13,18 @@ cd server && CGO_ENABLED=0 go build -ldflags "-s -w" -o skin-nexus ./cmd/skin-ne
 cd web && npm ci && npm run build   # 产物 web/dist
 ```
 
-## 一之二、Docker Compose 部署（可选，三期）
+## 一之二、Docker Compose 部署（三期）
 
 ```bash
-# 一键编排（含内置 MySQL；用外部库则注释 compose 里 db 服务并改 SKIN_DATABASE_DSN）
-docker compose up -d --build
+# 主线：CI 每轮 push 自动构建生产镜像推 GHCR（:latest + :sha-*），部署机只拉不编：
+#   compose 里 image: ghcr.io/yimingzhanshen/skin-nexus:latest
+docker compose pull && docker compose up -d      # 升级同命令，数据卷不动
+# 也支持源码构建：docker compose up -d --build（多阶段 Dockerfile，CI 每轮实证）
 # 旧 blessing 库 / 迁移后库 / 全新空库均可直接接：空库自动建表（SKIN_AUTO_MIGRATE=true）
 # 全新部署：首次打开站点自动进入 /setup 安装向导（建管理员/站点名/皮肤域）
 ```
+
+- **外部 MySQL 8 / 5.7 均可**（5.7.44 实测通过）；容器推荐 `network_mode: host` 直连面板库 `127.0.0.1:3306`。
 
 - **持久化**：`skin-data` 卷挂 `/data`（textures/sign-key.pem/oidc-key.pem/themes/），`skin-db` 卷存 MySQL——**升级只换容器，卷不动，数据零丢失**。
 - **统一数据根**：`SKIN_DATA_DIR`（默认 `./data`）；`SKIN_TEXTURES_DIR`/`SKIN_SIGN_KEY` 等旧变量显式设置时优先。
