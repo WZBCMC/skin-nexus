@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"skin-nexus/server/internal/auth"
 	"skin-nexus/server/internal/migrate"
 	"skin-nexus/server/internal/oidc"
 )
@@ -314,7 +315,15 @@ func TestIntegrationLoginRoundTrip(t *testing.T) {
 		t.Fatal("missing identifier must error")
 	}
 
-	// password verify: right password passes, wrong fails
+	// password verify with a real PHC hash (seedUser's "x" placeholder is not
+	// a PHC and can never verify) — hash like production does, then verify.
+	h, err := auth.HashArgon2id("hunter2-xyz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.RehashPassword(ctx, uid, h); err != nil {
+		t.Fatalf("rehash: %v", err)
+	}
 	if ok, err := m.VerifyPassword(ctx, uid, "hunter2-xyz"); err != nil || !ok {
 		t.Fatalf("verify ok = %v %v", ok, err)
 	}
