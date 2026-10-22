@@ -31,6 +31,10 @@ type Config struct {
 	OIDCSignKey    string // OIDC token signing key PEM — MUST differ from SignKeyPath
 	SharedClientID string // discovery shared_client_id (launcher public client)
 
+	// Join gate on email_verified (fork's require_verification setting).
+	// Default off until the verification mail flow ships (P1).
+	RequireVerification bool // SKIN_REQUIRE_VERIFICATION
+
 	// Phase 2: MUA Union member module (off by default; zero surface when off).
 	UnionEnabled           bool
 	UnionAPIRoot           string
@@ -71,6 +75,7 @@ func Load() (*Config, error) {
 		SiteName:    getenv("SKIN_SITE_NAME", "SkinNexus"),
 
 		OIDCEnabled:    getenv("SKIN_OIDC_ENABLED", "false") == "true",
+		RequireVerification: getenv("SKIN_REQUIRE_VERIFICATION", "false") == "true",
 		OIDCIssuer:     strings.TrimRight(getenv("SKIN_OIDC_ISSUER", strings.TrimRight(getenv("SKIN_BASE_URL", "http://localhost:8080"), "/")), "/"),
 		OIDCSignKey:    resolveDataPath("SKIN_OIDC_SIGN_KEY", dataDir, "oidc-key.pem"),
 		SharedClientID: getenv("SKIN_OIDC_SHARED_CLIENT_ID", "2"),

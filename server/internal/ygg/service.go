@@ -89,6 +89,11 @@ type Service struct {
 	// store lookup. Phase-2 dual-state: the OIDC layer injects a resolver
 	// that also accepts signed JWTs (analysis/oidc-client-contract-synthesis).
 	resolve func(ctx context.Context, access string) (Token, error)
+	// RequireVerification gates join on email_verified (fork's
+	// require_verification setting). Default off: without a verification
+	// mail flow the gate is a dead end for every new user; the P1 mail flow
+	// ships the site setting to turn it on.
+	RequireVerification bool
 }
 
 const (
@@ -224,7 +229,7 @@ func (s *Service) Join(ctx context.Context, accessToken, playerUUID, serverID, s
 	if err != nil {
 		return ErrTokenInvalid
 	}
-	if !u.EmailVerified {
+	if s.RequireVerification && !u.EmailVerified {
 		return ErrEmailUnverified
 	}
 	if !u.CanJoinServer {

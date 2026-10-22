@@ -262,6 +262,7 @@ func main() {
 		oidcDiscoveryURL = cfg.BaseURL + "/api/yggdrasil/.well-known/openid-configuration"
 		log.Printf("oidc: enabled (issuer %s, shared client %s)", cfg.OIDCIssuer, cfg.SharedClientID)
 	}
+	yggSvc.RequireVerification = cfg.RequireVerification
 	yggAPI := ygg.NewAPI(yggSvc, ygg.MetadataConfig{
 		ServerName:             cfg.ServerName,
 		Version:                version,

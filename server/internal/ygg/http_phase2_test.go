@@ -108,4 +108,36 @@ func TestJoinAcceptsWireForms(t *testing.T) {
 	}
 }
 
+// TestJoinEmailVerificationGate pins the configurable require_verification
+// gate: default off (no mail flow yet — gate would dead-end every new user),
+// on blocks unverified users like the fork did.
+func TestJoinEmailVerificationGate(t *testing.T) {
+	api, st := newTestAPI(t)
+	rec := do(t, api.Handler(), "POST", "/api/yggdrasil/authserver/authenticate",
+		`{"username":"steve","password":"pw-ok","clientToken":"ct"}`, map[string]string{"Content-Type": "application/json"})
+	var tok struct {
+		AccessToken string `json:"accessToken"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &tok); err != nil {
+		t.Fatal(err)
+	}
+	u := st.byID[1]
+	u.EmailVerified = false
+	st.byID[1] = u
+
+	jr := do(t, api.Handler(), "POST", "/api/yggdrasil/sessionserver/session/minecraft/join",
+		`{"accessToken":"`+tok.AccessToken+`","selectedProfile":"`+testUUID+`","serverId":"g1"}`,
+		map[string]string{"Content-Type": "application/json"})
+	if jr.Code != 204 {
+		t.Fatalf("gate off: join = %d (want 204)", jr.Code)
+	}
+	api.svc.RequireVerification = true
+	jr2 := do(t, api.Handler(), "POST", "/api/yggdrasil/sessionserver/session/minecraft/join",
+		`{"accessToken":"`+tok.AccessToken+`","selectedProfile":"`+testUUID+`","serverId":"g2"}`,
+		map[string]string{"Content-Type": "application/json"})
+	if jr2.Code != 403 || !strings.Contains(jr2.Body.String(), "Email not verified") {
+		t.Fatalf("gate on: join = %d %s (want 403 email gate)", jr2.Code, jr2.Body.String())
+	}
+}
+
 var _ = httptest.NewRecorder
