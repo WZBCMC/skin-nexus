@@ -87,6 +87,17 @@ func (v *LegacyVerifier) VerifyLegacy(password, stored string) (matched string, 
 	return "", false
 }
 
+// VerifyOne verifies against a single pinned method (used when the legacy
+// row's algorithm is known, e.g. password_algo = "legacy:sha256").
+func (v *LegacyVerifier) VerifyOne(password, stored, method string) bool {
+	for _, ms := range v.methods {
+		if ms.Method == method {
+			return verifyLegacyOne(method, password, ms.Salt, stored)
+		}
+	}
+	return false
+}
+
 // NeedsRehash reports whether a verified legacy hash should be lazily
 // upgraded (anything that is not already modern argon2id/bcrypt).
 func NeedsRehash(method string) bool {
