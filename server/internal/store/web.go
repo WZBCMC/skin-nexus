@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 )
-
 // ---- registration & web sessions ----
 
 // CreateUser registers a user. passwordHash is already modern PHC.
@@ -162,6 +161,111 @@ func (m *Mysql) PlayerTextureHashes(ctx context.Context, pid int64) (skinHash, s
 		err = ErrNotFound
 	}
 	return
+}
+
+// ---- admin queries ----
+
+// Counters for the admin overview.
+func (m *Mysql) CountUsers(ctx context.Context) (int, error) {
+	var n int
+	err := m.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&n)
+	return n, err
+}
+
+func (m *Mysql) CountPlayers(ctx context.Context) (int, error) {
+	var n int
+	err := m.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM players`).Scan(&n)
+	return n, err
+}
+
+func (m *Mysql) CountTextures(ctx context.Context) (int, error) {
+	var n int
+	err := m.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM textures`).Scan(&n)
+	return n, err
+}
+
+// AdminUsers returns a page of users with weak-hash marker.
+func (m *Mysql) AdminUsers(ctx context.Context, page, size int) ([]map[string]interface{}, int, error) {
+	var total int
+	if err := m.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := m.db.QueryContext(ctx,
+		`SELECT id, COALESCE(email,''), nickname, password_algo, player_limit, created_at
+		 FROM users ORDER BY id DESC LIMIT ? OFFSET ?`, size, (page-1)*size)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var out []map[string]interface{}
+	for rows.Next() {
+		var id, limit int64
+		var email, nick, algo string
+		var created time.Time
+		if err := rows.Scan(&id, &email, &nick, &algo, &limit, &created); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, map[string]interface{}{
+			"id": id, "email": email, "nickname": nick,
+			"passwordAlgo": algo, "playerLimit": limit,
+			"createdAt": created.Format(time.RFC3339),
+		})
+	}
+	return out, total, rows.Err()
+}
+
+// AdminTextures returns a page of texture records.
+func (m *Mysql) AdminTextures(ctx context.Context, page, size int) ([]map[string]interface{}, int, error) {
+	var total int
+	if err := m.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM textures`).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := m.db.QueryContext(ctx,
+		`SELECT t.id, t.uid, t.type, t.hash, COALESCE(t.model,''), t.upload_at
+		 FROM textures t ORDER BY t.id DESC LIMIT ? OFFSET ?`, size, (page-1)*size)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var out []map[string]interface{}
+	for rows.Next() {
+		var id, uid int64
+		var typ, hash, model string
+		var up time.Time
+		if err := rows.Scan(&id, &uid, &typ, &hash, &model, &up); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, map[string]interface{}{
+			"id": id, "uid": uid, "type": typ, "hash": hash, "model": model,
+			"uploadAt": up.Format(time.RFC3339),
+		})
+	}
+	return out, total, rows.Err()
+}
+
+// RecentAudit returns latest audit entries.
+func (m *Mysql) RecentAudit(ctx context.Context, limit int) ([]map[string]interface{}, error) {
+	rows, err := m.db.QueryContext(ctx,
+		`SELECT id, COALESCE(actor_uid,0), action, COALESCE(detail,'{}'), created_at
+		 FROM audit_log ORDER BY id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []map[string]interface{}
+	for rows.Next() {
+		var id, actor int64
+		var action, detail string
+		var created time.Time
+		if err := rows.Scan(&id, &actor, &action, &detail, &created); err != nil {
+			return nil, err
+		}
+		out = append(out, map[string]interface{}{
+			"id": id, "actorUid": actor, "action": action, "detail": detail,
+			"createdAt": created.Format(time.RFC3339),
+		})
+	}
+	return out, rows.Err()
 }
 
 // ---- players ----

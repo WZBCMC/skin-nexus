@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"skin-nexus/server/internal/adminapi"
 	"skin-nexus/server/internal/auth"
 	"skin-nexus/server/internal/config"
 	"skin-nexus/server/internal/migrate"
@@ -78,10 +79,12 @@ func main() {
 	})
 	backend := webapi.New(st, ts, yggSvc)
 	pub := publicapi.New(st, ts)
+	admin := adminapi.New(st, yggSvc)
 
 	root := http.NewServeMux()
 	root.Handle("/api/yggdrasil/", yggAPI.Handler())
 	root.Handle("/api/v1/", backend.Handler())
+	root.Handle("/api/admin/v1/", admin.Handler())
 	root.Handle("/api/public/", pub.Handler())
 	root.Handle("/usm/", pub.Handler())
 	root.Handle("/skin/", pub.Handler())

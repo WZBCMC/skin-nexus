@@ -1,0 +1,109 @@
+// Package adminapi serves the operator surface: user list, texture list,
+// weak-hash dashboard, signing key fingerprint, audit log.
+//
+// Admin gating: phase-1 uses a shared admin token (X-Admin-Token header,
+// SKIN_ADMIN_TOKEN env) — small-footprint single-operator model. Role-based
+// admin lands when the plugin framework ships (HookAPI v2 admin hooks).
+package adminapi
+
+import (
+	"context"
+	"crypto/subtle"
+	"encoding/json"
+	"net/http"
+	"os"
+	"strconv"
+
+	"skin-nexus/server/internal/store"
+	"skin-nexus/server/internal/ygg"
+)
+
+type Backend struct {
+	Store    *store.Mysql
+	Ygg      *ygg.Service
+	AdminTok string
+}
+
+func New(st *store.Mysql, yggSvc *ygg.Service) *Backend {
+	return &Backend{Store: st, Ygg: yggSvc, AdminTok: os.Getenv("SKIN_ADMIN_TOKEN")}
+}
+
+func (b *Backend) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/admin/v1/overview", b.auth(b.handleOverview))
+	mux.HandleFunc("GET /api/admin/v1/users", b.auth(b.handleUsers))
+	mux.HandleFunc("GET /api/admin/v1/textures", b.auth(b.handleTextures))
+	mux.HandleFunc("GET /api/admin/v1/audit", b.auth(b.handleAudit))
+	return mux
+}
+
+// auth enforces the admin token (constant-time compare; empty token = locked).
+func (b *Backend) auth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		got := r.Header.Get("X-Admin-Token")
+		if b.AdminTok == "" || subtle.ConstantTimeCompare([]byte(got), []byte(b.AdminTok)) != 1 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":"Forbidden","message":"admin token invalid"}`))
+			return
+		}
+		next(w, r)
+	}
+}
+
+func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+// handleOverview: counters powering the dashboard header.
+func (b *Backend) handleOverview(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	weak, _ := b.Store.WeakHashCount(ctx)
+	users, _ := b.Store.CountUsers(ctx)
+	players, _ := b.Store.CountPlayers(ctx)
+	textures, _ := b.Store.CountTextures(ctx)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"users": users, "players": players, "textures": textures,
+		"weakHashUsers": weak, // 「弱哈希余量」看板核心指标
+		"signKeyFingerprint": b.Ygg.SignerFingerprint(),
+	})
+}
+
+func (b *Backend) handleUsers(w http.ResponseWriter, r *http.Request) {
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	rows, total, err := b.Store.AdminUsers(r.Context(), page, 50)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"users": rows, "total": total, "page": page})
+}
+
+func (b *Backend) handleTextures(w http.ResponseWriter, r *http.Request) {
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	rows, total, err := b.Store.AdminTextures(r.Context(), page, 50)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"textures": rows, "total": total, "page": page})
+}
+
+func (b *Backend) handleAudit(w http.ResponseWriter, r *http.Request) {
+	rows, err := b.Store.RecentAudit(r.Context(), 100)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"audit": rows})
+}
+
+var _ = context.Background

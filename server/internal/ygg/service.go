@@ -293,6 +293,9 @@ func (s *Service) buildProfile(ctx context.Context, p Player, withSig bool) (Pro
 // PublicKeyPEM exposes the metadata signing key.
 func (s *Service) PublicKeyPEM() string { return s.signer.PublicKeyPEM() }
 
+// SignerFingerprint exposes the active key fingerprint for admin UI/audit.
+func (s *Service) SignerFingerprint() string { return s.signer.KeyFingerprint() }
+
 func randomHex(n int) string {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)
