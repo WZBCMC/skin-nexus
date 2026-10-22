@@ -11,6 +11,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -246,7 +247,18 @@ func main() {
 		if err := oidcProvider.SeedSharedClient(context.Background()); err != nil {
 			log.Fatalf("oidc seed client: %v", err)
 		}
-		yggSvc.SetTokenResolver(oidc.NewYggTokenResolver(st, cfg.OIDCIssuer, &okey.PublicKey))
+		// Dual-state token resolution: OIDC JWTs resolve through the jti
+		// ledger; opaque password-flow tokens fall back to the store lookup.
+		// Only ErrNotJOSE falls back — a JWT-shaped token that fails
+		// verification must not degrade to another authority (2026-10-23).
+		jwtResolve := oidc.NewYggTokenResolver(st, cfg.OIDCIssuer, &okey.PublicKey)
+		yggSvc.SetTokenResolver(func(ctx context.Context, access string) (ygg.Token, error) {
+			t, err := jwtResolve(ctx, access)
+			if errors.Is(err, oidc.ErrNotJOSE) {
+				return st.TokenByAccess(ctx, access)
+			}
+			return t, err
+		})
 		oidcDiscoveryURL = cfg.BaseURL + "/api/yggdrasil/.well-known/openid-configuration"
 		log.Printf("oidc: enabled (issuer %s, shared client %s)", cfg.OIDCIssuer, cfg.SharedClientID)
 	}
