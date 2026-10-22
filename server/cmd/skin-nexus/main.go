@@ -35,6 +35,13 @@ func main() {
 		fmt.Println("skin-nexus", version)
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "migrate" {
+		if err := migrate.RunCLI(os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "migrate:", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	cfg, err := config.Load()
 	if err != nil {

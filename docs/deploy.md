@@ -78,13 +78,14 @@ location / {
 
 ## 四、数据迁移执行序（见 phase1-dev-plan §5）
 
-1. `preflight`：读旧 `.env` → 哈希分布抽样（migrate.ClassifyHashes）→ 确认情景甲/乙
+1. `preflight`：`./skin-nexus migrate preflight --env legacy.env --textures <TEXTURES_DIR> --dump <哈希抽样文件>` → 方法/盐对齐表（盐打码）、哈希分布、情景甲/乙判定、纹理树审计
 2. 全量备份（mysqldump + 纹理目录 tar）
-3. 执行数据导入（SQL 脚本，迁移工具 CLI 待补全）
-4. re-hash + IHDR 扫描报告（migrate.ScanTextureTree）
-5. 抽验：原密码登录、UUID 逐位比对、hasJoined 验签
-6. 双跑观察 → 切流（改反代指向新站端口）
-7. 观察期后旧站下线（只读保留 30 天）
+3. 执行数据导入（SQL 脚本）
+4. uuid 清洗 dry-run：`./skin-nexus migrate uuid --rows uuid.tsv --players players.tsv`（五步报告，apply 走导入脚本）
+5. re-hash + IHDR 扫描报告（preflight --textures 已含）
+6. 抽验：原密码登录、UUID 逐位比对、hasJoined 验签
+7. 双跑观察 → 切流（改反代指向新站端口）
+8. 观察期后旧站下线（只读保留 30 天）
 
 **回滚触发**：登录失败率 >1% / UUID 不一致 >0 / 验签失败 >0 → 立即切回旧站。
 
