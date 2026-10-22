@@ -84,6 +84,10 @@ type Service struct {
 	joinTTL   time.Duration
 	tokenTTL  time.Duration
 	now       func() time.Time
+	// resolve resolves an access token string to a Token. Default: opaque
+	// store lookup. Phase-2 dual-state: the OIDC layer injects a resolver
+	// that also accepts signed JWTs (analysis/oidc-client-contract-synthesis).
+	resolve func(ctx context.Context, access string) (Token, error)
 }
 
 const (
@@ -98,7 +102,18 @@ func NewService(store Store, signer Signer) *Service {
 		joinTTL:  DefaultJoinTTL,
 		tokenTTL: DefaultTokenTTL,
 		now:      time.Now,
+		resolve:  store.TokenByAccess,
 	}
+}
+
+// SetTokenResolver swaps the access-token resolution (dual-state hook).
+func (s *Service) SetTokenResolver(f func(ctx context.Context, access string) (Token, error)) {
+	s.resolve = f
+}
+
+// ResolveToken resolves an access token via the active resolver.
+func (s *Service) ResolveToken(ctx context.Context, access string) (Token, error) {
+	return s.resolve(ctx, access)
 }
 
 // Authenticate issues a token pair (authserver/authenticate).
@@ -158,12 +173,15 @@ func (s *Service) Refresh(ctx context.Context, accessToken, clientToken string, 
 }
 
 // Validate reports whether a token is currently usable (204 vs 403).
+// Dual-state: accepts both opaque tokens and OIDC JWTs (SJMCL validates the
+// OAuth access token via this endpoint). JWT-resolved tokens carry no
+// clientToken, so the mismatch check is skipped for them.
 func (s *Service) Validate(ctx context.Context, accessToken, clientToken string) error {
-	t, err := s.store.TokenByAccess(ctx, accessToken)
+	t, err := s.resolve(ctx, accessToken)
 	if err != nil || t.Invalidated || s.now().After(t.ExpiresAt) {
 		return ErrTokenInvalid
 	}
-	if clientToken != "" && clientToken != t.ClientToken {
+	if clientToken != "" && t.ClientToken != "" && clientToken != t.ClientToken {
 		return ErrTokenInvalid
 	}
 	return nil
@@ -187,8 +205,11 @@ func (s *Service) SignOut(ctx context.Context, username, password string) {
 
 // Join records a join session (sessionserver/join, 204 at HTTP layer).
 // Fork behavior preserved: unverified email may not join (ErrEmailUnverified).
+// Dual-state: the access token may be an OIDC JWT (authlib-injector joins with
+// the OAuth access token). The player must belong to the token owner and match
+// the token's selected profile (legacy player.not-match semantics).
 func (s *Service) Join(ctx context.Context, accessToken, playerUUID, serverID, serverIP string) error {
-	t, err := s.store.TokenByAccess(ctx, accessToken)
+	t, err := s.resolve(ctx, accessToken)
 	if err != nil || t.Invalidated || s.now().After(t.ExpiresAt) {
 		return ErrTokenInvalid
 	}
@@ -202,8 +223,15 @@ func (s *Service) Join(ctx context.Context, accessToken, playerUUID, serverID, s
 	if !u.CanJoinServer {
 		return ErrTokenInvalid
 	}
+	p, err := s.store.PlayerByUUID(ctx, strings.ToLower(playerUUID))
+	if err != nil || p.UID != t.UserID {
+		return ErrTokenInvalid // legacy: player.not-match / not owned
+	}
+	if t.SelectedPID != 0 && p.ID != t.SelectedPID {
+		return ErrTokenInvalid
+	}
 	return s.store.SaveJoin(ctx, JoinSession{
-		AccessToken: accessToken,
+		AccessToken: t.AccessToken,
 		UUID:        strings.ToLower(playerUUID),
 		ServerID:    serverID,
 		ServerIP:    serverIP,

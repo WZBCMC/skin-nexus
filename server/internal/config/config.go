@@ -23,6 +23,22 @@ type Config struct {
 	SignKeyPath string // RSA private key PEM (generated on first boot)
 
 	SiteName string
+
+	// Phase 2: yggc/OIDC passwordless login (internal OIDC provider).
+	OIDCEnabled    bool
+	OIDCIssuer     string // e.g. https://skin.wzbcmc.cn
+	OIDCSignKey    string // OIDC token signing key PEM — MUST differ from SignKeyPath
+	SharedClientID string // discovery shared_client_id (launcher public client)
+
+	// Phase 2: MUA Union member module (off by default; zero surface when off).
+	UnionEnabled           bool
+	UnionAPIRoot           string
+	UnionMemberKey         string
+	UnionHostPublicKeyPath string
+	UnionAllowUpdateBkKey  bool
+	UnionQueryEmailMode    string // "full" | "off"
+	UnionSigPrivateKey     string // Union OAuth2 sig private key PEM path
+	UnionHubOrigin         string
 }
 
 func Load() (*Config, error) {
@@ -35,6 +51,20 @@ func Load() (*Config, error) {
 		SkinDomains: splitCSV(getenv("SKIN_SKIN_DOMAINS", "")),
 		SignKeyPath: getenv("SKIN_SIGN_KEY", "./data/sign-key.pem"),
 		SiteName:    getenv("SKIN_SITE_NAME", "SkinNexus"),
+
+		OIDCEnabled:    getenv("SKIN_OIDC_ENABLED", "false") == "true",
+		OIDCIssuer:     strings.TrimRight(getenv("SKIN_OIDC_ISSUER", strings.TrimRight(getenv("SKIN_BASE_URL", "http://localhost:8080"), "/")), "/"),
+		OIDCSignKey:    getenv("SKIN_OIDC_SIGN_KEY", "./data/oidc-key.pem"),
+		SharedClientID: getenv("SKIN_OIDC_SHARED_CLIENT_ID", "2"),
+
+		UnionEnabled:           getenv("SKIN_UNION_ENABLED", "false") == "true",
+		UnionAPIRoot:           getenv("SKIN_UNION_API_ROOT", "https://skin.mualliance.ltd/api/union"),
+		UnionMemberKey:         os.Getenv("SKIN_UNION_MEMBER_KEY"),
+		UnionHostPublicKeyPath: getenv("SKIN_UNION_HOST_PUBKEY", "./data/union-host-pubkey.pem"),
+		UnionAllowUpdateBkKey:  getenv("SKIN_UNION_ALLOW_UPDATEBACKENDKEY", "false") == "true",
+		UnionQueryEmailMode:    getenv("SKIN_UNION_QUERYEMAIL_MODE", "full"),
+		UnionSigPrivateKey:     getenv("SKIN_UNION_OAUTH2_SIG_KEY", "./data/union-oauth2-sig.pem"),
+		UnionHubOrigin:         getenv("SKIN_UNION_HUB_ORIGIN", "https://skin.mualliance.ltd"),
 	}
 	if c.DatabaseDSN == "" {
 		return nil, fmt.Errorf("config: SKIN_DATABASE_DSN is required")

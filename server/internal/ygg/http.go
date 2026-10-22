@@ -28,6 +28,9 @@ type MetadataConfig struct {
 	Homepage   string
 	Register   string
 	SkinDomains []string
+	// OpenIDConfigurationURL enables meta.feature.openid_configuration_url
+	// (yggc/OIDC passwordless login discovery; phase 2, absent when empty).
+	OpenIDConfigurationURL string
 }
 
 // API serves the Yggdrasil HTTP surface mounted at /api/yggdrasil.
@@ -96,7 +99,12 @@ func (a *API) handleMetadata(w http.ResponseWriter, r *http.Request) {
 	writeJSONString(&b, a.cfg.Homepage)
 	b.WriteString(`,"register":`)
 	writeJSONString(&b, a.cfg.Register)
-	b.WriteString(`},"feature.non_email_login":true},"skinDomains":[`)
+	b.WriteString(`},"feature.non_email_login":true`)
+	if a.cfg.OpenIDConfigurationURL != "" {
+		b.WriteString(`,"feature.openid_configuration_url":`)
+		writeJSONString(&b, a.cfg.OpenIDConfigurationURL)
+	}
+	b.WriteString(`},"skinDomains":[`)
 	for i, d := range a.cfg.SkinDomains {
 		if i > 0 {
 			b.WriteByte(',')

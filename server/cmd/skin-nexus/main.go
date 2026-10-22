@@ -10,6 +10,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 	"skin-nexus/server/internal/auth"
 	"skin-nexus/server/internal/config"
 	"skin-nexus/server/internal/migrate"
+	"skin-nexus/server/internal/oidc"
 	"skin-nexus/server/internal/publicapi"
 	"skin-nexus/server/internal/store"
 	"skin-nexus/server/internal/texture"
@@ -77,12 +79,51 @@ func main() {
 	log.Printf("signing key fingerprint: %s", signer.KeyFingerprint())
 
 	yggSvc := ygg.NewService(st, signer)
+	oidcDiscoveryURL := ""
+	var oidcProvider *oidc.Provider
+	if cfg.OIDCEnabled {
+		okey, err := oidc.LoadOrCreateKey(cfg.OIDCSignKey)
+		if err != nil {
+			log.Fatalf("oidc key: %v", err)
+		}
+		oidcProvider, err = oidc.New(st, oidc.ProfileSource{
+			Players: func(ctx context.Context, uid int64) ([]oidc.PlayerBrief, error) {
+				ps, err := st.PlayersByUID(ctx, uid)
+				if err != nil {
+					return nil, err
+				}
+				out := make([]oidc.PlayerBrief, 0, len(ps))
+				for _, p := range ps {
+					out = append(out, oidc.PlayerBrief{ID: p.ID, UUID: p.UUID, Name: p.Name})
+				}
+				return out, nil
+			},
+			User: st.UserBrief,
+		}, oidc.Config{
+			Issuer:         cfg.OIDCIssuer,
+			Key:            okey,
+			SharedClientID: cfg.SharedClientID,
+			LoginURL:       cfg.BaseURL + "/login",
+		})
+		if err != nil {
+			log.Fatalf("oidc: %v", err)
+		}
+		oidcProvider.SessionResolver = st.SessionUser
+		oidc.SetClientSecretVerifier(func(hash, secret string) bool { return auth.VerifyPHC(secret, hash) })
+		if err := oidcProvider.SeedSharedClient(context.Background()); err != nil {
+			log.Fatalf("oidc seed client: %v", err)
+		}
+		yggSvc.SetTokenResolver(oidc.NewYggTokenResolver(st, cfg.OIDCIssuer, &okey.PublicKey))
+		oidcDiscoveryURL = cfg.BaseURL + "/api/yggdrasil/.well-known/openid-configuration"
+		log.Printf("oidc: enabled (issuer %s, shared client %s)", cfg.OIDCIssuer, cfg.SharedClientID)
+	}
 	yggAPI := ygg.NewAPI(yggSvc, ygg.MetadataConfig{
 		ServerName:  cfg.ServerName,
 		Version:     version,
 		Homepage:    cfg.BaseURL,
 		Register:    cfg.BaseURL + "/auth/register",
 		SkinDomains: cfg.SkinDomains,
+		OpenIDConfigurationURL: oidcDiscoveryURL,
 	})
 	backend := webapi.New(st, ts, yggSvc)
 	pub := publicapi.New(st, ts)
@@ -90,6 +131,9 @@ func main() {
 
 	root := http.NewServeMux()
 	root.Handle("/api/yggdrasil/", yggAPI.Handler())
+	if oidcProvider != nil {
+		root.Handle("GET /api/yggdrasil/.well-known/openid-configuration", oidcProvider.DiscoveryHandler())
+	}
 	root.Handle("/api/v1/", backend.Handler())
 	root.Handle("/api/admin/v1/", admin.Handler())
 	root.Handle("/api/public/", pub.Handler())
@@ -98,7 +142,11 @@ func main() {
 	root.Handle("/cape/", pub.Handler())
 	root.Handle("GET /{player}.json", pub.CustomSkinAPIHandler())
 	root.Handle("GET /textures/{hash}", textureHandler(ts))
-	root.Handle("/", spaHandler())
+	spa := spaHandler()
+	if oidcProvider != nil {
+		spa = oidcProvider.Wrap(spa)
+	}
+	root.Handle("/", spa)
 
 	addr := cfg.Listen
 	log.Printf("skin-nexus %s listening on %s (base %s)", version, addr, cfg.BaseURL)
