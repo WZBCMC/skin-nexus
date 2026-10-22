@@ -122,6 +122,9 @@ func TestVerifierRejectsTampering(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			log := &auditLog{}
 			v := newTestVerifier(t, &hub.PublicKey, log.fn())
+			// Pin the verifier clock to the signing base: the ±30s window
+			// checks must not drift when CI is slow (flake 2026-10-23).
+			v.now = func() time.Time { return now }
 			rec, called := serve(v, tc.req())
 			assertForbidden(t, rec, called)
 			ev, ok := log.last("union.verify." + tc.reason)
