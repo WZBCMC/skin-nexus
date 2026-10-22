@@ -73,8 +73,11 @@ func (m *Mysql) UserByID(ctx context.Context, id int64) (ygg.User, error) {
 
 func (m *Mysql) UserByIdentifier(ctx context.Context, ident string) (ygg.User, error) {
 	// Legacy semantics: identify by email OR nickname (case-insensitive email).
+	// COLLATE must sit on the column expression: `? COLLATE ...` is a syntax
+	// error on MySQL 5.7 (8.0 tolerates it) and made every login fail with
+	// "account or password" while the register->session path stayed healthy.
 	return scanUser(m.db.QueryRowContext(ctx,
-		"SELECT id, nickname, email_verified, can_join_server FROM users WHERE email = ? COLLATE utf8mb4_general_ci OR nickname = ? LIMIT 1",
+		"SELECT id, nickname, email_verified, can_join_server FROM users WHERE email COLLATE utf8mb4_general_ci = ? OR nickname = ? LIMIT 1",
 		ident, ident))
 }
 

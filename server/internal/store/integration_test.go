@@ -290,3 +290,35 @@ func TestIntegrationSessionLifecycle(t *testing.T) {
 		t.Fatal("deleted session must not resolve")
 	}
 }
+
+// ---- login lookup + password verify round trip ----
+// Regression anchor for the 2026-10-23 incident: `? COLLATE ...` in
+// UserByIdentifier was a syntax error on MySQL 5.7 and made every login fail
+// while the register->session path stayed healthy. Pins the lookup and verify
+// path against a real database (8.0 here; 5.7 compatibility is a SQL-shape
+// property — keep COLLATE on the column expression).
+
+func TestIntegrationLoginRoundTrip(t *testing.T) {
+	m := openTestStore(t)
+	ctx := context.Background()
+	uid := seedUser(t, m)
+
+	// identifier lookup: nickname hit, case-insensitive email hit, miss
+	if u, err := m.UserByIdentifier(ctx, "it_user"); err != nil || u.ID != uid {
+		t.Fatalf("by nickname = %+v %v", u, err)
+	}
+	if u, err := m.UserByIdentifier(ctx, "IT@Example.com"); err != nil || u.ID != uid {
+		t.Fatalf("by email ci = %+v %v", u, err)
+	}
+	if _, err := m.UserByIdentifier(ctx, "missing_user"); err == nil {
+		t.Fatal("missing identifier must error")
+	}
+
+	// password verify: right password passes, wrong fails
+	if ok, err := m.VerifyPassword(ctx, uid, "hunter2-xyz"); err != nil || !ok {
+		t.Fatalf("verify ok = %v %v", ok, err)
+	}
+	if ok, err := m.VerifyPassword(ctx, uid, "wrong-pass"); err != nil || ok {
+		t.Fatalf("verify wrong = %v %v", ok, err)
+	}
+}

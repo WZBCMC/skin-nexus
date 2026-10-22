@@ -67,6 +67,12 @@ async function finish() {
     error.value = e.message
   } finally { loading.value = false }
 }
+
+// template expressions cannot reach `location` (not in Vue's globals
+// whitelist) — handlers must live in script scope.
+function goHome() {
+  location.href = '/'
+}
 </script>
 
 <template>
@@ -114,7 +120,7 @@ async function finish() {
       <button v-if="step > 1 && step < 4" class="secondary" @click="step--">上一步</button>
       <button v-if="step < 3" @click="next">下一步</button>
       <button v-if="step === 3" :disabled="loading" @click="finish">{{ loading ? '提交中…' : '完成初始化' }}</button>
-      <button v-if="step === 4" @click="location.href = '/'">进入站点</button>
+      <button v-if="step === 4" @click="goHome">进入站点</button>
     </div>
   </div>
 </template>
