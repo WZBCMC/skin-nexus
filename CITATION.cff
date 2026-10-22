@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use SkinNexus, please cite it as below."
+title: "SkinNexus (肤枢)"
+type: software
+abstract: "Next-generation Minecraft skin server with Yggdrasil authentication compatibility, replacing blessing-skin-server."
+authors:
+  - name: "YMZS (YimingZhanshen)"
+    website: "https://github.com/YimingZhanshen"
+repository-code: "https://github.com/YimingZhanshen/skin-nexus"
+license: AGPL-3.0
+version: "0.1.0-dev"
+date-released: "2026-10-22"
+keywords:
+  - minecraft
+  - skin-server
+  - yggdrasil
+  - authlib-injector
+  - self-hosted
