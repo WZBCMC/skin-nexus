@@ -1,14 +1,19 @@
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { api, uploadTexture } from './api.js'
 import SkinPreview from './components/SkinPreview.vue'
 import AdminPanel from './components/AdminPanel.vue'
 import DevicePage from './pages/DevicePage.vue'
 import AuthorizedAppsPage from './pages/AuthorizedAppsPage.vue'
 import UnionBindPage from './pages/UnionBindPage.vue'
+import SetupPage from './pages/SetupPage.vue'
+import { setLocale } from './i18n.js'
+
+const { t, locale } = useI18n()
 
 const user = ref(null)
-// login | register | dashboard | admin | device | apps | union
+// login | register | dashboard | admin | device | apps | union | setup
 const view = ref('login')
 const error = ref('')
 const success = ref('')
@@ -29,6 +34,12 @@ const uploadFile = ref(null)
 const uploading = ref(false)
 
 async function boot() {
+  // Fresh install: the wizard takes over before anything else (empty-DB init).
+  try {
+    const r = await fetch('/api/v1/setup/status')
+    const d = await r.json()
+    if (d.needs_setup) { view.value = 'setup'; return }
+  } catch { /* server down or old backend — fall through */ }
   // Launcher verification page: /device?user_code=… is path-probed so the
   // minimal /device.html fallback and the SPA share one URL contract.
   const isDevice = location.pathname === '/device'
@@ -51,10 +62,14 @@ function backToDashboard() {
   view.value = 'dashboard'
 }
 
+function onLocaleChange(e) {
+  setLocale(e.target.value)
+}
+
 async function load() {
-  const [p, t] = await Promise.all([api.players(), api.textures()])
+  const [p, tx] = await Promise.all([api.players(), api.textures()])
   players.value = p.players || []
-  textures.value = t.textures || []
+  textures.value = tx.textures || []
 }
 
 async function doLogin() {
@@ -92,11 +107,11 @@ async function addPlayer() {
 }
 
 async function doUpload() {
-  if (!uploadFile.value) { error.value = '请选择 PNG 文件'; return }
+  if (!uploadFile.value) { error.value = t('dashboard.pickPng'); return }
   error.value = ''; success.value = ''; uploading.value = true
   try {
     await uploadTexture(uploadType.value, uploadFile.value, uploadType.value === 'skin' ? uploadModel.value : '', '')
-    success.value = '上传成功'
+    success.value = t('dashboard.uploadSuccess')
     uploadFile.value = null
     await load()
   } catch (e) { error.value = e.message } finally { uploading.value = false }
@@ -123,62 +138,73 @@ onMounted(boot)
   <div class="container">
     <div class="row" style="justify-content: space-between; margin-bottom: 16px;">
       <div>
-        <h1>SkinNexus <span class="muted">肤枢</span></h1>
-        <div class="muted">Minecraft 皮肤站 · Yggdrasil 外置登录</div>
+        <h1>{{ t('site.name') }} <span class="muted">{{ t('site.subtitle') }}</span></h1>
+        <div class="muted">{{ t('site.tagline') }}</div>
       </div>
-      <div v-if="user" class="row">
-        <span class="badge">{{ user.nickname }}</span>
-        <button v-if="view === 'dashboard'" class="secondary" @click="goApps">授权管理</button>
-        <button v-if="view === 'dashboard'" class="secondary" @click="view = 'union'">联盟绑定</button>
-        <button v-if="view === 'apps' || view === 'union'" class="secondary" @click="view = 'dashboard'">返回</button>
-        <button class="secondary" @click="view = view === 'admin' ? 'dashboard' : 'admin'">
-          {{ view === 'admin' ? '返回' : '管理' }}
-        </button>
-        <button class="secondary" @click="doLogout">退出</button>
+      <div class="row">
+        <select :value="locale" @change="onLocaleChange" style="width: 110px;">
+          <option value="zh-CN">中文</option>
+          <option value="en">English</option>
+        </select>
+        <template v-if="user">
+          <span class="badge">{{ user.nickname }}</span>
+          <button v-if="view === 'dashboard'" class="secondary" @click="goApps">{{ t('nav.apps') }}</button>
+          <button v-if="view === 'dashboard'" class="secondary" @click="view = 'union'">{{ t('nav.union') }}</button>
+          <button v-if="view === 'apps' || view === 'union'" class="secondary" @click="view = 'dashboard'">{{ t('common.back') }}</button>
+          <button class="secondary" @click="view = view === 'admin' ? 'dashboard' : 'admin'">
+            {{ view === 'admin' ? t('common.back') : t('common.admin') }}
+          </button>
+          <button class="secondary" @click="doLogout">{{ t('common.logout') }}</button>
+        </template>
       </div>
     </div>
 
     <!-- LOGIN -->
     <div v-if="view === 'login'" class="card" style="max-width: 420px;">
-      <h2>登录</h2>
-      <label>邮箱或昵称</label>
+      <h2>{{ t('auth.loginTitle') }}</h2>
+      <label>{{ t('auth.identifier') }}</label>
       <input v-model="identifier" autocomplete="username" />
-      <label>密码</label>
+      <label>{{ t('auth.password') }}</label>
       <input v-model="password" type="password" autocomplete="current-password" @keyup.enter="doLogin" />
       <div class="error" v-if="error">{{ error }}</div>
       <div class="row" style="margin-top: 14px;">
-        <button @click="doLogin">登录</button>
-        <button class="secondary" @click="view = 'register'">注册</button>
+        <button @click="doLogin">{{ t('common.login') }}</button>
+        <button class="secondary" @click="view = 'register'">{{ t('common.register') }}</button>
       </div>
     </div>
 
     <!-- REGISTER -->
     <div v-else-if="view === 'register'" class="card" style="max-width: 420px;">
-      <h2>注册</h2>
-      <label>昵称（MC 风格）</label>
+      <h2>{{ t('auth.registerTitle') }}</h2>
+      <label>{{ t('auth.nickname') }}</label>
       <input v-model="nickname" />
-      <label>邮箱（可留空）</label>
+      <label>{{ t('auth.email') }}</label>
       <input v-model="email" type="email" />
-      <label>密码（≥8 位）</label>
+      <label>{{ t('auth.passwordMin') }}</label>
       <input v-model="password" type="password" @keyup.enter="doRegister" />
       <div class="error" v-if="error">{{ error }}</div>
       <div class="row" style="margin-top: 14px;">
-        <button @click="doRegister">注册</button>
-        <button class="secondary" @click="view = 'login'">返回登录</button>
+        <button @click="doRegister">{{ t('common.register') }}</button>
+        <button class="secondary" @click="view = 'login'">{{ t('auth.toLogin') }}</button>
       </div>
     </div>
+
+    <!-- SETUP wizard (first run) -->
+    <template v-else-if="view === 'setup'">
+      <SetupPage />
+    </template>
 
     <!-- DEVICE verification (launcher OAuth) -->
     <template v-else-if="view === 'device'">
       <div v-if="!user" class="card" style="max-width: 420px;">
-        <h2>登录后继续</h2>
-        <p class="muted">批准启动器登录前，需要先登录皮肤站账号。</p>
-        <button @click="view = 'login'">去登录</button>
+        <h2>{{ t('device.needLogin') }}</h2>
+        <p class="muted">{{ t('device.needLoginHint') }}</p>
+        <button @click="view = 'login'">{{ t('device.goLogin') }}</button>
       </div>
       <template v-else>
         <DevicePage />
         <div class="row" style="margin-top: 12px;">
-          <button class="secondary" @click="backToDashboard">返回个人页</button>
+          <button class="secondary" @click="backToDashboard">{{ t('nav.backToDashboard') }}</button>
         </div>
       </template>
     </template>
@@ -201,29 +227,29 @@ onMounted(boot)
     <template v-else>
       <!-- upload -->
       <div class="card">
-        <h2>上传纹理</h2>
+        <h2>{{ t('dashboard.uploadTitle') }}</h2>
         <div class="row">
           <select v-model="uploadType" style="width: 120px;">
-            <option value="skin">皮肤</option>
-            <option value="cape">披风</option>
+            <option value="skin">{{ t('dashboard.typeSkin') }}</option>
+            <option value="cape">{{ t('dashboard.typeCape') }}</option>
           </select>
           <select v-model="uploadModel" style="width: 140px;" :disabled="uploadType !== 'skin'">
-            <option value="default">default (Steve)</option>
-            <option value="slim">slim (Alex)</option>
+            <option value="default">{{ t('dashboard.modelDefault') }}</option>
+            <option value="slim">{{ t('dashboard.modelSlim') }}</option>
           </select>
           <input type="file" accept="image/png" @change="onPick" style="width: auto;" />
-          <button :disabled="uploading" @click="doUpload">{{ uploading ? '上传中…' : '上传' }}</button>
+          <button :disabled="uploading" @click="doUpload">{{ uploading ? t('dashboard.uploading') : t('dashboard.upload') }}</button>
         </div>
         <div class="error" v-if="error">{{ error }}</div>
         <div class="success" v-if="success">{{ success }}</div>
-        <div class="muted" style="margin-top: 8px;">皮肤 64×64 / 64×32，披风 64×32 / 22×17（或等比放大）</div>
+        <div class="muted" style="margin-top: 8px;">{{ t('dashboard.uploadHint') }}</div>
       </div>
 
       <!-- textures -->
       <div class="card">
-        <h2>我的纹理（{{ textures.length }}）</h2>
+        <h2>{{ t('dashboard.texturesTitle', { count: textures.length }) }}</h2>
         <table v-if="textures.length">
-          <tr><th>类型</th><th>模型</th><th>预览</th><th>hash</th></tr>
+          <tr><th>{{ t('dashboard.colType') }}</th><th>{{ t('dashboard.colModel') }}</th><th>{{ t('dashboard.colPreview') }}</th><th>{{ t('dashboard.colHash') }}</th></tr>
           <tr v-for="t in textures" :key="t.id">
             <td>{{ t.type }}</td>
             <td>{{ t.model || '—' }}</td>
@@ -231,15 +257,15 @@ onMounted(boot)
             <td class="muted">{{ t.hash.slice(0, 12) }}…</td>
           </tr>
         </table>
-        <div v-else class="muted">还没有纹理，先上传一个吧</div>
+        <div v-else class="muted">{{ t('dashboard.texturesEmpty') }}</div>
       </div>
 
       <!-- players -->
       <div class="card">
-        <h2>我的角色（{{ players.length }}）</h2>
+        <h2>{{ t('dashboard.playersTitle', { count: players.length }) }}</h2>
         <div class="row">
-          <input v-model="newPlayerName" placeholder="新角色名" style="max-width: 200px;" />
-          <button @click="addPlayer">创建角色</button>
+          <input v-model="newPlayerName" :placeholder="t('dashboard.newPlayerName')" style="max-width: 200px;" />
+          <button @click="addPlayer">{{ t('dashboard.createPlayer') }}</button>
         </div>
         <div class="error" v-if="error">{{ error }}</div>
         <div v-for="p in players" :key="p.id" class="row" style="margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px;">
@@ -250,12 +276,12 @@ onMounted(boot)
           <SkinPreview :url="p.SkinURL || p.skinurl" />
           <div class="row">
             <select style="width: 220px;" @change="setSkin(p, $event)">
-              <option value="">无皮肤</option>
-              <option v-for="t in textures.filter(t => t.type === 'skin')" :key="t.id" :value="t.id">{{ t.hash.slice(0, 10) }}…</option>
+              <option value="">{{ t('dashboard.noSkin') }}</option>
+              <option v-for="tx in textures.filter(x => x.type === 'skin')" :key="tx.id" :value="tx.id">{{ tx.hash.slice(0, 10) }}…</option>
             </select>
             <select style="width: 200px;" @change="setCape(p, $event)">
-              <option value="">无披风</option>
-              <option v-for="t in textures.filter(t => t.type === 'cape')" :key="t.id" :value="t.id">{{ t.hash.slice(0, 10) }}…</option>
+              <option value="">{{ t('dashboard.noCape') }}</option>
+              <option v-for="tx in textures.filter(x => x.type === 'cape')" :key="tx.id" :value="tx.id">{{ tx.hash.slice(0, 10) }}…</option>
             </select>
           </div>
         </div>

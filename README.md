@@ -2,7 +2,7 @@
 
 > 下一代 Minecraft 皮肤站：Yggdrasil 外置登录兼容、一键迁移 blessing-skin-server、自托管优先。
 
-**状态**（每轮开发收尾同步 · 2026-10-23）：一期开发完成（M0–M5）· 二期开发完成（免密登录 + Union 可开关模块 + 前端/管理/集成全量）· 真机验收（A2）待执行 · 迁移切流窗口待排期
+**状态**（每轮开发收尾同步 · 2026-10-23）：一期开发完成（M0–M5）· 二期开发完成（免密登录 + Union 可开关模块 + 前端/管理/集成全量）· 三期骨架完成（i18n / SEO / 主题 / Docker / 空库初始化）· 真机验收（A2）待执行 · 迁移切流窗口待排期
 **许可**：AGPL-3.0 · **发起人/著作权人**：YMZS
 
 ## 这是什么
@@ -14,6 +14,10 @@ SkinNexus（肤枢）是对年久失修的 [blessing-skin-server](https://github
 - **MUA Union 成员站模块**：**可开关（默认关）**，未接入联盟的部署零负担；三头验签、绑定/同步、OAuth2 grant、共享纹理签名密钥
 - **一键数据迁移**：用户/皮肤/披风/角色绑定平滑迁移（多算法密码兼容 + 惰性重哈希）
 - **现代技术栈**：Go + Vue 3，单二进制部署
+- **多语言（i18n）**：内置 zh-CN/en，界面全量键值化，语言切换即时生效
+- **SEO 一键配置**：meta/OG/canonical 注入、sitemap.xml、robots.txt、可整站 noindex（预发）
+- **自定义 CSS/JS 与主题包**：admin 贴样式（blessing 同款）+ `data/themes/` 主题包（社区分发、AI 可生成，规范见 [`docs/theme-spec.md`](docs/theme-spec.md)）
+- **Docker Compose 部署**：一键编排（可选内置 MySQL 或外部数据库），数据/主题/密钥卷持久化，升级不丢数据；空库自动建表 + 首访安装向导 `/setup`
 - **对外数据接口**：CustomSkinAPI / USM / legacy 裸 PNG / 公开只读 API
 - **自托管与数据主权**：零账号依赖、本地直连、单一控制点
 - **插件扩展**：hook 合约已冻结，宿主运行时后置
@@ -28,6 +32,7 @@ SkinNexus（肤枢）是对年久失修的 [blessing-skin-server](https://github
 | 二期 H2 | Union 可开关模块：验签 / 入站出站 / OAuth2 grant / UnionSigner | ✅ 完成 |
 | 二期 L1–L4 | 免密前端、Union 面板、管理集成、回归与验收辅助 | ✅ 完成（2026-10-23）：device 验证页/授权管理页、Union 绑定页+admin 面板、OIDC client CRUD、审计落库、H2 集成钩子、CI（含 MySQL 集成 job）、验收脚本 `scripts/acceptance-yggc.ps1` |
 | 真机验收 | SJMCL + WZBC-Launcher OAuth 免密登录→选角→进服 | ⬜ 待执行（清单：开发过程文档 phase2 计划 §7.1，需 YMZS 参与） |
+| 三期骨架 | i18n / SEO 一键配置 / 主题与自定义 CSS-JS / Docker Compose / 空库初始化 | ✅ 骨架完成（2026-10-23）：vue-i18n 双语言包、SEO 注入+sitemap/robots、theme.json 主题包（docs/theme-spec.md 含 AI 提示词模板）、Dockerfile+compose 双 DB 模式、自动迁移+安装向导；功能填充见开发过程文档 phase3 计划 §6 |
 | 正版绑定 / 插件宿主 | Auth Source 第二实现 / goja 宿主运行时 | ⬜ 后置规划 |
 
 ## 文档

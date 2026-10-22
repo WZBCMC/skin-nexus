@@ -14,18 +14,23 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
 	"skin-nexus/server/internal/adminapi"
+	"skin-nexus/server/internal/appearance"
 	"skin-nexus/server/internal/auth"
 	"skin-nexus/server/internal/config"
 	"skin-nexus/server/internal/migrate"
 	"skin-nexus/server/internal/oidc"
 	"skin-nexus/server/internal/publicapi"
+	"skin-nexus/server/internal/seo"
 	"skin-nexus/server/internal/store"
 	"skin-nexus/server/internal/texture"
+	"skin-nexus/server/internal/theme"
 	"skin-nexus/server/internal/union"
 	"skin-nexus/server/internal/webapi"
 	"skin-nexus/server/internal/ygg"
@@ -68,10 +73,52 @@ func main() {
 	}
 	defer st.Close()
 
+	// Phase 3: empty-database bootstrap. When the schema is missing and
+	// SKIN_AUTO_MIGRATE=1 (docker default), apply migrations/ automatically;
+	// the /setup wizard then completes site initialization on first visit.
+	if cfg.AutoMigrate {
+		if ok, err := st.TableExists(context.Background(), "users"); err == nil && !ok {
+			log.Printf("schema: empty database — applying %s", cfg.MigrationsDir)
+			if err := migrate.ApplySQLDir(st.DB(), cfg.MigrationsDir); err != nil {
+				log.Fatalf("schema: %v", err)
+			}
+			log.Printf("schema: migrations applied")
+		}
+	}
+
+	// Setup wizard writes site_name/skin_domains to options; they override the
+	// env defaults here (explicit env SKIN_SKIN_DOMAINS/SKIN_SITE_NAME wins).
+	if os.Getenv("SKIN_SITE_NAME") == "" {
+		if v, ok, err := st.GetOption(context.Background(), "site_name"); err == nil && ok && v != "" {
+			cfg.SiteName = v
+			cfg.ServerName = v
+		}
+	}
+	if os.Getenv("SKIN_SKIN_DOMAINS") == "" {
+		if v, ok, err := st.GetOption(context.Background(), "skin_domains"); err == nil && ok && v != "" {
+			for _, d := range strings.Split(v, ",") {
+				if d = strings.TrimSpace(d); d != "" {
+					cfg.SkinDomains = append(cfg.SkinDomains, d)
+				}
+			}
+		}
+	}
+
 	ts, err := texture.NewStore(cfg.TexturesDir)
 	if err != nil {
 		log.Fatalf("textures: %v", err)
 	}
+
+	// Phase 3: SEO + appearance (theme packs, custom CSS/JS).
+	seoEng := seo.NewEngine(st, seo.Defaults{SiteName: cfg.SiteName, BaseURL: cfg.BaseURL})
+	themeReg, err := theme.NewRegistry(cfg.ThemesDir)
+	if err != nil {
+		log.Fatalf("themes: %v", err)
+	}
+	if n := len(themeReg.List()); n > 0 {
+		log.Printf("themes: %d packs loaded from %s", n, cfg.ThemesDir)
+	}
+	appearEng := appearance.NewEngine(st, themeReg)
 
 	signer, err := ygg.NewLocalSigner(cfg.SignKeyPath)
 	if err != nil {
@@ -218,6 +265,7 @@ func main() {
 	pub := publicapi.New(st, ts)
 	admin := adminapi.New(st, yggSvc)
 	admin.SetSharedClientID(cfg.SharedClientID) // guards shared launcher client deletion
+	admin.MountAppearance(adminapi.AppearanceDeps{SEO: seoEng, Appear: appearEng, Themes: themeReg})
 	if unionSigner != nil {
 		admin.MountUnion(adminapi.UnionDeps{
 			Status: func() map[string]any {
@@ -254,7 +302,12 @@ func main() {
 	root.Handle("/cape/", pub.Handler())
 	root.Handle("GET /{player}.json", pub.CustomSkinAPIHandler())
 	root.Handle("GET /textures/{hash}", textureHandler(ts))
-	spa := spaHandler()
+	// Phase 3 public surface: health probe, SEO outputs, theme assets.
+	root.Handle("GET /healthz", healthzHandler(st))
+	root.Handle("GET /sitemap.xml", sitemapHandler(seoEng, st, cfg.BaseURL))
+	root.Handle("GET /robots.txt", robotsHandler(seoEng))
+	root.Handle("GET /theme-assets/{id}/{file}", themeAssetHandler(themeReg))
+	spa := spaHandler(seoEng, appearEng)
 	if oidcProvider != nil {
 		spa = oidcProvider.Wrap(spa)
 	}
@@ -319,8 +372,9 @@ func textureHandler(ts *texture.Store) http.HandlerFunc {
 	}
 }
 
-// spaHandler serves web/dist if present, else a placeholder page.
-func spaHandler() http.Handler {
+// spaHandler serves web/dist if present, else a placeholder page. index.html
+// passes through the SEO + appearance injection layers (phase 3).
+func spaHandler(seoEng *seo.Engine, appearEng *appearance.Engine) http.Handler {
 	dir := "web/dist"
 	if st, err := os.Stat(dir); err == nil && st.IsDir() {
 		fs := http.FileServer(http.Dir(dir))
@@ -328,7 +382,16 @@ func spaHandler() http.Handler {
 			// SPA fallback: unknown paths -> index.html
 			p := strings.TrimPrefix(r.URL.Path, "/")
 			if _, err := os.Stat(dir + "/" + p); err != nil && !strings.HasPrefix(p, "api/") {
-				http.ServeFile(w, r, dir+"/index.html")
+				raw, err := os.ReadFile(dir + "/index.html")
+				if err != nil {
+					http.Error(w, "index missing", http.StatusInternalServerError)
+					return
+				}
+				html := string(raw)
+				html = seoEng.RenderHead(r.Context(), html)
+				html = appearEng.Render(r.Context(), html)
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				_, _ = w.Write([]byte(html))
 				return
 			}
 			fs.ServeHTTP(w, r)
@@ -337,5 +400,69 @@ func spaHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte("<h1>SkinNexus</h1><p>web/dist not built yet. See docs/.</p>"))
+	})
+}
+
+// healthzHandler is the container health probe (DB round-trip).
+func healthzHandler(st *store.Mysql) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := st.Health(r.Context()); err != nil {
+			http.Error(w, "unhealthy", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
+}
+
+// sitemapHandler serves /sitemap.xml (static routes + bounded player pages).
+func sitemapHandler(seoEng *seo.Engine, st *store.Mysql, baseURL string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s := seoEng.Settings(r.Context())
+		if !s.SitemapOn {
+			http.NotFound(w, r)
+			return
+		}
+		paths := []string{}
+		// bounded: at most 5000 profile pages
+		if rows, err := st.ProfileNameByUUID(r.Context()); err == nil {
+			names := make([]string, 0, len(rows))
+			for _, name := range rows {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			if len(names) > 5000 {
+				names = names[:5000]
+			}
+			for _, n := range names {
+				paths = append(paths, "/profile/"+url.PathEscape(n))
+			}
+		}
+		w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+		_, _ = w.Write([]byte(seo.SitemapXML(s.Canonical, baseURL, paths)))
+	})
+}
+
+// robotsHandler serves /robots.txt from the SEO settings.
+func robotsHandler(seoEng *seo.Engine) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s := seoEng.Settings(r.Context())
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte(s.Robots))
+	})
+}
+
+// themeAssetHandler serves theme pack assets with strict path validation.
+func themeAssetHandler(reg *theme.Registry) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		file := r.PathValue("file")
+		full, err := reg.ResolveAsset(id, file)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		http.ServeFile(w, r, full)
 	})
 }

@@ -17,11 +17,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
 	"testing"
 	"time"
 
+	"skin-nexus/server/internal/migrate"
 	"skin-nexus/server/internal/oidc"
 )
 
@@ -55,51 +54,14 @@ func openTestStore(t *testing.T) *Mysql {
 	return m
 }
 
-// applyMigrations executes migrations/*.sql in filename order. Statements are
-// split on ';' — the shipped DDL contains no routines/DELIMITER blocks.
+// applyMigrations executes migrations/*.sql in filename order via the shared
+// migrate.ApplySQLDir helper (also used by the empty-DB boot path).
 func applyMigrations(t *testing.T, m *Mysql) {
 	t.Helper()
-	files, err := filepath.Glob(filepath.Join("..", "..", "migrations", "*.sql"))
-	if err != nil || len(files) == 0 {
-		t.Fatalf("migrations glob: %v (found %d)", err, len(files))
+	dir := filepath.Join("..", "..", "migrations")
+	if err := migrate.ApplySQLDir(m.db, dir); err != nil {
+		t.Fatalf("apply migrations: %v", err)
 	}
-	sort.Strings(files)
-	ctx := context.Background()
-	for _, f := range files {
-		raw, err := os.ReadFile(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, stmt := range splitSQL(string(raw)) {
-			if _, err := m.db.ExecContext(ctx, stmt); err != nil {
-				t.Fatalf("%s: %v\nstmt: %s", filepath.Base(f), err, stmt)
-			}
-		}
-	}
-}
-
-func splitSQL(script string) []string {
-	var out []string
-	var sb strings.Builder
-	for _, line := range strings.Split(script, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "--") {
-			continue
-		}
-		sb.WriteString(line)
-		sb.WriteString("\n")
-		if strings.HasSuffix(trimmed, ";") {
-			stmt := strings.TrimSpace(sb.String())
-			if stmt != "" && stmt != ";" {
-				out = append(out, strings.TrimSuffix(stmt, ";"))
-			}
-			sb.Reset()
-		}
-	}
-	if s := strings.TrimSpace(sb.String()); s != "" {
-		out = append(out, s)
-	}
-	return out
 }
 
 func seedUser(t *testing.T, m *Mysql) int64 {

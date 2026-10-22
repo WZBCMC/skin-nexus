@@ -1,0 +1,12 @@
+# keep the build context small and never leak secrets/snapshots
+web/node_modules
+web/dist
+data/
+*.pem
+legacy.env
+refs/
+analysis/
+poc/
+docs/
+*.md
+.git/

@@ -1,0 +1,106 @@
+package theme
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func writePack(t *testing.T, root, id, manifest string, files map[string]string) {
+	t.Helper()
+	dir := filepath.Join(root, id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if manifest != "" {
+		if err := os.WriteFile(filepath.Join(dir, "theme.json"), []byte(manifest), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+const okManifest = `{"id":"dark","name":"Dark","version":"1.0.0","inject":{"css":["style.css"]}}`
+
+func TestRegistryScanAndValidate(t *testing.T) {
+	root := t.TempDir()
+	writePack(t, root, "dark", okManifest, map[string]string{"style.css": ":root{--bg:#000}"})
+	// bad: manifest id mismatch -> ignored
+	writePack(t, root, "other", `{"id":"not-other","name":"X","version":"1","inject":{}}`, nil)
+	// bad: invalid directory name -> ignored
+	writePack(t, root, "Bad Name!", okManifest, nil)
+	// bad: no manifest -> ignored
+	writePack(t, root, "empty", "", nil)
+
+	r, err := NewRegistry(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list := r.List(); len(list) != 1 || list[0].ID != "dark" {
+		t.Fatalf("list = %+v", list)
+	}
+}
+
+func TestResolveAssetRejectsEscapes(t *testing.T) {
+	root := t.TempDir()
+	writePack(t, root, "dark", okManifest, map[string]string{
+		"style.css":    "body{}",
+		"preview.png":  "png",
+	})
+	r, err := NewRegistry(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// legit
+	if _, err := r.ResolveAsset("dark", "preview.png"); err != nil {
+		t.Fatalf("legit asset: %v", err)
+	}
+	// traversal / bad names / unknown pack
+	for _, bad := range []struct{ id, file string }{
+		{"dark", "../secret"},
+		{"dark", ".."},
+		{"dark", "/etc/passwd"},
+		{"dark", "sub/dir.png"},
+		{"../etc", "passwd"},
+		{"", "style.css"},
+		{"dark", ""},
+		{"nope", "style.css"},
+	} {
+		if _, err := r.ResolveAsset(bad.id, bad.file); err == nil {
+			t.Fatalf("escape accepted: %+v", bad)
+		}
+	}
+}
+
+func TestHeadHTML(t *testing.T) {
+	root := t.TempDir()
+	writePack(t, root, "dark", okManifest, map[string]string{"style.css": "body{}"})
+	r, err := NewRegistry(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	th, err := r.Get("dark")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := th.HeadHTML()
+	if !strings.Contains(h, `/theme-assets/dark/style.css`) {
+		t.Fatalf("head = %q", h)
+	}
+}
+
+func TestMissingDirIsNotError(t *testing.T) {
+	r, err := NewRegistry(filepath.Join(t.TempDir(), "nope"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.List()) != 0 {
+		t.Fatal("expected empty registry")
+	}
+}

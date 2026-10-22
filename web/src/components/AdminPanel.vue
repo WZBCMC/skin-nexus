@@ -1,5 +1,8 @@
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const token = ref(localStorage.getItem('admin_token') || '')
 const overview = ref(null)
@@ -11,6 +14,13 @@ const oidcError = ref('')
 const newClient = ref({ client_id: '', name: '', redirect_uris: '', public: true })
 const lastSecret = ref('') // shown once after create
 const error = ref('')
+
+// SEO + appearance (phase 3)
+const seo = ref(null)
+const seoError = ref('')
+const appearance = ref(null)
+const appearError = ref('')
+const themes = ref([])
 
 async function fetchJSON(path, opts) {
   const res = await fetch(path, { ...opts, headers: { 'X-Admin-Token': token.value, ...(opts && opts.headers) } })
@@ -44,6 +54,43 @@ async function load() {
     const c = await fetchJSON('/api/admin/v1/oidc/clients')
     oidcClients.value = c.clients || []
   } catch (e) { oidcError.value = e.message }
+  // SEO
+  seoError.value = ''
+  try {
+    seo.value = await fetchJSON('/api/admin/v1/seo')
+  } catch (e) { seoError.value = e.message }
+  // Appearance + themes
+  appearError.value = ''
+  try {
+    appearance.value = await fetchJSON('/api/admin/v1/appearance')
+    const th = await fetchJSON('/api/admin/v1/themes')
+    themes.value = th.themes || []
+  } catch (e) { appearError.value = e.message }
+}
+
+async function seoOneClick() {
+  seoError.value = ''
+  try {
+    seo.value = await fetchJSON('/api/admin/v1/seo/oneclick', { method: 'POST' })
+  } catch (e) { seoError.value = e.message }
+}
+
+async function seoSave() {
+  seoError.value = ''
+  try {
+    await fetchJSON('/api/admin/v1/seo', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(seo.value),
+    })
+  } catch (e) { seoError.value = e.message }
+}
+
+async function appearSave() {
+  appearError.value = ''
+  try {
+    await fetchJSON('/api/admin/v1/appearance', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(appearance.value),
+    })
+  } catch (e) { appearError.value = e.message }
 }
 
 async function createClient() {
@@ -55,7 +102,7 @@ async function createClient() {
     grant_types: ['authorization_code', 'refresh_token'],
     public: newClient.value.public,
   }
-  if (!body.client_id) { oidcError.value = 'client_id 必填'; return }
+  if (!body.client_id) { oidcError.value = t('admin.oidcIdRequired'); return }
   try {
     const d = await fetchJSON('/api/admin/v1/oidc/clients', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -68,7 +115,7 @@ async function createClient() {
 }
 
 async function deleteClient(id) {
-  if (!confirm(`删除 OAuth 客户端 ${id}？使用它的应用将无法登录。`)) return
+  if (!confirm(t('admin.oidcDeleteConfirm', { id }))) return
   oidcError.value = ''
   try {
     await fetchJSON(`/api/admin/v1/oidc/clients/${encodeURIComponent(id)}`, { method: 'DELETE' })
@@ -77,7 +124,7 @@ async function deleteClient(id) {
 }
 
 async function resumeRotation() {
-  if (!confirm('恢复签名钥轮换？（日变更超限后的手动恢复通道）')) return
+  if (!confirm(t('admin.unionResumeConfirm'))) return
   try {
     await fetchJSON('/api/admin/v1/union/rotation/resume', { method: 'POST' })
     await load()
@@ -90,31 +137,31 @@ onMounted(() => { if (token.value) load() })
 <template>
   <div>
     <div class="card">
-      <h2>管理面板</h2>
+      <h2>{{ t('admin.title') }}</h2>
       <div class="row">
-        <input v-model="token" type="password" placeholder="X-Admin-Token" style="max-width: 320px;" />
-        <button @click="load">加载</button>
+        <input v-model="token" type="password" :placeholder="t('admin.tokenPlaceholder')" style="max-width: 320px;" />
+        <button @click="load">{{ t('admin.load') }}</button>
       </div>
       <div class="error" v-if="error">{{ error }}</div>
     </div>
 
     <div class="card" v-if="overview">
-      <h2>总览</h2>
+      <h2>{{ t('admin.overviewTitle') }}</h2>
       <div class="row">
-        <span class="badge">用户 {{ overview.users }}</span>
-        <span class="badge">角色 {{ overview.players }}</span>
-        <span class="badge">纹理 {{ overview.textures }}</span>
+        <span class="badge">{{ t('admin.users') }} {{ overview.users }}</span>
+        <span class="badge">{{ t('admin.players') }} {{ overview.players }}</span>
+        <span class="badge">{{ t('admin.textures') }} {{ overview.textures }}</span>
         <span class="badge" :style="overview.weakHashUsers > 0 ? 'border-color: var(--danger); color: var(--danger);' : ''">
-          弱哈希余量 {{ overview.weakHashUsers }}
+          {{ t('admin.weakHash') }} {{ overview.weakHashUsers }}
         </span>
-        <span class="badge">签名密钥 {{ overview.signKeyFingerprint }}</span>
+        <span class="badge">{{ t('admin.signKeyFingerprint') }} {{ overview.signKeyFingerprint }}</span>
       </div>
     </div>
 
     <div class="card" v-if="users.length">
-      <h2>用户（最新 50）</h2>
+      <h2>{{ t('admin.usersTitle') }}</h2>
       <table>
-        <tr><th>ID</th><th>昵称</th><th>邮箱</th><th>密码算法</th><th>创建</th></tr>
+        <tr><th>{{ t('admin.colId') }}</th><th>{{ t('admin.colNickname') }}</th><th>{{ t('admin.colEmail') }}</th><th>{{ t('admin.colAlgo') }}</th><th>{{ t('admin.colCreated') }}</th></tr>
         <tr v-for="u in users" :key="u.id">
           <td>{{ u.id }}</td>
           <td>{{ u.nickname }}</td>
@@ -127,55 +174,108 @@ onMounted(() => { if (token.value) load() })
 
     <!-- MUA Union module status -->
     <div class="card" v-if="unionStatus">
-      <h2>Union 联盟模块</h2>
+      <h2>{{ t('admin.unionTitle') }}</h2>
       <div class="row">
-        <span class="badge">模式 {{ unionStatus.mode }}</span>
-        <span class="badge">签名钥指纹 {{ unionStatus.key_fingerprint || '—' }}</span>
-        <span class="badge">钥版本 {{ unionStatus.private_key_version || '—' }}</span>
-        <span class="badge">服务器列表 v{{ unionStatus.server_list_version || '—' }}</span>
-        <span class="badge">queryemail {{ unionStatus.queryemail_mode }}</span>
+        <span class="badge">{{ t('admin.unionMode') }} {{ unionStatus.mode }}</span>
+        <span class="badge">{{ t('admin.unionKeyFp') }} {{ unionStatus.key_fingerprint || '—' }}</span>
+        <span class="badge">{{ t('admin.unionKeyVersion') }} {{ unionStatus.private_key_version || '—' }}</span>
+        <span class="badge">{{ t('admin.unionServerListVersion', { version: unionStatus.server_list_version || '—' }) }}</span>
+        <span class="badge">{{ t('admin.unionQueryEmail') }} {{ unionStatus.queryemail_mode }}</span>
         <span class="badge" :style="unionStatus.rotation_suspended ? 'border-color: var(--danger); color: var(--danger);' : ''">
-          轮换{{ unionStatus.rotation_suspended ? '已暂停' : '正常' }}
+          {{ unionStatus.rotation_suspended ? t('admin.unionRotationSuspended') : t('admin.unionRotationOk') }}
         </span>
       </div>
       <div class="row" style="margin-top: 10px;" v-if="unionStatus.rotation_suspended">
-        <button class="secondary" @click="resumeRotation">恢复签名钥轮换</button>
+        <button class="secondary" @click="resumeRotation">{{ t('admin.unionResumeRotation') }}</button>
       </div>
       <div class="muted" style="margin-top: 10px; font-size: 12px;">
-        ⚠️ 信任声明：加入 MUA Union 后，本站的纹理签名私钥与联盟全网共享——
-        任何成员站都可使用同一签名密钥发布纹理。请仅在加入联盟组织时启用本模块。
+        {{ t('admin.unionTrustNotice') }}
       </div>
       <div class="error" v-if="unionError">{{ unionError }}</div>
     </div>
 
     <!-- OIDC clients -->
     <div class="card">
-      <h2>OAuth 客户端（{{ oidcClients.length }}）</h2>
+      <h2>{{ t('admin.oidcClientsTitle', { count: oidcClients.length }) }}</h2>
       <div class="row">
-        <input v-model="newClient.client_id" placeholder="client_id" style="max-width: 180px;" />
-        <input v-model="newClient.name" placeholder="名称" style="max-width: 180px;" />
+        <input v-model="newClient.client_id" :placeholder="t('admin.oidcClientId')" style="max-width: 180px;" />
+        <input v-model="newClient.name" :placeholder="t('admin.oidcClientName')" style="max-width: 180px;" />
         <label style="display: flex; align-items: center; gap: 4px; white-space: nowrap;">
-          <input type="checkbox" v-model="newClient.public" /> 公开客户端
+          <input type="checkbox" v-model="newClient.public" /> {{ t('admin.oidcPublicCheckbox') }}
         </label>
-        <button @click="createClient">创建</button>
+        <button @click="createClient">{{ t('admin.oidcCreate') }}</button>
       </div>
-      <textarea v-model="newClient.redirect_uris" placeholder="redirect_uris（每行一个，机密客户端用）" rows="2"
+      <textarea v-model="newClient.redirect_uris" :placeholder="t('admin.oidcRedirectPlaceholder')" rows="2"
                 style="margin-top: 8px; width: 100%;"></textarea>
       <div class="success" v-if="lastSecret" style="margin-top: 8px;">
-        客户端密钥（仅显示这一次，请立即保存）：<code>{{ lastSecret }}</code>
+        {{ t('admin.oidcSecretOnce') }}<code>{{ lastSecret }}</code>
       </div>
       <div class="error" v-if="oidcError">{{ oidcError }}</div>
       <table v-if="oidcClients.length" style="margin-top: 10px;">
-        <tr><th>client_id</th><th>名称</th><th>类型</th><th>授权类型</th><th>redirect_uris</th><th></th></tr>
+        <tr><th>{{ t('admin.oidcClientId') }}</th><th>{{ t('admin.oidcClientName') }}</th><th>{{ t('admin.oidcClientType') }}</th><th>{{ t('admin.oidcClientGrants') }}</th><th>{{ t('admin.oidcClientRedirects') }}</th><th></th></tr>
         <tr v-for="c in oidcClients" :key="c.client_id">
           <td><code>{{ c.client_id }}</code></td>
           <td>{{ c.name }}</td>
-          <td><span class="badge">{{ c.public ? '公开' : '机密' }}</span></td>
+          <td><span class="badge">{{ c.public ? t('admin.oidcPublic') : t('admin.oidcConfidential') }}</span></td>
           <td class="muted" style="font-size: 12px;">{{ (c.grant_types || []).join(', ') }}</td>
           <td class="muted" style="font-size: 12px;">{{ (c.redirect_uris || []).join(', ') || '—' }}</td>
-          <td><button class="secondary" @click="deleteClient(c.client_id)">删除</button></td>
+          <td><button class="secondary" @click="deleteClient(c.client_id)">{{ t('admin.oidcDelete') }}</button></td>
         </tr>
       </table>
+    </div>
+
+    <!-- SEO -->
+    <div class="card" v-if="seo">
+      <h2>SEO 配置</h2>
+      <div class="row">
+        <button class="secondary" @click="seoOneClick">一键优化（填充默认值）</button>
+        <button @click="seoSave">保存 SEO</button>
+      </div>
+      <label>站点标题</label>
+      <input v-model="seo.title" />
+      <label>meta description</label>
+      <textarea v-model="seo.description" rows="2"></textarea>
+      <label>meta keywords（逗号分隔）</label>
+      <input v-model="seo.keywords" />
+      <label>OG 分享图 URL</label>
+      <input v-model="seo.og_image" />
+      <label>canonical 基址</label>
+      <input v-model="seo.canonical" />
+      <div class="row" style="margin-top: 8px;">
+        <label style="display: flex; align-items: center; gap: 4px;">
+          <input type="checkbox" v-model="seo.sitemap" /> 启用 sitemap.xml
+        </label>
+        <label style="display: flex; align-items: center; gap: 4px;">
+          <input type="checkbox" v-model="seo.noindex" /> 整站 noindex（预发）
+        </label>
+      </div>
+      <label style="margin-top: 8px;">robots.txt 内容</label>
+      <textarea v-model="seo.robots" rows="3"></textarea>
+      <div class="error" v-if="seoError">{{ seoError }}</div>
+    </div>
+
+    <!-- Appearance: themes + custom CSS/JS -->
+    <div class="card" v-if="appearance">
+      <h2>外观（主题 / 自定义 CSS / JS）</h2>
+      <label>启用主题包</label>
+      <select v-model="appearance.active_theme" style="max-width: 320px;">
+        <option value="">无（默认样式）</option>
+        <option v-for="th in themes" :key="th.id" :value="th.id">{{ th.name }}（{{ th.version }}）</option>
+      </select>
+      <div class="muted" v-if="!themes.length" style="font-size: 12px;">
+        将主题包放入 data/themes/&lt;id&gt;/（含 theme.json），刷新即识别。
+      </div>
+      <label style="margin-top: 10px;">自定义 CSS</label>
+      <textarea v-model="appearance.custom_css" rows="5" placeholder=".card { border-radius: 16px; }"></textarea>
+      <label>自定义 JS</label>
+      <textarea v-model="appearance.custom_js" rows="4" placeholder="console.log('hello')"></textarea>
+      <div class="muted" style="font-size: 12px; margin-top: 6px;">
+        ⚠️ 自定义 JS 与主题 JS 以管理员信任面原样注入（与 blessing 行为一致）——请只粘贴自己信任的代码。
+      </div>
+      <div class="row" style="margin-top: 10px;">
+        <button @click="appearSave">保存外观</button>
+      </div>
+      <div class="error" v-if="appearError">{{ appearError }}</div>
     </div>
   </div>
 </template>

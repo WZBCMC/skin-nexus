@@ -22,12 +22,18 @@ type Backend struct {
 	Store          *store.Mysql
 	Ygg            *ygg.Service
 	AdminTok       string
-	union          UnionDeps // nil until MountUnion (module disabled = no routes)
-	sharedClientID string    // guard: shared launcher client cannot be deleted
+	union          UnionDeps        // nil until MountUnion (module disabled = no routes)
+	sharedClientID string           // guard: shared launcher client cannot be deleted
+	appearance     *AppearanceDeps  // nil until MountAppearance
 }
 
 func New(st *store.Mysql, yggSvc *ygg.Service) *Backend {
 	return &Backend{Store: st, Ygg: yggSvc, AdminTok: os.Getenv("SKIN_ADMIN_TOKEN")}
+}
+
+// jsonDecode is a one-shot JSON body decoder shared by admin handlers.
+func jsonDecode(r *http.Request, v interface{}) error {
+	return json.NewDecoder(r.Body).Decode(v)
 }
 
 func (b *Backend) Handler() http.Handler {
@@ -45,6 +51,15 @@ func (b *Backend) Handler() http.Handler {
 	mux.HandleFunc("GET /api/admin/v1/oidc/clients", b.auth(b.handleOIDCClientsList))
 	mux.HandleFunc("POST /api/admin/v1/oidc/clients", b.auth(b.handleOIDCClientsCreate))
 	mux.HandleFunc("DELETE /api/admin/v1/oidc/clients/{id}", b.auth(b.handleOIDCClientsDelete))
+	// SEO / appearance / themes (phase 3).
+	if b.appearance != nil {
+		mux.HandleFunc("GET /api/admin/v1/seo", b.auth(b.handleSEOGet))
+		mux.HandleFunc("POST /api/admin/v1/seo", b.auth(b.handleSEOSave))
+		mux.HandleFunc("POST /api/admin/v1/seo/oneclick", b.auth(b.handleSEOOneClick))
+		mux.HandleFunc("GET /api/admin/v1/appearance", b.auth(b.handleAppearanceGet))
+		mux.HandleFunc("POST /api/admin/v1/appearance", b.auth(b.handleAppearanceSave))
+		mux.HandleFunc("GET /api/admin/v1/themes", b.auth(b.handleThemesList))
+	}
 	return mux
 }
 

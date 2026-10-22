@@ -63,6 +63,9 @@ func (b *Backend) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/v1/me/players/{id}/skin", b.handleSetSkin)
 	mux.HandleFunc("PUT /api/v1/me/players/{id}/cape", b.handleSetCape)
 	mux.HandleFunc("GET /api/v1/stats", b.handleStats)
+	// Install wizard (empty-DB init): state-gated, one-way door after done.
+	mux.HandleFunc("GET /api/v1/setup/status", b.handleSetupStatus)
+	mux.HandleFunc("POST /api/v1/setup", b.handleSetup)
 	// Union user surface: only when the module is enabled (zero surface off).
 	if b.union != nil && b.union.Enabled() {
 		mux.HandleFunc("GET /api/v1/union/servers", b.handleUnionServers)
@@ -86,6 +89,20 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 
 func writeErr(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": http.StatusText(status), "message": msg})
+}
+
+// writeErrCode adds a stable machine-readable code on top of the legacy
+// message shape (i18n skeleton: frontends translate `code`, fall back to
+// `message`). Existing call sites keep writeErr; new errors use this.
+func writeErrCode(w http.ResponseWriter, status int, msg, code string) {
+	writeJSON(w, status, map[string]string{
+		"error": http.StatusText(status), "message": msg, "code": code,
+	})
+}
+
+// decodeJSON is a one-shot JSON body decoder.
+func decodeJSON(r *http.Request, v interface{}) error {
+	return json.NewDecoder(r.Body).Decode(v)
 }
 
 func (b *Backend) currentUser(r *http.Request) (int64, error) {

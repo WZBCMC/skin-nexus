@@ -13,6 +13,22 @@ cd server && CGO_ENABLED=0 go build -ldflags "-s -w" -o skin-nexus ./cmd/skin-ne
 cd web && npm ci && npm run build   # 产物 web/dist
 ```
 
+## 一之二、Docker Compose 部署（可选，三期）
+
+```bash
+# 一键编排（含内置 MySQL；用外部库则注释 compose 里 db 服务并改 SKIN_DATABASE_DSN）
+docker compose up -d --build
+# 旧 blessing 库 / 迁移后库 / 全新空库均可直接接：空库自动建表（SKIN_AUTO_MIGRATE=true）
+# 全新部署：首次打开站点自动进入 /setup 安装向导（建管理员/站点名/皮肤域）
+```
+
+- **持久化**：`skin-data` 卷挂 `/data`（textures/sign-key.pem/oidc-key.pem/themes/），`skin-db` 卷存 MySQL——**升级只换容器，卷不动，数据零丢失**。
+- **统一数据根**：`SKIN_DATA_DIR`（默认 `./data`）；`SKIN_TEXTURES_DIR`/`SKIN_SIGN_KEY` 等旧变量显式设置时优先。
+- **新环境变量**：`SKIN_DATA_DIR`、`SKIN_THEMES_DIR`（默认 `<data>/themes`）、`SKIN_AUTO_MIGRATE`（空库自动建表）、`SKIN_MIGRATIONS_DIR`（默认 `./migrations`）。
+- **健康检查**：`GET /healthz`（DB 探活，compose HEALTHCHECK 已用）。
+- **主题包**：放入 `data/themes/<id>/`（含 theme.json，规范见 docs/theme-spec.md），admin 面板「外观」选择启用；自定义 CSS/JS 亦在「外观」区块（JS 原样注入，仅用可信代码）。
+- **SEO**：admin 面板「SEO」区块一键配置 meta/OG/sitemap/robots；预发可勾整站 noindex。
+
 ## 二、首次部署
 
 ```bash

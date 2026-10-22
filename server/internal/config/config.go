@@ -5,6 +5,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -39,32 +40,54 @@ type Config struct {
 	UnionQueryEmailMode    string // "full" | "off"
 	UnionSigPrivateKey     string // Union OAuth2 sig private key PEM path
 	UnionHubOrigin         string
+
+	// Phase 3 (docker-first): unified data root + schema bootstrap.
+	DataDir        string // SKIN_DATA_DIR — textures/keys/themes live under it
+	ThemesDir      string // SKIN_THEMES_DIR — theme packs (default <DataDir>/themes)
+	AutoMigrate    bool   // SKIN_AUTO_MIGRATE — apply migrations/ on empty DB at boot
+	MigrationsDir  string // SKIN_MIGRATIONS_DIR — where *.sql live (default ./migrations)
+}
+
+// resolveDataPath picks an explicit env value when set, else joins the data
+// root with rel — so a single SKIN_DATA_DIR volume holds everything while
+// legacy per-path env vars keep working (explicit always wins).
+func resolveDataPath(explicitEnv string, dataDir, rel string) string {
+	if v := os.Getenv(explicitEnv); v != "" {
+		return v
+	}
+	return filepath.Join(dataDir, rel)
 }
 
 func Load() (*Config, error) {
+	dataDir := getenv("SKIN_DATA_DIR", "./data")
 	c := &Config{
 		Listen:      getenv("SKIN_LISTEN", ":8080"),
 		BaseURL:     strings.TrimRight(getenv("SKIN_BASE_URL", "http://localhost:8080"), "/"),
 		DatabaseDSN: os.Getenv("SKIN_DATABASE_DSN"),
-		TexturesDir: getenv("SKIN_TEXTURES_DIR", "./data/textures"),
+		TexturesDir: resolveDataPath("SKIN_TEXTURES_DIR", dataDir, "textures"),
 		ServerName:  getenv("SKIN_SERVER_NAME", "SkinNexus"),
 		SkinDomains: splitCSV(getenv("SKIN_SKIN_DOMAINS", "")),
-		SignKeyPath: getenv("SKIN_SIGN_KEY", "./data/sign-key.pem"),
+		SignKeyPath: resolveDataPath("SKIN_SIGN_KEY", dataDir, "sign-key.pem"),
 		SiteName:    getenv("SKIN_SITE_NAME", "SkinNexus"),
 
 		OIDCEnabled:    getenv("SKIN_OIDC_ENABLED", "false") == "true",
 		OIDCIssuer:     strings.TrimRight(getenv("SKIN_OIDC_ISSUER", strings.TrimRight(getenv("SKIN_BASE_URL", "http://localhost:8080"), "/")), "/"),
-		OIDCSignKey:    getenv("SKIN_OIDC_SIGN_KEY", "./data/oidc-key.pem"),
+		OIDCSignKey:    resolveDataPath("SKIN_OIDC_SIGN_KEY", dataDir, "oidc-key.pem"),
 		SharedClientID: getenv("SKIN_OIDC_SHARED_CLIENT_ID", "2"),
 
 		UnionEnabled:           getenv("SKIN_UNION_ENABLED", "false") == "true",
 		UnionAPIRoot:           getenv("SKIN_UNION_API_ROOT", "https://skin.mualliance.ltd/api/union"),
 		UnionMemberKey:         os.Getenv("SKIN_UNION_MEMBER_KEY"),
-		UnionHostPublicKeyPath: getenv("SKIN_UNION_HOST_PUBKEY", "./data/union-host-pubkey.pem"),
+		UnionHostPublicKeyPath: resolveDataPath("SKIN_UNION_HOST_PUBKEY", dataDir, "union-host-pubkey.pem"),
 		UnionAllowUpdateBkKey:  getenv("SKIN_UNION_ALLOW_UPDATEBACKENDKEY", "false") == "true",
 		UnionQueryEmailMode:    getenv("SKIN_UNION_QUERYEMAIL_MODE", "full"),
-		UnionSigPrivateKey:     getenv("SKIN_UNION_OAUTH2_SIG_KEY", "./data/union-oauth2-sig.pem"),
+		UnionSigPrivateKey:     resolveDataPath("SKIN_UNION_OAUTH2_SIG_KEY", dataDir, "union-oauth2-sig.pem"),
 		UnionHubOrigin:         getenv("SKIN_UNION_HUB_ORIGIN", "https://skin.mualliance.ltd"),
+
+		DataDir:       dataDir,
+		ThemesDir:     getenv("SKIN_THEMES_DIR", filepath.Join(dataDir, "themes")),
+		AutoMigrate:   getenv("SKIN_AUTO_MIGRATE", "false") == "true",
+		MigrationsDir: getenv("SKIN_MIGRATIONS_DIR", "./migrations"),
 	}
 	if c.DatabaseDSN == "" {
 		return nil, fmt.Errorf("config: SKIN_DATABASE_DSN is required")

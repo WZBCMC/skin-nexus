@@ -1,0 +1,55 @@
+# SkinNexus docker compose deployment.
+#
+# Two database modes (same file):
+#   1. bundled MySQL  — keep the `db` service as-is (default below)
+#   2. external MySQL — comment out the `db` service and `depends_on`, point
+#      SKIN_DATABASE_DSN at your server (legacy blessing DB / migrated DB /
+#      fresh empty DB all work; empty DB auto-initializes with
+#      SKIN_AUTO_MIGRATE=true, then the /setup wizard completes install).
+#
+# Data persists in the named volumes (skin-data + skin-db). Image upgrades
+# replace only the container — volumes survive.
+
+services:
+  skin-nexus:
+    build: .
+    image: skin-nexus:latest
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
+    environment:
+      SKIN_LISTEN: ':8080'
+      SKIN_BASE_URL: https://skin.example.com      # <- your public URL
+      SKIN_DATABASE_DSN: 'skin:CHANGE_ME@tcp(db:3306)/skin_nexus?parseTime=true&charset=utf8mb4'
+      SKIN_SERVER_NAME: 'SkinNexus'
+      SKIN_DATA_DIR: /data                          # textures/keys/themes root
+      SKIN_AUTO_MIGRATE: 'true'                     # empty DB -> apply migrations/
+      SKIN_ADMIN_TOKEN: CHANGE_ME                   # admin panel token
+      # optional modules (default off):
+      # SKIN_OIDC_ENABLED: 'true'
+      # SKIN_UNION_ENABLED: 'false'
+    volumes:
+      - skin-data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:                                               # comment out for external MySQL
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: skin_nexus
+      MYSQL_USER: skin
+      MYSQL_PASSWORD: CHANGE_ME
+      MYSQL_ROOT_PASSWORD: CHANGE_ME_ROOT
+    volumes:
+      - skin-db:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  skin-data: {}    # textures, sign-key.pem, oidc-key.pem, themes/, union keys
+  skin-db: {}      # bundled MySQL data (omit when using external DB)
