@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"skin-nexus/server/internal/auth"
@@ -41,6 +42,44 @@ TEXTURES_DIR=/var/www/storage/textures
 	_ = os.WriteFile(bad, []byte("PASSWORD_METHODS=A,B\nSALT=only-one\n"), 0o644)
 	if _, err := ParseLegacyEnv(bad); err == nil {
 		t.Fatal("misaligned SALT must fail")
+	}
+}
+
+// TestParseRealLegacyEnv pins the REAL wzbcmc legacy .env shape (2026-10-22
+// provided by YMZS): PWD_METHOD single value, no SALT key at all.
+func TestParseRealLegacyEnv(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, ".env")
+	content := `APP_ENV=production
+DB_HOST=localhost
+DB_DATABASE=wzbcmc
+DB_USERNAME=wzbcmc
+DB_PASSWORD=redacted
+
+# Hash Algorithm for Passwords
+# - BCRYPT, ARGON2I, PHP_PASSWORD_HASH ...
+PWD_METHOD=BCRYPT
+APP_KEY=base64:xxxx
+`
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	env, err := ParseLegacyEnv(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(env.PWDMethods) != 1 || env.PWDMethods[0] != "BCRYPT" {
+		t.Fatalf("PWDMethods = %v", env.PWDMethods)
+	}
+	if len(env.Salts) != 1 || env.Salts[0] != "" {
+		t.Fatalf("Salts = %v (must be 1 empty slot)", env.Salts)
+	}
+	ms := env.MethodSalts()
+	if ms[0].Method != auth.MethodBCRYPT {
+		t.Fatalf("MethodSalts = %+v", ms)
+	}
+	if env.DBDSN == "" || !strings.Contains(env.DBDSN, "DB_DATABASE=wzbcmc") {
+		t.Fatalf("DBDSN = %q", env.DBDSN)
 	}
 }
 

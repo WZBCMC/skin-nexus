@@ -65,7 +65,9 @@ func ParseLegacyEnv(path string) (*LegacyEnv, error) {
 		switch k {
 		case "APP_URL":
 			env.AppURL = v
-		case "PASSWORD_METHODS":
+		case "PASSWORD_METHODS", "PWD_METHOD":
+			// Real legacy .env uses PWD_METHOD (single value, possibly a
+			// comma list); some forks used PASSWORD_METHODS. Accept both.
 			env.PWDMethods = splitCSV(v)
 		case "SALT":
 			env.Salts = splitCSV(v)
@@ -76,10 +78,16 @@ func ParseLegacyEnv(path string) (*LegacyEnv, error) {
 		}
 	}
 	if len(env.PWDMethods) == 0 {
-		return nil, fmt.Errorf("migrate: %s has no PASSWORD_METHODS", path)
+		return nil, fmt.Errorf("migrate: %s has no PWD_METHOD/PASSWORD_METHODS", path)
+	}
+	// SALT is optional: absent = empty salts (correct for BCRYPT/ARGON2I/
+	// PHP_PASSWORD_HASH whose salt lives inside the digest; SALTED* families
+	// without a configured salt will simply never match).
+	if len(env.Salts) == 0 {
+		env.Salts = make([]string, len(env.PWDMethods))
 	}
 	if len(env.Salts) != len(env.PWDMethods) {
-		return nil, fmt.Errorf("migrate: SALT slots (%d) != PASSWORD_METHODS (%d) — legacy misalignment, fix before migrating",
+		return nil, fmt.Errorf("migrate: SALT slots (%d) != PWD_METHOD (%d) — legacy misalignment, fix before migrating",
 			len(env.Salts), len(env.PWDMethods))
 	}
 	return env, sc.Err()
