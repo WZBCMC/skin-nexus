@@ -12,7 +12,9 @@ COPY web/ ./
 RUN npm run build
 
 # ---- stage 2: server ----
-FROM golang:1.24-alpine AS server
+# go.mod requires go >= 1.26; the golang image sets GOTOOLCHAIN=local so the
+# builder tag must match the go directive (no auto toolchain upgrade inside).
+FROM golang:1.26-alpine AS server
 ENV GOPROXY=https://goproxy.cn,direct
 WORKDIR /build/server
 COPY server/go.mod server/go.sum ./
