@@ -242,11 +242,11 @@
 
 | 项 | 说明 | 状态 |
 |---|---|---|
-| MUA Union 联合认证协议细节 | 一期按 connect 源码推断实现（验签/密钥下发/OAuth2 grant 已推断落档 §2.3），联调校准；需后续向 MUA 要文档 | 推断已落档，待联调验证 |
+| MUA Union 联合认证协议细节 | 二期已实现可开关成员站模块（`server/internal/union`，wire 契约冻结 + 偏差备案 6 项）；hub 侧五问（keyId 轮换等）联调校准 | ✅ 核心已实现，联调待做 |
 | blessing 密码哈希算法 | PWD_METHOD+SALT 全站一套、无 per-user 标记；迁移读旧 .env + 同族 verify + 惰性重哈希（§2.1） | 策略已定，待旧库抽样验证分布 |
 | 纹理签名链路 | 已明确：仅 hasJoined 与 unsigned=false 必须签，SHA1withRSA，密钥=元数据 signaturePublickey（§2.2/§2.3 互证） | ✅ 已闭合 |
-| 技术栈终选 | 多 AI 评析后拍板 | 评审中 |
-| 插件形态终选 | 多 AI 评析后拍板 | 评审中 |
-| 域名/部署目标 | N100 + 宝塔？还是新机？ | 待 YMZS 确认 |
-| 旧站下线与回滚 | 双跑期时长与回滚触发条件 | 待定 |
+| 技术栈终选 | 多 AI 评析后拍板 | ✅ 已冻结：Go + Vue 3 + goja（2026-10-22，M0 PoC 裁决） |
+| 插件形态终选 | 多 AI 评析后拍板 | ✅ 已冻结：goja 内嵌 + hook 合约（P0 15–20 个），宿主运行时后置 |
+| 域名/部署目标 | 腾讯云 2C/3.5G + 宝塔（150.158.12.29） | ✅ 已确认（2026-10-22，见 docs/deploy.md） |
+| 旧站下线与回滚 | 双跑期时长与回滚触发条件 | ✅ 触发条件已定（docs/deploy.md §四），切流窗口待排期 |
 | authlib-injector 版本覆盖 | 推断 1.7.10～最新，待验证；「恒等名」语义（non_email_login 或 meta.serverName）待确认 | 待 YMZS 确认 |

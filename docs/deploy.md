@@ -1,6 +1,6 @@
-# SkinNexus 部署（N100 / 宝塔）与切流预案
+# SkinNexus 部署（腾讯云 / 宝塔）与切流预案
 
-> 目标环境：N100（Debian）+ 宝塔面板；MySQL 8 已有；反代域名 skin.wzbcmc.cn。
+> 目标环境：腾讯云 2C/3.5G（150.158.12.29，Debian + 宝塔，2026-10-22 确认；早期 N100 假设作废）；MySQL 8 已有；反代域名 skin.wzbcmc.cn。
 > 回滚原则：旧站只读保全量备份，任何 P0 触发即切回（docs/phase1-dev-plan.md §5）。
 
 ## 一、构建
@@ -39,6 +39,19 @@ Environment=SKIN_TEXTURES_DIR=/opt/skin-nexus/data/textures
 Environment=SKIN_SIGN_KEY=/opt/skin-nexus/data/sign-key.pem
 Environment=SKIN_LEGACY_ENV=/opt/skin-nexus/legacy.env
 Environment=SKIN_ADMIN_TOKEN=（随机 64 位 hex，openssl rand -hex 32）
+# —— 二期：yggc/OIDC 免密登录（不启用可整段移除）——
+Environment=SKIN_OIDC_ENABLED=true
+Environment=SKIN_OIDC_ISSUER=https://skin.wzbcmc.cn
+Environment=SKIN_OIDC_SIGN_KEY=/opt/skin-nexus/data/oidc-key.pem
+Environment=SKIN_OIDC_SHARED_CLIENT_ID=2
+# —— 二期：MUA Union 成员站模块（默认关；未接入联盟保持 false = 零挂载零表面）——
+# Environment=SKIN_UNION_ENABLED=true
+# Environment=SKIN_UNION_API_ROOT=https://skin.mualliance.ltd/api/union
+# Environment=SKIN_UNION_MEMBER_KEY=（Union 下发的成员密钥，轮换后需持久化）
+# Environment=SKIN_UNION_HOST_PUBKEY=/opt/skin-nexus/data/union-host-pubkey.pem
+# Environment=SKIN_UNION_OAUTH2_SIG_KEY=/opt/skin-nexus/data/union-oauth2-sig.pem
+# Environment=SKIN_UNION_QUERYEMAIL_MODE=full
+# Environment=SKIN_UNION_ALLOW_UPDATEBACKENDKEY=false
 ExecStart=/opt/skin-nexus/skin-nexus
 Restart=always
 User=www
@@ -51,6 +64,8 @@ WantedBy=multi-user.target
 # 3. 建库 + 迁移表（宝塔 phpMyAdmin 或 mysql 客户端逐个执行）
 mysql -u skin -p skin-nexus < migrations/0001_init.sql
 mysql -u skin -p skin-nexus < migrations/0002_web_sessions.sql
+mysql -u skin -p skin-nexus < migrations/0003_oidc.sql
+mysql -u skin -p skin-nexus < migrations/0004_union.sql
 
 # 4. legacy.env（旧站 .env 的拷贝，只留 PASSWORD_METHODS/SALT/TEXTURES_DIR）
 #    → 密码兼容链按序试算 + 首登惰性重哈希
@@ -92,6 +107,8 @@ location / {
 ## 五、运维要点
 
 - **密钥备份**：`sign-key.pem` 是纹理签名私钥，丢失=全网皮肤失效，纳入备份清单
+- **OIDC 签名钥**：`oidc-key.pem` 与纹理签名钥**分离**（免密登录 token 专用），首启自动生成，同样纳入备份；两钥互不代替
+- **Union 开关**：`SKIN_UNION_ENABLED=false`（默认）时不挂载任何 `/api/union/*`、签名钥保持本地；开启前须具备成员密钥与 hub 验签公钥，并在管理面板展示**信任声明**（Union 模式下纹理签名私钥为全网共享）
 - **弱哈希看板**：`GET /api/admin/v1/overview` 的 `weakHashUsers` 归零前保持关注
 - **备份**：每日 mysqldump + 纹理目录增量；sign-key.pem 单独加密备份
 - 日志：`journalctl -u skin-nexus -f`
