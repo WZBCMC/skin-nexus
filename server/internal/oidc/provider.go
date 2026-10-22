@@ -155,8 +155,15 @@ func (p *Provider) Wrap(next http.Handler) http.Handler {
 // resolves the API root correctly (analysis/oidc-client-contract-synthesis §2).
 func (p *Provider) DiscoveryHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The engine serves discovery only at "/.well-known/openid-configuration";
+		// when this handler is mounted at the yggdrasil API root the forwarded
+		// path must be normalized or the engine 404s (live bug, 2026-10-23).
+		rr := r.Clone(r.Context())
+		u := *r.URL
+		u.Path = "/.well-known/openid-configuration"
+		rr.URL = &u
 		rec := httptest.NewRecorder()
-		p.engine.HttpHandler().ServeHTTP(rec, r.WithContext(context.WithValue(r.Context(), issuerCtxKey, p.cfg.Issuer)))
+		p.engine.HttpHandler().ServeHTTP(rec, rr.WithContext(context.WithValue(r.Context(), issuerCtxKey, p.cfg.Issuer)))
 		if rec.Code != http.StatusOK {
 			w.WriteHeader(rec.Code)
 			_, _ = w.Write(rec.Body.Bytes())

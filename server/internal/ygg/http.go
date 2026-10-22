@@ -166,18 +166,25 @@ func (a *API) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		AccessToken  string `json:"accessToken"`
-		ClientToken  string `json:"clientToken"`
-		RequestUser  bool   `json:"requestUser"`
-		SelectedProfile struct {
-			ID string `json:"id"`
-		} `json:"selectedProfile"`
+		AccessToken     string          `json:"accessToken"`
+		ClientToken     string          `json:"clientToken"`
+		RequestUser     bool            `json:"requestUser"`
+		SelectedProfile json.RawMessage `json:"selectedProfile"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "IllegalArgumentException", "invalid JSON body")
 		return
 	}
+	// Honour the client's profile selection (legacy refresh-with-select).
 	var pid int64
+	if ref := parseProfileRef(req.SelectedProfile); ref != "" {
+		p, err := a.svc.PlayerPIDByUUID(r.Context(), ref)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "IllegalArgumentException", "请求参数不合法")
+			return
+		}
+		pid = p
+	}
 	t, players, err := a.svc.Refresh(r.Context(), req.AccessToken, req.ClientToken, pid)
 	if err != nil {
 		writeError(w, http.StatusForbidden, "ForbiddenOperationException", "Invalid token.")
@@ -237,24 +244,52 @@ func (a *API) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		AccessToken    string `json:"accessToken"`
-		SelectedProfile struct {
-			ID string `json:"id"`
-		} `json:"selectedProfile"`
-		ServerID string `json:"serverId"`
+		AccessToken     string          `json:"accessToken"`
+		SelectedProfile json.RawMessage `json:"selectedProfile"`
+		ServerID        string          `json:"serverId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "IllegalArgumentException", "invalid JSON body")
+		writeError(w, http.StatusBadRequest, "IllegalArgumentException", "请求参数不合法")
 		return
 	}
-	err := a.svc.Join(r.Context(), req.AccessToken, req.SelectedProfile.ID, req.ServerID, clientIP(r))
-	if err != nil {
-		// Legacy behavior: join failures are silent (204); the game then
-		// fails the hasJoined wait. Only parameter errors are reported.
+	// authlib-injector sends selectedProfile as a bare UUID string; our own
+	// clients and Yggdrasil refresh use {"id": "..."} — accept both (and both
+	// UUID spellings), matching the live legacy wire (capture 2026-10-23).
+	uu := parseProfileRef(req.SelectedProfile)
+	if uu == "" {
+		writeError(w, http.StatusBadRequest, "IllegalArgumentException", "请求参数不合法")
+		return
+	}
+	err := a.svc.Join(r.Context(), req.AccessToken, uu, req.ServerID, clientIP(r))
+	switch {
+	case errors.Is(err, ErrEmailUnverified):
+		writeError(w, http.StatusForbidden, "ForbiddenOperationException", "Email not verified.")
+	case errors.Is(err, ErrPlayerMismatch):
+		writeError(w, http.StatusForbidden, "ForbiddenOperationException", "请求的角色与令牌绑定的角色不一致")
+	case err != nil:
+		writeError(w, http.StatusForbidden, "ForbiddenOperationException", "Invalid token.")
+	default:
 		noContent(w)
-		return
 	}
-	noContent(w)
+}
+
+// parseProfileRef accepts the two profile-reference wire forms: a bare UUID
+// string or {"id":"..."} (extra members tolerated). "" when absent/broken.
+func parseProfileRef(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	var obj struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(raw, &obj); err == nil {
+		return obj.ID
+	}
+	return ""
 }
 
 func (a *API) handleHasJoined(w http.ResponseWriter, r *http.Request) {

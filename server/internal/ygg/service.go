@@ -16,6 +16,7 @@ var (
 	ErrProfileNotFound  = errors.New("ygg: profile not found")       // 204
 	ErrSessionNotFound  = errors.New("ygg: session not found")       // 204
 	ErrEmailUnverified  = errors.New("ygg: email not verified")      // 403 (join gate, fork behavior)
+	ErrPlayerMismatch   = errors.New("ygg: player mismatch")         // 403 player.not-match (live-captured legacy wording)
 )
 
 // ---- storage ports (DB-backed impls land in M1; memory impls in tests) ----
@@ -229,21 +230,38 @@ func (s *Service) Join(ctx context.Context, accessToken, playerUUID, serverID, s
 	if !u.CanJoinServer {
 		return ErrTokenInvalid
 	}
-	p, err := s.store.PlayerByUUID(ctx, strings.ToLower(playerUUID))
+	p, err := s.store.PlayerByUUID(ctx, NormalizeUUID(playerUUID))
 	if err != nil || p.UID != t.UserID {
-		return ErrTokenInvalid // legacy: player.not-match / not owned
+		return ErrPlayerMismatch // legacy: player.not-match / not owned
 	}
 	if t.SelectedPID != 0 && p.ID != t.SelectedPID {
-		return ErrTokenInvalid
+		return ErrPlayerMismatch
 	}
 	return s.store.SaveJoin(ctx, JoinSession{
 		AccessToken: t.AccessToken,
-		UUID:        strings.ToLower(playerUUID),
+		UUID:        NormalizeUUID(playerUUID),
 		ServerID:    serverID,
 		ServerIP:    serverIP,
 		CreatedAt:   s.now(),
 		ExpiresAt:   s.now().Add(s.joinTTL),
 	})
+}
+
+// NormalizeUUID maps the UUID wire formats seen in the wild (bare 32-hex and
+// hyphenated 8-4-4-4-12, any case) onto the canonical lowercase 32-hex form
+// used in storage — both spellings must be tolerated (live capture 2026-10-23).
+func NormalizeUUID(u string) string {
+	return strings.ToLower(strings.ReplaceAll(u, "-", ""))
+}
+
+// PlayerPIDByUUID resolves a profile UUID (any wire format) to its row id;
+// used by refresh to honour the client's selectedProfile.
+func (s *Service) PlayerPIDByUUID(ctx context.Context, uuid string) (int64, error) {
+	p, err := s.store.PlayerByUUID(ctx, NormalizeUUID(uuid))
+	if err != nil {
+		return 0, err
+	}
+	return p.ID, nil
 }
 
 // HasJoined resolves a join session to a signed profile.
@@ -291,7 +309,7 @@ func (s *Service) findLiveJoin(ctx context.Context, p Player, serverID, serverIP
 // ProfileByUUID serves sessionserver/profile/{uuid}.
 // unsigned=false triggers property signatures; missing profile = ErrProfileNotFound (204).
 func (s *Service) ProfileByUUID(ctx context.Context, uuid string, withSig bool) (Profile, error) {
-	p, err := s.store.PlayerByUUID(ctx, strings.ToLower(uuid))
+	p, err := s.store.PlayerByUUID(ctx, NormalizeUUID(uuid))
 	if err != nil {
 		return Profile{}, ErrProfileNotFound
 	}
