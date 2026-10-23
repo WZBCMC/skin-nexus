@@ -128,6 +128,27 @@ func (m *Mysql) AdminRenamePlayer(ctx context.Context, pid int64, newName string
 	return tx.Commit()
 }
 
+// AllProfileUUIDs returns every (uuid, name) pair for the union roster push
+// (B5.3 Sync button). Empty-uuid rows (no uuid_map entry) are skipped — the
+// hub identifies profiles by uuid.
+func (m *Mysql) AllProfileUUIDs(ctx context.Context) (map[string]string, error) {
+	rows, err := m.db.QueryContext(ctx,
+		`SELECT u.uuid, p.name FROM players p JOIN uuid_map u ON u.player_id = p.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var uuid, name string
+		if err := rows.Scan(&uuid, &name); err != nil {
+			return nil, err
+		}
+		out[uuid] = name
+	}
+	return out, rows.Err()
+}
+
 // AdminSetPlayerOwner re-homes a character. The caller (adminapi) validates
 // that the target user exists; the caller also revokes the OLD owner's ygg
 // tokens (hygiene: their launcher profile selection pointed here).

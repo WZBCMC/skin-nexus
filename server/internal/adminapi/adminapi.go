@@ -88,6 +88,18 @@ func (b *Backend) Handler() http.Handler {
 	if b.union.Status != nil {
 		mux.HandleFunc("GET /api/admin/v1/union/status", b.auth(b.handleUnionStatus))
 		mux.HandleFunc("POST /api/admin/v1/union/rotation/resume", b.auth(b.handleUnionRotationResume))
+		// B5.3 ops buttons + B5.4 blacklist proxy (each dep nil-checks by
+		// route registration: they all ride the same MountUnion wiring).
+		if b.union.ForceRotation != nil {
+			mux.HandleFunc("POST /api/admin/v1/union/ops/key-update", b.auth(b.handleUnionKeyUpdate))
+			mux.HandleFunc("POST /api/admin/v1/union/ops/serverlist", b.auth(b.handleUnionServerList))
+			mux.HandleFunc("POST /api/admin/v1/union/ops/roster-sync", b.auth(b.handleUnionRosterSync))
+			mux.HandleFunc("POST /api/admin/v1/union/ops/diagnose", b.auth(b.handleUnionDiagnose))
+			mux.HandleFunc("GET /api/admin/v1/union/blacklist", b.auth(b.handleUnionBlacklistQuery))
+			mux.HandleFunc("POST /api/admin/v1/union/blacklist", b.auth(b.handleUnionBlacklistAdd))
+			mux.HandleFunc("PUT /api/admin/v1/union/blacklist/{id}/invalidate", b.auth(b.handleUnionBlacklistRelease))
+			mux.HandleFunc("DELETE /api/admin/v1/union/blacklist/{id}", b.auth(b.handleUnionBlacklistDelete))
+		}
 	}
 	// OIDC client management (works regardless of module flag; the shared
 	// launcher client deletion is guarded by sharedClientID).

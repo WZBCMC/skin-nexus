@@ -915,3 +915,24 @@ func TestIntegrationPruneUserTokens(t *testing.T) {
 		t.Fatalf("prune keep=0: evicted=%d err=%v, want 0", evicted, err)
 	}
 }
+
+// TestIntegrationAllProfileUUIDs covers the union roster-push data source
+// (B5.3 Sync button).
+func TestIntegrationAllProfileUUIDs(t *testing.T) {
+	m := openTestStore(t)
+	ctx := context.Background()
+	uid := seedUserAs(t, m, "roster@example.com", "roster_user")
+	pid, uuid, err := m.CreatePlayer(ctx, uid, "RosterSteve")
+	if err != nil {
+		t.Fatalf("create player: %v", err)
+	}
+	_ = pid
+
+	roster, err := m.AllProfileUUIDs(ctx)
+	if err != nil {
+		t.Fatalf("AllProfileUUIDs: %v", err)
+	}
+	if roster[uuid] != "RosterSteve" {
+		t.Fatalf("roster missing pair: %v (want uuid %s -> RosterSteve)", roster, uuid)
+	}
+}

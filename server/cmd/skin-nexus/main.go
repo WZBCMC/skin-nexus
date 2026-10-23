@@ -540,6 +540,56 @@ func main() {
 				}
 			},
 			ResumeRotation: unionSigner.ResumeRotation,
+			// B5.3 ops buttons (wire-frozen union package; orchestration only)
+			ForceRotation: unionSigner.ForceRotation,
+			RefreshServerList: func(ctx context.Context) (any, error) {
+				list, err := unionOut.ServerList(ctx)
+				if err != nil {
+					return nil, err
+				}
+				unionAPI.SetServerListVersion(list.Version) // keep status card fresh
+				return list, nil
+			},
+			SyncRoster: func(ctx context.Context) (int, error) {
+				roster, err := st.AllProfileUUIDs(ctx)
+				if err != nil {
+					return 0, err
+				}
+				if err := unionOut.Sync(ctx, roster); err != nil {
+					return 0, err
+				}
+				return len(roster), nil
+			},
+			Diagnose: unionOut.Diagnose,
+			// B5.4 blacklist proxy (hub relay; audit lives in adminapi)
+			BlacklistQuery: func(ctx context.Context, q url.Values) (int, json.RawMessage, error) {
+				res, err := unionOut.BlacklistQuery(ctx, q)
+				if err != nil {
+					return 0, nil, err
+				}
+				return res.StatusCode, res.Body, nil
+			},
+			BlacklistAdd: func(ctx context.Context, body json.RawMessage) (int, json.RawMessage, error) {
+				res, err := unionOut.BlacklistCreate(ctx, body)
+				if err != nil {
+					return 0, nil, err
+				}
+				return res.StatusCode, res.Body, nil
+			},
+			BlacklistRelease: func(ctx context.Context, id string) (int, json.RawMessage, error) {
+				res, err := unionOut.BlacklistInvalidate(ctx, id)
+				if err != nil {
+					return 0, nil, err
+				}
+				return res.StatusCode, res.Body, nil
+			},
+			BlacklistDelete: func(ctx context.Context, id string) (int, json.RawMessage, error) {
+				res, err := unionOut.BlacklistDelete(ctx, id)
+				if err != nil {
+					return 0, nil, err
+				}
+				return res.StatusCode, res.Body, nil
+			},
 		})
 	}
 

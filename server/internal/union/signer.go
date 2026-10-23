@@ -379,6 +379,13 @@ func (s *UnionSigner) rotateOnce(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
+// ForceRotation runs one rotation pass on demand (B5.3 admin "更新密钥对"
+// button). Same budget/suspension rules as the loop — this only makes the
+// trigger operator-initiated instead of timer-driven. Wire untouched.
+func (s *UnionSigner) ForceRotation(ctx context.Context) (bool, error) {
+	return s.rotateOnce(ctx)
+}
+
 // changesTodayLocked resets the day bucket when the UTC day rolled over and
 // returns the current change count. Caller holds s.mu.
 func (s *UnionSigner) changesTodayLocked(now time.Time) int {
