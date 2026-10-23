@@ -535,3 +535,24 @@ func TestIntegrationCloset(t *testing.T) {
 		t.Fatalf("unknown remove err = %v", err)
 	}
 }
+
+// ---- system facts (admin status page, B1) ----
+
+func TestIntegrationSystemFacts(t *testing.T) {
+	m := openTestStore(t)
+	ctx := context.Background()
+
+	ver, err := m.MySQLVersion(ctx)
+	if err != nil || ver == "" {
+		t.Fatalf("MySQLVersion = %q %v (want non-empty)", ver, err)
+	}
+	// watermark = highest applied file (0009_schema_align.sql is the last
+	// migration in the chain today)
+	mig, err := m.MigrationVersion(ctx)
+	if err != nil || mig == "" {
+		t.Fatalf("MigrationVersion = %q %v (want non-empty)", mig, err)
+	}
+	if mig < "0001" {
+		t.Fatalf("MigrationVersion = %q, want >= 0001 (lexicographic watermark)", mig)
+	}
+}

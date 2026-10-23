@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"runtime"
 	"strconv"
 
 	"skin-nexus/server/internal/store"
@@ -38,6 +39,12 @@ type Backend struct {
 	// delete (players/uuid_map rows are gone afterwards). main wires the
 	// best-effort union hub announcement (webapi create-sync precedent).
 	OnUserDeleted func(uid int64, players [][2]string)
+	// Version is the build version injected by main (status page display).
+	Version string
+	// StorageBytes sums the texture files on disk (main injects a walk of
+	// the textures dir — the textures table has no size column and the
+	// schema is frozen; nil = storage card shows "—").
+	StorageBytes func() (int64, error)
 }
 
 func New(st *store.Mysql, yggSvc *ygg.Service) *Backend {
@@ -52,6 +59,7 @@ func jsonDecode(r *http.Request, v interface{}) error {
 func (b *Backend) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/admin/v1/overview", b.auth(b.handleOverview))
+	mux.HandleFunc("GET /api/admin/v1/status", b.auth(b.handleStatus))
 	mux.HandleFunc("GET /api/admin/v1/users", b.auth(b.handleUsers))
 	mux.HandleFunc("GET /api/admin/v1/textures", b.auth(b.handleTextures))
 	mux.HandleFunc("GET /api/admin/v1/audit", b.auth(b.handleAudit))
@@ -160,9 +168,45 @@ func (b *Backend) handleOverview(w http.ResponseWriter, r *http.Request) {
 	users, _ := b.Store.CountUsers(ctx)
 	players, _ := b.Store.CountPlayers(ctx)
 	textures, _ := b.Store.CountTextures(ctx)
+	// Storage usage (B1): textures dir walk injected by main; a failure
+	// degrades to null (UI shows "—") and never blocks the counters.
+	var storageBytes interface{}
+	if b.StorageBytes != nil {
+		if n, err := b.StorageBytes(); err == nil {
+			storageBytes = n
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"users": users, "players": players, "textures": textures,
 		"weakHashUsers":      weak, // 「弱哈希余量」看板核心指标
+		"signKeyFingerprint": b.Ygg.SignerFingerprint(),
+		"storageBytes":       storageBytes,
+	})
+}
+
+// handleStatus: read-only runtime facts for the 运行状态 page — build
+// version, Go version, MySQL server version, applied-migration watermark,
+// and which optional modules are mounted (union / appearance / oidc are
+// wiring-time facts, so no extra deps needed beyond the existing fields).
+func (b *Backend) handleStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	mysqlVer, err := b.Store.MySQLVersion(ctx)
+	if err != nil {
+		mysqlVer = "?" // degraded display; the page still renders
+	}
+	migVer, err := b.Store.MigrationVersion(ctx)
+	if err != nil {
+		migVer = "?"
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"version":     b.Version,
+		"goVersion":   runtime.Version(),
+		"mysqlVersion": mysqlVer,
+		"migration":   migVer,
+		"modules": map[string]bool{
+			"union":      b.union.Status != nil,
+			"appearance": b.appearance != nil,
+		},
 		"signKeyFingerprint": b.Ygg.SignerFingerprint(),
 	})
 }

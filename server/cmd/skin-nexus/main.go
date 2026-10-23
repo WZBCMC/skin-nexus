@@ -14,10 +14,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -387,6 +389,23 @@ func main() {
 	}
 	pub := publicapi.New(st, ts)
 	admin := adminapi.New(st, yggSvc)
+	admin.Version = version
+	// Dashboard storage card: sum of texture files on disk (the textures
+	// table has no size column; schema is frozen — walk the dir instead).
+	// Small file counts (hundreds); no cache needed, failures degrade to "—".
+	admin.StorageBytes = func() (int64, error) {
+		var total int64
+		err := filepath.WalkDir(cfg.TexturesDir, func(_ string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			if info, err := d.Info(); err == nil {
+				total += info.Size()
+			}
+			return nil
+		})
+		return total, err
+	}
 	// Settings panel: env-derived fallbacks; option values win per request.
 	admin.SettingsDefaults = map[string]string{
 		"site_name":            cfg.SiteName,
