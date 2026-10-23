@@ -2,7 +2,7 @@
 
 > 下一代 Minecraft 皮肤站：Yggdrasil 外置登录兼容、一键迁移 blessing-skin-server、自托管优先。
 
-**状态**（每轮开发收尾同步 · 2026-10-24）：一期开发完成（M0–M5）· 二期开发完成（免密登录 + Union 可开关模块 + 前端/管理/集成全量）· 三期骨架完成（i18n / SEO / 主题 / Docker / 空库初始化）· 管理面板账号会话化（2026-10-24：管理员账号登录即用管理面板、普通用户不见入口，X-Admin-Token 降为机器/API 回退；设置面板中文标签优先）· 管理面板对齐 blessing 第一批 B1+B2（2026-10-24：侧边栏布局 / 仪表盘统计卡含存储占用 / 运行状态页 / 邀请码布局对齐 / 用户管理表搜索·分页·行内编辑·权限三护栏）· 真机验收（A2）待执行 · 迁移切流窗口待排期
+**状态**（每轮开发收尾同步 · 2026-10-24）：一期开发完成（M0–M5）· 二期开发完成（免密登录 + Union 可开关模块 + 前端/管理/集成全量）· 三期骨架完成（i18n / SEO / 主题 / Docker / 空库初始化）· 管理面板账号会话化（2026-10-24：管理员账号登录即用管理面板、普通用户不见入口，X-Admin-Token 降为机器/API 回退；设置面板中文标签优先）· 管理面板对齐 blessing B1–B4（2026-10-24：侧边栏布局 / 仪表盘统计卡 / 运行状态页 / 邀请码布局对齐 / 用户管理表三护栏 / 角色管理表 UUID 零漂移 / 站点配置扩白名单 8 键 blessing 原名 + 消费点接线含 regs_per_ip·玩家名规则组·上传大小·公告，测试站冒烟通过）· 真机验收（A2）待执行 · 迁移切流窗口待排期
 **许可**：AGPL-3.0 · **发起人/著作权人**：YMZS
 
 ## 这是什么
@@ -36,7 +36,8 @@ SkinNexus（肤枢）是对年久失修的 [blessing-skin-server](https://github
 | 三期骨架 | i18n / SEO 一键配置 / 主题与自定义 CSS-JS / Docker Compose / 空库初始化 | ✅ 骨架完成（2026-10-23）：vue-i18n 双语言包、SEO 注入+sitemap/robots、theme.json 主题包（docs/theme-spec.md 含 AI 提示词模板）、Dockerfile+compose 双 DB 模式、自动迁移+安装向导；功能填充见开发过程文档 phase3 计划 §6 |
 | 部署管线 | CI 构建生产镜像→GHCR，部署机只拉不编 | ✅ 完成（2026-10-23）：CI docker job（多阶段 Dockerfile 每轮实证，`:latest`+`:sha-*`），升级=`compose pull && up -d`，数据卷持久化 |
 | 管理面板对齐 B1+B2 | 侧边栏布局 / 仪表盘统计卡 / 运行状态页 / 邀请码布局 / 用户管理表 | ✅ 完成（2026-10-24）：侧边栏七视图（`components/admin/*`）、四统计卡（存储=纹理目录实测字节）、`GET /api/admin/v1/status`（版本/Go/MySQL/迁移水位/模块开关）、用户表搜索+分页+行内编辑（邮箱/昵称/验证/权限）+ blessing 权限三护栏（禁改自己/目标须更低/授 ADMIN 需 SUPER_ADMIN，Token 路径禁改权限） |
-| 管理面板对齐 B3–B5 | 角色管理表 / 站点配置扩白名单 / ygg 双档令牌 + Union 运维 + 联合黑名单 | ⬜ B3/B4 Flash 续做，B5 需 Pro 陪跑（语义敏感，见开发计划 dev-plan-admin-panel-batch1.md） |
+| 管理面板对齐 B3/B4 | 角色管理表 / 站点配置扩白名单 | ✅ 完成（2026-10-24）：B3 角色表搜索+改名（UUID 零漂移防护）+转手+换材质+删除（连带清理 uuid_map/selected_pid）；B4 白名单 +8 键（announcement / regs_per_ip / max_upload_file_size / player_name_rule 组 / texture_name_regexp，全 blessing 原名对齐迁移数据）+ 消费点接线（注册按 IP 计数+记录、玩家名规则组替换硬编码、上传大小钳制、公告卡纯文本渲染）+ 反代 XFF 实测核验与 clientIP 语义测试锁 |
+| 管理面板对齐 B5 | ygg 双档令牌 + Union 运维 + 联合黑名单 | ⬜ 需 Pro 陪跑（语义敏感，见开发计划 dev-plan-admin-panel-batch1.md §7） |
 | 正版绑定 / 插件宿主 | Auth Source 第二实现 / goja 宿主运行时 | ⬜ 后置规划 |
 
 ## 文档
