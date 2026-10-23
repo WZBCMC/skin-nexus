@@ -121,7 +121,7 @@ func TestIntegrationImport(t *testing.T) {
 	var avatarNull, dark, verified, score int
 	var locale string
 	if err := m.db.QueryRowContext(ctx,
-		`SELECT password_algo, avatar_tid IS NULL, is_dark_mode, verified, score, locale FROM users WHERE id = 1`).
+		`SELECT password_algo, avatar_tid IS NULL, is_dark_mode, email_verified, score, locale FROM users WHERE id = 1`).
 		Scan(&algo, &avatarNull, &dark, &verified, &score, &locale); err != nil {
 		t.Fatalf("user1: %v", err)
 	}
