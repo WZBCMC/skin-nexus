@@ -136,6 +136,56 @@ func (m *Mysql) WeakHashCount(ctx context.Context) (int, error) {
 
 // ---- textures ----
 
+// ErrDuplicate surfaces a unique-key collision (uq_users_email /
+// uq_users_nickname) from the admin inline-edit updates; handlers map it
+// to HTTP 409.
+var ErrDuplicate = errors.New("store: duplicate key")
+
+// UpdateUserEmail sets a user's email ("" clears to NULL). Duplicate
+// collision → ErrDuplicate.
+func (m *Mysql) UpdateUserEmail(ctx context.Context, uid int64, email string) error {
+	_, err := m.db.ExecContext(ctx,
+		`UPDATE users SET email = ? WHERE id = ?`, nullableStr(email), uid)
+	if isDupKey(err) {
+		return ErrDuplicate
+	}
+	return err
+}
+
+// UpdateUserNickname sets a user's nickname (admin inline edit, B2). The
+// column is NOT NULL + unique — empty input must be rejected by the caller.
+// Duplicate collision → ErrDuplicate.
+func (m *Mysql) UpdateUserNickname(ctx context.Context, uid int64, nickname string) error {
+	_, err := m.db.ExecContext(ctx,
+		`UPDATE users SET nickname = ? WHERE id = ?`, nickname, uid)
+	if isDupKey(err) {
+		return ErrDuplicate
+	}
+	return err
+}
+
+// SetEmailVerified flips the email_verified flag (0/1).
+func (m *Mysql) SetEmailVerified(ctx context.Context, uid int64, verified bool) error {
+	v := 0
+	if verified {
+		v = 1
+	}
+	_, err := m.db.ExecContext(ctx,
+		`UPDATE users SET email_verified = ? WHERE id = ?`, v, uid)
+	return err
+}
+
+// SetUserPermission writes the legacy blessing permission column
+// (-1 banned / 0 normal / 1 admin / 2 super-admin). Guard logic (who may
+// change whom) lives in the adminapi handler — this is the raw write.
+func (m *Mysql) SetUserPermission(ctx context.Context, uid int64, perm int) error {
+	_, err := m.db.ExecContext(ctx,
+		`UPDATE users SET permission = ? WHERE id = ?`, perm, uid)
+	return err
+}
+
+// ---- textures ----
+
 // AddTexture inserts a texture record and returns its id.
 func (m *Mysql) AddTexture(ctx context.Context, uid int64, typ, hash, model, desc string) (int64, error) {
 	res, err := m.db.ExecContext(ctx,
@@ -245,15 +295,28 @@ func (m *Mysql) CountTextures(ctx context.Context) (int, error) {
 	return n, err
 }
 
-// AdminUsers returns a page of users with weak-hash marker.
-func (m *Mysql) AdminUsers(ctx context.Context, page, size int) ([]map[string]interface{}, int, error) {
+// AdminUsers returns a page of users with weak-hash marker. q (optional)
+// searches email/nickname case-insensitively (LOWER() comparison —
+// general_ci column collations fold case the same way). Rows carry
+// permission + email_verified for the admin table (B2).
+func (m *Mysql) AdminUsers(ctx context.Context, q string, page, size int) ([]map[string]interface{}, int, error) {
+	q = strings.TrimSpace(q)
+	where := ""
+	var args []interface{}
+	if q != "" {
+		where = `WHERE LOWER(COALESCE(email,'')) LIKE ? OR LOWER(nickname) LIKE ?`
+		like := "%" + strings.ToLower(q) + "%"
+		args = append(args, like, like)
+	}
 	var total int
-	if err := m.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&total); err != nil {
+	if err := m.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users `+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	rows, err := m.db.QueryContext(ctx,
-		`SELECT id, COALESCE(email,''), nickname, password_algo, player_limit, created_at
-		 FROM users ORDER BY id DESC LIMIT ? OFFSET ?`, size, (page-1)*size)
+		`SELECT id, COALESCE(email,''), nickname, password_algo, player_limit,
+		        COALESCE(email_verified,0), COALESCE(permission,0), created_at
+		 FROM users `+where+` ORDER BY id DESC LIMIT ? OFFSET ?`,
+		append(args, size, (page-1)*size)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -262,13 +325,15 @@ func (m *Mysql) AdminUsers(ctx context.Context, page, size int) ([]map[string]in
 	for rows.Next() {
 		var id, limit int64
 		var email, nick, algo string
+		var verified, perm int
 		var created time.Time
-		if err := rows.Scan(&id, &email, &nick, &algo, &limit, &created); err != nil {
+		if err := rows.Scan(&id, &email, &nick, &algo, &limit, &verified, &perm, &created); err != nil {
 			return nil, 0, err
 		}
 		out = append(out, map[string]interface{}{
 			"id": id, "email": email, "nickname": nick,
 			"passwordAlgo": algo, "playerLimit": limit,
+			"emailVerified": verified, "permission": perm,
 			"createdAt": created.Format(time.RFC3339),
 		})
 	}

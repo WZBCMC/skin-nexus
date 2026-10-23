@@ -70,6 +70,10 @@ func (b *Backend) Handler() http.Handler {
 	mux.HandleFunc("GET /api/admin/v1/settings", b.auth(b.handleSettingsGet))
 	mux.HandleFunc("PUT /api/admin/v1/settings", b.auth(b.handleSettingsPut))
 	mux.HandleFunc("POST /api/admin/v1/users/{id}/password", b.auth(b.handleUserSetPassword))
+	mux.HandleFunc("PUT /api/admin/v1/users/{id}/email", b.auth(b.handleUserSetEmail))
+	mux.HandleFunc("PUT /api/admin/v1/users/{id}/nickname", b.auth(b.handleUserSetNickname))
+	mux.HandleFunc("PUT /api/admin/v1/users/{id}/verification", b.auth(b.handleUserSetVerification))
+	mux.HandleFunc("PUT /api/admin/v1/users/{id}/permission", b.auth(b.handleUserSetPermission))
 	mux.HandleFunc("DELETE /api/admin/v1/users/{id}", b.auth(b.handleUserDelete))
 	if b.union.Status != nil {
 		mux.HandleFunc("GET /api/admin/v1/union/status", b.auth(b.handleUnionStatus))
@@ -216,7 +220,7 @@ func (b *Backend) handleUsers(w http.ResponseWriter, r *http.Request) {
 	if page < 1 {
 		page = 1
 	}
-	rows, total, err := b.Store.AdminUsers(r.Context(), page, 50)
+	rows, total, err := b.Store.AdminUsers(r.Context(), r.URL.Query().Get("q"), page, 50)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return

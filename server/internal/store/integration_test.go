@@ -556,3 +556,72 @@ func TestIntegrationSystemFacts(t *testing.T) {
 		t.Fatalf("MigrationVersion = %q, want >= 0001 (lexicographic watermark)", mig)
 	}
 }
+
+// ---- admin inline edits (B2) ----
+
+func TestIntegrationAdminUserEdits(t *testing.T) {
+	m := openTestStore(t)
+	ctx := context.Background()
+	uid := seedUserAs(t, m, "inline-a@example.com", "inline_user_a")
+	other := seedUserAs(t, m, "inline-b@example.com", "inline_user_b")
+
+	// email: set + collision + clear-to-NULL
+	if err := m.UpdateUserEmail(ctx, uid, "inline-a2@example.com"); err != nil {
+		t.Fatalf("set email: %v", err)
+	}
+	if err := m.UpdateUserEmail(ctx, other, "inline-a2@example.com"); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("email collision err = %v, want ErrDuplicate", err)
+	}
+	if err := m.UpdateUserEmail(ctx, uid, ""); err != nil {
+		t.Fatalf("clear email: %v", err)
+	}
+	// after clear the address is reusable
+	if err := m.UpdateUserEmail(ctx, other, "inline-a2@example.com"); err != nil {
+		t.Fatalf("reusable after clear: %v", err)
+	}
+
+	// nickname: set + collision
+	if err := m.UpdateUserNickname(ctx, uid, "inline_renamed"); err != nil {
+		t.Fatalf("set nickname: %v", err)
+	}
+	if err := m.UpdateUserNickname(ctx, other, "inline_renamed"); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("nickname collision err = %v, want ErrDuplicate", err)
+	}
+
+	// verification + permission round-trips
+	if err := m.SetEmailVerified(ctx, uid, true); err != nil {
+		t.Fatalf("set verified: %v", err)
+	}
+	if p, err := m.UserPermission(ctx, uid); err != nil || p != 0 {
+		t.Fatalf("permission before = %d %v", p, err)
+	}
+	if err := m.SetUserPermission(ctx, uid, -1); err != nil {
+		t.Fatalf("set permission: %v", err)
+	}
+	if p, _ := m.UserPermission(ctx, uid); p != -1 {
+		t.Fatalf("permission after = %d, want -1", p)
+	}
+
+	// AdminUsers search: hit + miss (case-insensitive, email or nickname)
+	if rows, total, err := m.AdminUsers(ctx, "INLINE_USER_B", 1, 50); err != nil || total != 1 || len(rows) != 1 {
+		t.Fatalf("search hit: total=%d rows=%d err=%v", total, len(rows), err)
+	} else if rows[0]["id"] != other {
+		t.Fatalf("search hit id = %v, want %d", rows[0]["id"], other)
+	}
+	if _, total, err := m.AdminUsers(ctx, "no-such-user-zzz", 1, 50); err != nil || total != 0 {
+		t.Fatalf("search miss: total=%d err=%v", total, err)
+	}
+	// rows carry permission + email_verified for the admin table
+	if rows, _, err := m.AdminUsers(ctx, "", 1, 50); err != nil || len(rows) == 0 {
+		t.Fatalf("unfiltered list: %d %v", len(rows), err)
+	} else {
+		for _, row := range rows {
+			if _, ok := row["permission"]; !ok {
+				t.Fatalf("AdminUsers row missing permission: %+v", row)
+			}
+			if _, ok := row["emailVerified"]; !ok {
+				t.Fatalf("AdminUsers row missing emailVerified: %+v", row)
+			}
+		}
+	}
+}
