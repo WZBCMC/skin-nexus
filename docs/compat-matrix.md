@@ -41,7 +41,7 @@ JWT access token 实测形状：`aud="2"（shared_client_id）、sub=uid、scope
 ## 4. 功能缺口优先级（blessing 1:1 复刻主干）
 
 - **P1+（首位，2026-10-23 ✅ 基础功能落地）**：邀请码模块 1:1（基准=线上魔改版）：`invitation_codes` 六列表（含 `description`「姓名+学号」约定列，旧库直迁）+ 注册流（`SKIN_INVITE_REQUIRED` 两态：默认开放选填 / `true`=线上必填，核销进注册事务封死双用竞态）+ 管理面三端点（生成/列表/改备注）+ 注册页输入框与管理面板。**插件候选（插件宿主完成后引入）**：① CSV「学号,姓名」一键发码（写 description）② 邀请码查询页（行为规格已取证存档）
-- **P1（2026-10-23 部分落地）**：衣柜 closet（迁移切流前置）· ~~改密端点~~ ✅（`POST /api/v1/me/password`，改密即吊销全部 ygg+OIDC 授权）· 邮箱验证流/找回密码（含 SMTP；join 验证门已配置化 `SKIN_REQUIRE_VERIFICATION`，默认关）· 管理面（用户改密/删除、角色管理、选项面板）· ygg_rate_limit
+- **P1（2026-10-23 部分落地）**：~~衣柜 closet~~ ✅（`user_closet` 1:1 三列同构 0007，四端点+前端，孤儿行可见可删；**legacy「换肤必须先入柜」规则未启用**——会改动现有 setSkin 语义，待拍板）· ~~改密端点~~ ✅（`POST /api/v1/me/password`，改密即吊销全部 ygg+OIDC 授权）· 邮箱验证流/找回密码（含 SMTP；join 验证门已配置化 `SKIN_REQUIRE_VERIFICATION`，默认关）· 管理面（用户改密/删除、角色管理、选项面板）· ygg_rate_limit
 - **P2**：举报/通知/纹理广场 · OAuth 社交登录 · API PAT 面 · 插件宿主 · 正版绑定 · 纹理删除
 - **P3**：`/api` 根装饰 · 验证码 · 积分商城 · 2FA
 
