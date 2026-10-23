@@ -40,7 +40,7 @@ JWT access token 实测形状：`aud="2"（shared_client_id）、sub=uid、scope
 
 ## 4. 功能缺口优先级（blessing 1:1 复刻主干）
 
-- **P1+（首位）**：邀请码模块**基础功能 only**——1:1 移植 blessing-skin-plugins/invitation-codes（`invitation_codes(id,code,generated_at,used_by,used_at,description)`，`description` 列为老服务器实际存储约定「姓名+学号」，迁移工具按含 description 的实表适配）：注册流默认开放选填、`SKIN_INVITE_REQUIRED` 开时必填、码格式 32-hex md5 同款、管理端批量生成+列表。**CSV 学号姓名一键发码、邀请码查询页（学号+姓名查未用码+审计日志）→ 插件拓展完成后作为插件引入**（行为规格已取证存档）
+- **P1+（首位）**：邀请码模块**基础功能 only**——1:1 移植（基准=线上魔改版）：`invitation_codes(id,code,generated_at,used_by,used_at,description)`（`description`=「姓名+学号」存储约定，迁移直导）；线上语义=单条生成必填 description + edit(id,description) + 双注册 filter（有效码旁路其他注册拒绝）+ `invitation_codes_for_union_enabled` 选项位；SkinNexus 口径：注册默认开放选填、`SKIN_INVITE_REQUIRED` 开时=线上必填语义、码 32-hex md5 同款。**CSV 学号姓名一键发码、邀请码查询页（学号+姓名查未用码+审计日志）→ 插件拓展完成后作为插件引入**（行为规格已取证存档）
 - **P1**：衣柜 closet（迁移切流前置）· 改密端点 · 邮箱验证流/找回密码（含 SMTP；join 验证门已配置化 `SKIN_REQUIRE_VERIFICATION`，默认关）· 管理面（用户改密/删除、角色管理、选项面板）· ygg_rate_limit
 - **P2**：举报/通知/纹理广场 · OAuth 社交登录 · API PAT 面 · 插件宿主 · 正版绑定 · 纹理删除
 - **P3**：`/api` 根装饰 · 验证码 · 积分商城 · 2FA
