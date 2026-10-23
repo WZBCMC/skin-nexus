@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"skin-nexus/server/internal/ratelimit"
@@ -87,7 +88,6 @@ type Service struct {
 	store     Store
 	signer    Signer
 	joinTTL   time.Duration
-	tokenTTL  time.Duration
 	now       func() time.Time
 	// resolve resolves an access token string to a Token. Default: opaque
 	// store lookup. Phase-2 dual-state: the OIDC layer injects a resolver
@@ -105,6 +105,138 @@ type Service struct {
 	// Limiter protects authenticate/refresh from credential guessing
 	// (nil = off; main wires settings-panel thresholds).
 	Limiter *ratelimit.Limiter
+	// windows holds the static dual-TTL defaults; windowsResolver, when set,
+	// resolves them per request (admin panel writes ygg_token_expire_1/2 and
+	// they apply without restart — RequireVerificationResolver pattern).
+	windows         TokenWindows
+	windowsResolver func(ctx context.Context) TokenWindows
+	// B5.2 live knobs (same resolver pattern): ygg_rate_limit gap and
+	// ygg_tokens_limit cap.
+	gap               gapGuard
+	authGapResolver   func(ctx context.Context) time.Duration
+	tokenLimitResolver func(ctx context.Context) int
+	searchMaxResolver  func(ctx context.Context) int
+}
+
+// SetAuthGapResolver wires ygg_rate_limit (milliseconds → gap).
+func (s *Service) SetAuthGapResolver(f func(ctx context.Context) time.Duration) {
+	s.authGapResolver = f
+}
+
+// SetTokenLimitResolver wires ygg_tokens_limit (0 = unlimited).
+func (s *Service) SetTokenLimitResolver(f func(ctx context.Context) int) {
+	s.tokenLimitResolver = f
+}
+
+// SearchProfileMax is the bulk profile lookup cap (ygg_search_profile_max,
+// upstream ProfileController.php:66-68: array_unique FIRST, then reject
+// with ForbiddenOperationException when over — no truncation). Default 5
+// matches callbacks.php:98.
+func (s *Service) SearchProfileMax(ctx context.Context) int {
+	max := 5
+	if s.searchMaxResolver != nil {
+		max = s.searchMaxResolver(ctx)
+	}
+	if max <= 0 {
+		max = 5
+	}
+	return max
+}
+
+// SetSearchMaxResolver wires ygg_search_profile_max (clamped 1-100 upstream
+// of here by the settings validator).
+func (s *Service) SetSearchMaxResolver(f func(ctx context.Context) int) {
+	s.searchMaxResolver = f
+}
+
+// windowsFor is the dual-TTL window's single decision point.
+func (s *Service) windowsFor(ctx context.Context) TokenWindows {
+	if s.windowsResolver != nil {
+		return s.windowsResolver(ctx)
+	}
+	return s.windows
+}
+
+// SetTokenWindowsResolver wires the live option-backed windows (main.go:
+// ygg_token_expire_1/2 from the options table).
+func (s *Service) SetTokenWindowsResolver(f func(ctx context.Context) TokenWindows) {
+	s.windowsResolver = f
+}
+
+// ---- B5.2: ygg_rate_limit (same-username gap) + ygg_tokens_limit ----
+
+// gapGuard enforces ygg_rate_limit: upstream Throttle.php:15 keeps a
+// per-username minimum interval (ms) between authenticate/signout calls,
+// keyed by the REQUEST username. Same-username only — shared-IP classmates
+// (the campus use case!) are unaffected, unlike a per-IP window.
+type gapGuard struct {
+	mu   sync.Mutex
+	last map[string]time.Time
+}
+
+// allow reports whether the key may proceed now; retryAfter is the wait.
+// Stale entries (older than gap*10 or 1h) are swept on write so the map
+// cannot grow unbounded (upstream's Cache entry TTLs at 3600s).
+func (g *gapGuard) allow(key string, now time.Time, gap time.Duration) (bool, time.Duration) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.last == nil {
+		g.last = map[string]time.Time{}
+	}
+	if len(g.last) > 4096 {
+		for k, t := range g.last {
+			if now.Sub(t) > gap*10 || now.Sub(t) > time.Hour {
+				delete(g.last, k)
+			}
+		}
+	}
+	prev, ok := g.last[key]
+	if ok {
+		if wait := gap - now.Sub(prev); wait > 0 {
+			return false, wait
+		}
+	}
+	g.last[key] = now
+	return true, 0
+}
+
+// AuthGapAllow is the HTTP layer's throttle entry point (authenticate and
+// signout handlers). gap<=0 disables. Upstream throws
+// ForbiddenOperationException on the throttle hit; the signout contract is
+// "always 204", so that handler DROPS the work instead of erroring.
+func (s *Service) AuthGapAllow(ctx context.Context, username string) (bool, time.Duration) {
+	gap := time.Second // upstream default ygg_rate_limit = 1000ms
+	if s.authGapResolver != nil {
+		gap = s.authGapResolver(ctx)
+	}
+	if gap <= 0 {
+		return true, 0
+	}
+	return s.gap.allow(username, s.now(), gap)
+}
+
+// TokenPruner is an OPTIONAL store capability (ygg.Store is frozen): after
+// minting, the service asks the store to keep at most `keep` live tokens
+// per user, LRU-style. Mysql implements it; the contract-test memStore
+// does not and is skipped.
+type TokenPruner interface {
+	PruneUserTokens(ctx context.Context, uid int64, keep int) (evicted int64, err error)
+}
+
+// enforceTokenLimit applies ygg_tokens_limit (default 10, 0 = unlimited) —
+// LRU eviction of the oldest tokens with an audit row (2026-10-24 拍板).
+// Best-effort: an eviction failure must never fail the login.
+func (s *Service) enforceTokenLimit(ctx context.Context, uid int64) {
+	limit := 10
+	if s.tokenLimitResolver != nil {
+		limit = s.tokenLimitResolver(ctx)
+	}
+	if limit <= 0 {
+		return
+	}
+	if p, ok := s.store.(TokenPruner); ok {
+		_, _ = p.PruneUserTokens(ctx, uid, limit)
+	}
 }
 
 // requireVerification is the gate's single decision point.
@@ -120,15 +252,61 @@ const (
 	DefaultTokenTTL = 30 * 24 * time.Hour
 )
 
+// TokenWindows is the dual-TTL model (B5.1, blessing yggdrasil-connect
+// parity — evidence analysis/refs-token-blacklist.md §1):
+//
+//	Soft (ygg_token_expire_1, default 3d): written INTO ExpiresAt at issue
+//	  time (Passport::personalAccessTokensExpireIn parity). Past it the
+//	  token is 暂时失效 — validate/join/userinfo reject, but refresh may
+//	  still mint a replacement (launchers re-auth silently).
+//	Hard (ygg_token_expire_2, default 7d): the refresh gate, derived from
+//	  CreatedAt + the LIVE option. Past BOTH bounds the token is 完全失效 —
+//	  refresh rejects too and a full re-login is required.
+//
+// Exactly mirrors upstream AccessToken.php: isExpired1 (expires_at past) /
+// isExpired2 (isExpired1 && created_at+expire_2 past); isRefreshable
+// consults isExpired2 only. Zero schema: both bounds live in existing
+// ygg_tokens columns.
+type TokenWindows struct {
+	Soft time.Duration
+	Hard time.Duration
+}
+
+// DefaultTokenWindows mirrors blessing callbacks.php:93-94
+// (ygg_token_expire_1 = 259200s, ygg_token_expire_2 = 604800s).
+var DefaultTokenWindows = TokenWindows{
+	Soft: 72 * time.Hour,
+	Hard: 7 * 24 * time.Hour,
+}
+
 func NewService(store Store, signer Signer) *Service {
 	return &Service{
 		store:    store,
 		signer:   signer,
 		joinTTL:  DefaultJoinTTL,
-		tokenTTL: DefaultTokenTTL,
+		windows:  DefaultTokenWindows,
 		now:      time.Now,
 		resolve:  store.TokenByAccess,
 	}
+}
+
+// refreshable mirrors upstream isRefreshable (AccessToken.php:164): a token
+// is refreshable UNLESS it is fully expired (isExpired2 = isExpired1 AND
+// created_at+expire_2 past). So the 3–7d band — soft-expired but inside the
+// hard window — may still mint a replacement; past both, re-login.
+func (s *Service) refreshable(ctx context.Context, t Token) bool {
+	if t.Invalidated {
+		return false
+	}
+	now := s.now()
+	if !now.After(t.ExpiresAt) {
+		return true // inside the soft window (expire_1 fixed at issue)
+	}
+	// soft-expired: the recovery window closes at created_at + expire_2
+	if t.CreatedAt.IsZero() {
+		return false // fail closed: unknown issue time = no recovery window
+	}
+	return !now.After(t.CreatedAt.Add(s.windowsFor(ctx).Hard))
 }
 
 // SetTokenResolver swaps the access-token resolution (dual-state hook).
@@ -196,7 +374,7 @@ func (s *Service) Authenticate(ctx context.Context, username, password, clientTo
 		ClientToken: clientToken,
 		UserID:      u.ID,
 		CreatedAt:   s.now(),
-		ExpiresAt:   s.now().Add(s.tokenTTL),
+		ExpiresAt:   s.now().Add(s.windowsFor(ctx).Soft), // expire_1 fixed at issue (Passport exp parity)
 	}
 	// Legacy parity (analysis/authlib-injector.md:221, yggdrasil-connect.md
 	// :380): a single profile is auto-bound to the token; multiple profiles
@@ -207,6 +385,7 @@ func (s *Service) Authenticate(ctx context.Context, username, password, clientTo
 	if err := s.store.SaveToken(ctx, t); err != nil {
 		return Token{}, nil, err
 	}
+	s.enforceTokenLimit(ctx, t.UserID) // ygg_tokens_limit LRU (best-effort)
 	return t, players, nil
 }
 
@@ -216,7 +395,7 @@ func (s *Service) Authenticate(ctx context.Context, username, password, clientTo
 // grant) instead.
 func (s *Service) Refresh(ctx context.Context, accessToken, clientToken string, selectPID int64) (Token, []Player, error) {
 	old, err := s.store.TokenByAccess(ctx, accessToken)
-	if err != nil || old.Invalidated || s.now().After(old.ExpiresAt) {
+	if err != nil || !s.refreshable(ctx, old) {
 		return Token{}, nil, ErrTokenInvalid
 	}
 	if clientToken != "" && clientToken != old.ClientToken {
@@ -249,7 +428,7 @@ func (s *Service) Refresh(ctx context.Context, accessToken, clientToken string, 
 		UserID:      old.UserID,
 		SelectedPID: selectPID,
 		CreatedAt:   s.now(),
-		ExpiresAt:   s.now().Add(s.tokenTTL),
+		ExpiresAt:   s.now().Add(s.windowsFor(ctx).Soft), // expire_1 fixed at issue (Passport exp parity)
 	}
 	if t.SelectedPID == 0 {
 		t.SelectedPID = old.SelectedPID
@@ -257,6 +436,7 @@ func (s *Service) Refresh(ctx context.Context, accessToken, clientToken string, 
 	if err := s.store.SaveToken(ctx, t); err != nil {
 		return Token{}, nil, err
 	}
+	s.enforceTokenLimit(ctx, t.UserID) // ygg_tokens_limit LRU (best-effort)
 	players, _ := s.store.PlayersByUID(ctx, t.UserID)
 	return t, players, nil
 }

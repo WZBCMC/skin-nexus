@@ -42,6 +42,12 @@ var settingsWhitelist = []struct {
 	{"player_name_length_min", false, "角色名最小长度（字符）"},
 	{"player_name_length_max", false, "角色名最大长度（字符）"},
 	{"texture_name_regexp", false, "材质备注命名正则（空=不限制，仅拦新上传）"},
+	// B5（blessing yggdrasil-connect 原名，callbacks.php:93-98 默认值）
+	{"ygg_token_expire_1", false, "ygg 令牌软窗口（秒，默认 259200=3 天）：validate/join 有效期，过后可 refresh 换新"},
+	{"ygg_token_expire_2", false, "ygg 令牌硬窗口（秒，默认 604800=7 天）：refresh 有效期，过后须重新登录"},
+	{"ygg_tokens_limit", false, "每用户 ygg 令牌数上限（默认 10，0=不限）：超限淘汰最旧令牌并留审计"},
+	{"ygg_search_profile_max", false, "批量查角色单次上限（默认 5，1-100）"},
+	{"ygg_rate_limit", false, "同名认证最小间隔（毫秒，默认 1000，0=关闭）"},
 }
 
 func (b *Backend) settingValue(ctx context.Context, key, def string) string {
@@ -100,12 +106,20 @@ func (b *Backend) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 		val = strings.Join(strings.FieldsFunc(val, func(r rune) bool {
 			return r == ',' || r == '\n' || r == ' '
 		}), ",")
-	case "rate_limit_auth", "login_fail_limit", "regs_per_ip", "player_name_length_min", "player_name_length_max":
+	case "rate_limit_auth", "login_fail_limit", "regs_per_ip", "player_name_length_min", "player_name_length_max",
+		"ygg_token_expire_1", "ygg_token_expire_2", "ygg_tokens_limit", "ygg_rate_limit":
 		// numeric knobs (review P2: garbage silently desynced panel vs boot
 		// fallback, and negatives silently disabled the limiter layers)
 		n, err := strconv.Atoi(val)
 		if err != nil || n < 0 || n > 1000000 {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "数值需为 0-1000000 的整数"})
+			return
+		}
+		val = strconv.Itoa(n)
+	case "ygg_search_profile_max":
+		n, err := strconv.Atoi(val)
+		if err != nil || n < 1 || n > 100 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "批量查询上限需为 1-100 的整数"})
 			return
 		}
 		val = strconv.Itoa(n)

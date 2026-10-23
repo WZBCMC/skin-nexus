@@ -194,8 +194,17 @@ func (a *API) handleAuthenticate(w http.ResponseWriter, r *http.Request) {
 	// Rate limit (P1 ygg_rate_limit): IP sliding window + per-identifier
 	// failure lockout. 429 is an additive response — the legacy contract
 	// never defined rate limiting (recorded in docs/compat-matrix.md).
+	// B5.2 gap throttle (upstream Throttle.php:15 parity): same-username
+	// minimum interval, error body keeps the ForbiddenOperationException
+	// shape upstream throws.
 	idKey := "id:" + strings.ToLower(strings.TrimSpace(req.Username))
 	ipKey := "ip:" + clientIP(r)
+	if ok, retryAfter := a.svc.AuthGapAllow(r.Context(), strings.TrimSpace(req.Username)); !ok {
+		w.Header().Set("Retry-After", strconv.Itoa(int(retryAfter.Seconds())+1))
+		writeError(w, http.StatusForbidden, "ForbiddenOperationException",
+			"Too many requests. Please try again in "+strconv.Itoa(int(retryAfter.Seconds())+1)+"s.")
+		return
+	}
 	if a.svc.Limiter != nil {
 		if a.svc.Limiter.Locked(idKey) {
 			ra := int(a.svc.Limiter.RetryAfter(idKey).Seconds()) + 1
@@ -299,7 +308,13 @@ func (a *API) handleSignout(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	a.svc.SignOut(r.Context(), req.Username, req.Password)
+	// B5.2 gap throttle applies upstream (routes.php:11-15 puts Throttle on
+	// signout too), but the frozen wire contract is "signout always 204" —
+	// a throttle hit DROPS the work (no password check = anti-brute-force
+	// preserved) and still answers 204.
+	if ok, _ := a.svc.AuthGapAllow(r.Context(), strings.TrimSpace(req.Username)); ok {
+		a.svc.SignOut(r.Context(), req.Username, req.Password)
+	}
 	noContent(w) // always 204
 }
 
@@ -395,10 +410,24 @@ func (a *API) handleLookupBulk(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "IllegalArgumentException", "invalid JSON body")
 		return
 	}
-	if len(names) > 100 { // legacy bound
-		names = names[:100]
+	// B5.2 ygg_search_profile_max (upstream ProfileController.php:62-68
+	// parity): array_unique FIRST, then reject over the cap with
+	// ForbiddenOperationException — no silent truncation.
+	uniq := names[:0:0]
+	seen := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		if _, dup := seen[n]; dup {
+			continue
+		}
+		seen[n] = struct{}{}
+		uniq = append(uniq, n)
 	}
-	players := a.svc.LookupBulk(r.Context(), names)
+	if max := a.svc.SearchProfileMax(r.Context()); len(uniq) > max {
+		writeError(w, http.StatusForbidden, "ForbiddenOperationException",
+			"A maximum of "+strconv.Itoa(max)+" profiles may be queried at once.")
+		return
+	}
+	players := a.svc.LookupBulk(r.Context(), uniq)
 	type entry struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`

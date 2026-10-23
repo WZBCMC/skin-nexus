@@ -109,6 +109,22 @@ func (m *Mysql) AdminRenamePlayer(ctx context.Context, pid int64, newName string
 		}
 		return err
 	}
+	// Rename invalidation (B5.1, upstream OnPlayerRenamed.php:18 +
+	// AccessToken.php:145-149 parity): tokens issued BEFORE the rename go
+	// 暂时失效 — squeeze their expires_at to the rename moment instead of
+	// invalidating. Upstream rejects validate/join for pre-rename tokens but
+	// keeps refresh alive (isRefreshable skips the rename check); a plain
+	// invalidated=1 would kill refresh too and force full re-logins, so the
+	// soft-expiry squeeze is the faithful equivalent. Tokens with no
+	// selected profile are untouched (upstream keys on selectedProfile).
+	// Only shortens, never revives: expires_at > now is required in WHERE.
+	now := time.Now()
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE ygg_tokens SET expires_at = ?
+		 WHERE selected_pid = ? AND created_at < ? AND expires_at > ?`,
+		now, pid, now, now); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 

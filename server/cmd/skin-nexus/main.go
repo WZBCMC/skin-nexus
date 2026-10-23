@@ -369,6 +369,49 @@ func main() {
 		}
 		return cfg.RequireVerification
 	}
+	// B5.1 dual-TTL windows (blessing ygg_token_expire_1/2): live options
+	// override the defaults at request time (soft is fixed into expires_at
+	// at issue; hard is re-read here per refresh).
+	yggSvc.SetTokenWindowsResolver(func(ctx context.Context) ygg.TokenWindows {
+		w := ygg.DefaultTokenWindows
+		if v, ok, err := st.GetOption(ctx, "ygg_token_expire_1"); err == nil && ok {
+			if n, e := strconv.Atoi(v); e == nil && n > 0 {
+				w.Soft = time.Duration(n) * time.Second
+			}
+		}
+		if v, ok, err := st.GetOption(ctx, "ygg_token_expire_2"); err == nil && ok {
+			if n, e := strconv.Atoi(v); e == nil && n > 0 {
+				w.Hard = time.Duration(n) * time.Second
+			}
+		}
+		return w
+	})
+	// B5.2: ygg_rate_limit (same-username gap, ms) / ygg_tokens_limit (LRU
+	// cap, 0=off) / ygg_search_profile_max (bulk lookup cap).
+	yggSvc.SetAuthGapResolver(func(ctx context.Context) time.Duration {
+		if v, ok, err := st.GetOption(ctx, "ygg_rate_limit"); err == nil && ok {
+			if n, e := strconv.Atoi(v); e == nil && n >= 0 {
+				return time.Duration(n) * time.Millisecond
+			}
+		}
+		return time.Second // callbacks.php:96 default 1000ms
+	})
+	yggSvc.SetTokenLimitResolver(func(ctx context.Context) int {
+		if v, ok, err := st.GetOption(ctx, "ygg_tokens_limit"); err == nil && ok {
+			if n, e := strconv.Atoi(v); e == nil && n >= 0 {
+				return n
+			}
+		}
+		return 10 // callbacks.php:95 default
+	})
+	yggSvc.SetSearchMaxResolver(func(ctx context.Context) int {
+		if v, ok, err := st.GetOption(ctx, "ygg_search_profile_max"); err == nil && ok {
+			if n, e := strconv.Atoi(v); e == nil && n > 0 {
+				return n
+			}
+		}
+		return 5 // callbacks.php:98 default
+	})
 	// Rate limiting (P1 ygg_rate_limit): settings-panel values override env
 	// at boot (limiter thresholds are boot-constructed; restart to apply).
 	if v, ok, err := st.GetOption(context.Background(), "rate_limit_auth"); err == nil && ok {
@@ -423,6 +466,11 @@ func main() {
 		"player_name_rule":     "official",
 		"player_name_length_min": "3",
 		"player_name_length_max": "16",
+		"ygg_token_expire_1":   "259200",
+		"ygg_token_expire_2":   "604800",
+		"ygg_tokens_limit":     "10",
+		"ygg_search_profile_max": "5",
+		"ygg_rate_limit":       "1000",
 	}
 	// Admin user management shares the credential-change revoke semantics.
 	admin.OnUserCredentialChange = func(uid int64) {

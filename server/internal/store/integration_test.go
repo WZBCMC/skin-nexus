@@ -871,3 +871,47 @@ func TestIntegrationValidatePlayerName(t *testing.T) {
 		t.Fatalf("min=2 should accept 2-char name: %v", err)
 	}
 }
+
+// TestIntegrationPruneUserTokens locks ygg_tokens_limit LRU semantics (B5.2
+// 拍板：超限作废最早签发 + 写审计，不拒新签发).
+func TestIntegrationPruneUserTokens(t *testing.T) {
+	m := openTestStore(t)
+	ctx := context.Background()
+	uid := seedUserAs(t, m, "prune@example.com", "prune_user")
+
+	// 5 issued tokens in known order (id ASC = issuance order)
+	var access []string
+	for i := 0; i < 5; i++ {
+		tok := tokenRowFor(uid, 0)
+		tok.AccessToken = fmt.Sprintf("prune-at-%d", i)
+		tok.ClientToken = fmt.Sprintf("prune-ct-%d", i)
+		if err := m.SaveToken(ctx, tok); err != nil {
+			t.Fatalf("save token %d: %v", i, err)
+		}
+		access = append(access, tok.AccessToken)
+	}
+
+	evicted, err := m.PruneUserTokens(ctx, uid, 3)
+	if err != nil || evicted != 2 {
+		t.Fatalf("prune keep=3: evicted=%d err=%v, want 2", evicted, err)
+	}
+	// the two EARLIEST tokens are dead, the three latest alive
+	for i := 0; i < 2; i++ {
+		if tk, err := m.TokenByAccess(ctx, access[i]); err != nil || !tk.Invalidated {
+			t.Fatalf("token %d must be evicted (invalidated=%v err=%v)", i, tk.Invalidated, err)
+		}
+	}
+	for i := 2; i < 5; i++ {
+		if tk, err := m.TokenByAccess(ctx, access[i]); err != nil || tk.Invalidated {
+			t.Fatalf("token %d must survive (invalidated=%v err=%v)", i, tk.Invalidated, err)
+		}
+	}
+	// under-limit is a no-op
+	if evicted, err := m.PruneUserTokens(ctx, uid, 10); err != nil || evicted != 0 {
+		t.Fatalf("prune keep=10: evicted=%d err=%v, want 0", evicted, err)
+	}
+	// keep<=0 never prunes (0 = unlimited)
+	if evicted, err := m.PruneUserTokens(ctx, uid, 0); err != nil || evicted != 0 {
+		t.Fatalf("prune keep=0: evicted=%d err=%v, want 0", evicted, err)
+	}
+}

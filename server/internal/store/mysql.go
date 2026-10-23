@@ -228,6 +228,37 @@ func (m *Mysql) InvalidateUserTokens(ctx context.Context, uid int64) error {
 	return err
 }
 
+// PruneUserTokens implements ygg.TokenPruner (ygg_tokens_limit, 2026-10-24
+// 拍板：超限作废最早签发的令牌 + 写审计，不拒新签发). Keeps at most `keep`
+// live tokens per user; `id` is AUTO_INCREMENT so ASC = issuance order.
+// MySQL single-table UPDATE ... ORDER BY ... LIMIT extension.
+func (m *Mysql) PruneUserTokens(ctx context.Context, uid int64, keep int) (int64, error) {
+	if keep <= 0 {
+		return 0, nil
+	}
+	var n int
+	if err := m.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM ygg_tokens WHERE user_id = ? AND invalidated = 0`, uid).Scan(&n); err != nil {
+		return 0, err
+	}
+	if n <= keep {
+		return 0, nil
+	}
+	res, err := m.db.ExecContext(ctx,
+		`UPDATE ygg_tokens SET invalidated = 1
+		 WHERE user_id = ? AND invalidated = 0
+		 ORDER BY id ASC LIMIT ?`, uid, n-keep)
+	if err != nil {
+		return 0, err
+	}
+	evicted, _ := res.RowsAffected()
+	if evicted > 0 {
+		m.InsertAudit(ctx, uid, "ygg_tokens_pruned",
+			map[string]any{"evicted": evicted, "kept": keep, "reason": "ygg_tokens_limit"})
+	}
+	return evicted, nil
+}
+
 // ---- join sessions ----
 
 func (m *Mysql) SaveJoin(ctx context.Context, j ygg.JoinSession) error {
