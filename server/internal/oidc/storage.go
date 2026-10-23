@@ -20,9 +20,9 @@ import (
 
 // PlayerBrief is the profile row the claim builder needs.
 type PlayerBrief struct {
-	ID   int64
-	UUID string // 32 lowercase hex
-	Name string
+	ID   int64  `json:"id"`
+	UUID string `json:"uuid"` // 32 lowercase hex
+	Name string `json:"name"`
 }
 
 // UserBrief is the user row the claim builder needs.
