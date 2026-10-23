@@ -16,6 +16,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -68,9 +69,14 @@ func applyMigrations(t *testing.T, m *Mysql) {
 	}
 }
 
+// seedSeq makes seedUser callable multiple times per test (uq_users_nickname).
+var seedSeq int64
+
 func seedUser(t *testing.T, m *Mysql) int64 {
 	t.Helper()
-	uid, err := m.CreateUser(context.Background(), "it@example.com", "it_user", "x", 3)
+	seedSeq++
+	uid, err := m.CreateUser(context.Background(),
+		fmt.Sprintf("it%d@example.com", seedSeq), fmt.Sprintf("it_user%d", seedSeq), "x", 3)
 	if err != nil {
 		t.Fatalf("create user: %v", err)
 	}
