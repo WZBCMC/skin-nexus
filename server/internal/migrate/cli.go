@@ -2,34 +2,45 @@ package migrate
 
 import (
 	"bufio"
+	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+
+	"skin-nexus/server/internal/texture"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 // RunCLI implements the `skin-nexus migrate` subcommands:
 //
 //	migrate preflight --env legacy.env [--textures DIR] [--dump hashes.txt]
 //	migrate uuid --rows uuid.tsv --players players.tsv [--out report.txt]
+//	migrate import --source-dsn DSN --target-dsn DSN --source-prefix PFX [--textures-src DIR --textures-dst DIR] [--dry-run]
 //
 // preflight = 部署执行序第 1 步（phase1-dev-plan §5）: parse legacy .env,
 // print positional method/salt table (salts masked), hash distribution when a
 // dump is provided, and texture-tree audit when a dir is given.
-// uuid = dry-run of the five-step cleaning over exported TSV snapshots;
-// the apply path stays a SQL script at deployment (report only by design).
+// uuid = dry-run of the five-step cleaning over exported TSV snapshots.
+// import = the APPLY path (docs/migration-import-design.md): DB->DB copy
+// with ID preservation, uuid cleaning, options/closet/invitation carry,
+// byte-exact texture file copy; --dry-run reports without writing.
 func RunCLI(args []string, out io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: migrate preflight|uuid ...")
+		return fmt.Errorf("usage: migrate preflight|uuid|import ...")
 	}
 	switch args[0] {
 	case "preflight":
 		return runPreflight(args[1:], out)
 	case "uuid":
 		return runUuidClean(args[1:], out)
+	case "import":
+		return runImport(args[1:], out)
 	default:
-		return fmt.Errorf("unknown migrate command %q (want preflight|uuid)", args[0])
+		return fmt.Errorf("unknown migrate command %q (want preflight|uuid|import)", args[0])
 	}
 }
 
@@ -121,6 +132,67 @@ func runUuidClean(args []string, out io.Writer) error {
 }
 
 // ---- input helpers ----
+
+// runImport drives one legacy -> skin_nexus import run.
+func runImport(args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("import", flag.ContinueOnError)
+	sourceDSN := fs.String("source-dsn", "", "legacy database DSN (required)")
+	targetDSN := fs.String("target-dsn", "", "skin_nexus database DSN (required)")
+	prefix := fs.String("source-prefix", "", "source table prefix/schema, e.g. 'wzbcmc.' or 'legacy_' (required)")
+	texSrc := fs.String("textures-src", "", "legacy textures dir (optional)")
+	texDst := fs.String("textures-dst", "", "target textures dir (optional; byte-exact copy)")
+	dry := fs.Bool("dry-run", false, "read-only report, no writes")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *sourceDSN == "" || *targetDSN == "" || *prefix == "" {
+		return fmt.Errorf("import: --source-dsn, --target-dsn and --source-prefix are required")
+	}
+	src, err := sql.Open("mysql", *sourceDSN)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	tgt, err := sql.Open("mysql", *targetDSN)
+	if err != nil {
+		return err
+	}
+	defer tgt.Close()
+
+	opt := ImportOptions{
+		Source: src, Target: tgt, SourcePrefix: *prefix,
+		TexturesSrc: *texSrc, DryRun: *dry,
+	}
+	if *texDst != "" {
+		st, err := texture.NewStore(*texDst)
+		if err != nil {
+			return err
+		}
+		opt.TexturesDst = st
+	}
+	rep, err := RunImport(context.Background(), opt)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(out, "== import report ==")
+	if *dry {
+		fmt.Fprintln(out, "(dry-run: no rows written)")
+	}
+	for _, tbl := range []string{"users", "players", "textures", "uuid_map", "options", "user_closet", "invitation_codes"} {
+		if st, ok := rep.Tables[tbl]; ok {
+			fmt.Fprintf(out, "%-18s selected=%d inserted=%d skipped=%d\n", tbl, st.Selected, st.Inserted, st.Skipped)
+		}
+	}
+	fmt.Fprintln(out, rep.UUID.String())
+	fmt.Fprintln(out, rep.Textures.String())
+	if rep.FilesCopied > 0 {
+		fmt.Fprintf(out, "files copied=%d\n", rep.FilesCopied)
+	}
+	for _, w := range rep.Warnings {
+		fmt.Fprintf(out, "WARN %s\n", w)
+	}
+	return nil
+}
 
 func readLines(path string) ([]string, error) {
 	f, err := os.Open(path)
