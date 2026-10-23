@@ -29,6 +29,8 @@ var settingsWhitelist = []struct {
 	{"skin_domains", true, "皮肤域名（CSV，ygg metadata 皮肤来源）"},
 	{"invite_required", false, "注册强制邀请码（立即生效）"},
 	{"require_verification", false, "join 前须邮箱验证（立即生效；邮件流未上线前开了会挡住所有新号进服）"},
+	{"rate_limit_auth", true, "认证端点每 IP 每 10 分钟请求数上限（0=关闭；重启后生效）"},
+	{"login_fail_limit", true, "同账号连续失败锁定阈值（0=关闭；重启后生效）"},
 }
 
 func (b *Backend) settingValue(ctx context.Context, key, def string) string {

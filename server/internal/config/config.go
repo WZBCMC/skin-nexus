@@ -34,6 +34,12 @@ type Config struct {
 	// Join gate on email_verified (fork's require_verification setting).
 	// Default off until the verification mail flow ships (P1).
 	RequireVerification bool // SKIN_REQUIRE_VERIFICATION
+	// RateLimitAuth = auth requests per IP per 10-minute sliding window
+	// (0 disables the window layer). LoginFailLimit = consecutive failures
+	// per identifier before a 15-minute lockout (0 disables). Both tunable
+	// from the admin settings panel (boot-read with env fallback).
+	RateLimitAuth  int // SKIN_RATE_LIMIT_AUTH (default 20)
+	LoginFailLimit int // SKIN_LOGIN_FAIL_LIMIT (default 5)
 
 	// Registration requires a valid invitation code (live plugin's mandatory
 	// semantics). Default off = optional code, validated and burned when given.
@@ -81,6 +87,8 @@ func Load() (*Config, error) {
 		OIDCEnabled:    getenv("SKIN_OIDC_ENABLED", "false") == "true",
 		RequireVerification: getenv("SKIN_REQUIRE_VERIFICATION", "false") == "true",
 		RequireInvite:       getenv("SKIN_INVITE_REQUIRED", "false") == "true",
+		RateLimitAuth:       atoiDefault(getenv("SKIN_RATE_LIMIT_AUTH", "20"), 20),
+		LoginFailLimit:      atoiDefault(getenv("SKIN_LOGIN_FAIL_LIMIT", "5"), 5),
 		OIDCIssuer:     strings.TrimRight(getenv("SKIN_OIDC_ISSUER", strings.TrimRight(getenv("SKIN_BASE_URL", "http://localhost:8080"), "/")), "/"),
 		OIDCSignKey:    resolveDataPath("SKIN_OIDC_SIGN_KEY", dataDir, "oidc-key.pem"),
 		SharedClientID: getenv("SKIN_OIDC_SHARED_CLIENT_ID", "2"),
@@ -110,6 +118,14 @@ func getenv(k, def string) string {
 		return v
 	}
 	return def
+}
+
+func atoiDefault(s string, def int) int {
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return def
+	}
+	return n
 }
 
 func splitCSV(v string) []string {

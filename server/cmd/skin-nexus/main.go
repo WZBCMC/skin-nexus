@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	"skin-nexus/server/internal/migrate"
 	"skin-nexus/server/internal/oidc"
 	"skin-nexus/server/internal/publicapi"
+	"skin-nexus/server/internal/ratelimit"
 	"skin-nexus/server/internal/seo"
 	"skin-nexus/server/internal/store"
 	"skin-nexus/server/internal/texture"
@@ -306,6 +308,21 @@ func main() {
 		}
 		return cfg.RequireVerification
 	}
+	// Rate limiting (P1 ygg_rate_limit): settings-panel values override env
+	// at boot (limiter thresholds are boot-constructed; restart to apply).
+	if v, ok, err := st.GetOption(context.Background(), "rate_limit_auth"); err == nil && ok {
+		if n, e := strconv.Atoi(v); e == nil {
+			cfg.RateLimitAuth = n
+		}
+	}
+	if v, ok, err := st.GetOption(context.Background(), "login_fail_limit"); err == nil && ok {
+		if n, e := strconv.Atoi(v); e == nil {
+			cfg.LoginFailLimit = n
+		}
+	}
+	rateLimiter := ratelimit.New(cfg.RateLimitAuth, 10*time.Minute, cfg.LoginFailLimit, 15*time.Minute)
+	yggSvc.Limiter = rateLimiter
+	backend.Limiter = rateLimiter
 	if unionOut != nil {
 		backend.MountUnion(unionOut) // registers /api/v1/union/* (zero surface when disabled)
 	}
@@ -318,6 +335,8 @@ func main() {
 		"skin_domains":         strings.Join(cfg.SkinDomains, ","),
 		"invite_required":      boolStr(cfg.RequireInvite),
 		"require_verification": boolStr(cfg.RequireVerification),
+		"rate_limit_auth":      strconv.Itoa(cfg.RateLimitAuth),
+		"login_fail_limit":     strconv.Itoa(cfg.LoginFailLimit),
 	}
 	// Admin user management shares the credential-change revoke semantics.
 	admin.OnUserCredentialChange = func(uid int64) {

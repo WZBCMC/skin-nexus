@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"skin-nexus/server/internal/auth"
+	"skin-nexus/server/internal/ratelimit"
 	"skin-nexus/server/internal/store"
 	"skin-nexus/server/internal/texture"
 	"skin-nexus/server/internal/union"
@@ -41,6 +42,9 @@ type Backend struct {
 	// OnPasswordChange fires after a successful password change (main wires
 	// OIDC grant revocation — legacy RevokeUserTokens semantics).
 	OnPasswordChange func(uid int64)
+	// Limiter protects login/register from guessing (nil = off; main wires
+	// settings-panel thresholds; IP window + identifier failure lockout).
+	Limiter *ratelimit.Limiter
 	Ygg      *ygg.Service
 	MaxChars int // per-user player limit
 
@@ -154,6 +158,10 @@ func (b *Backend) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
+	if b.Limiter != nil && !b.Limiter.Allow("ip:"+ygg.ClientIP(r)) {
+		writeErr(w, http.StatusTooManyRequests, "请求过于频繁，请稍后再试")
+		return
+	}
 	req.Nickname = strings.TrimSpace(req.Nickname)
 	if !nickRe.MatchString(req.Nickname) {
 		writeErr(w, http.StatusBadRequest, "昵称需 2-24 位字母/数字/下划线/中文")
@@ -205,15 +213,38 @@ func (b *Backend) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
+	idKey := "id:" + strings.ToLower(strings.TrimSpace(req.Identifier))
+	ipKey := "ip:" + ygg.ClientIP(r)
+	if b.Limiter != nil {
+		if b.Limiter.Locked(idKey) {
+			ra := int(b.Limiter.RetryAfter(idKey).Seconds()) + 1
+			w.Header().Set("Retry-After", strconv.Itoa(ra))
+			writeErr(w, http.StatusTooManyRequests, "尝试次数过多，请稍后再试")
+			return
+		}
+		if !b.Limiter.Allow(ipKey) {
+			writeErr(w, http.StatusTooManyRequests, "请求过于频繁，请稍后再试")
+			return
+		}
+	}
 	u, err := b.Store.UserByIdentifier(r.Context(), req.Identifier)
 	if err != nil {
+		if b.Limiter != nil {
+			b.Limiter.Fail(idKey)
+		}
 		writeErr(w, http.StatusUnauthorized, "账号或密码错误")
 		return
 	}
 	ok, err := b.Store.VerifyPassword(r.Context(), u.ID, req.Password)
 	if err != nil || !ok {
+		if b.Limiter != nil {
+			b.Limiter.Fail(idKey)
+		}
 		writeErr(w, http.StatusUnauthorized, "账号或密码错误")
 		return
+	}
+	if b.Limiter != nil {
+		b.Limiter.Succeed(idKey)
 	}
 	// Lazy rehash: legacy digest verified -> upgrade in place (official
 	// strategy: login success triggers changePassword).

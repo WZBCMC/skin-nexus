@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -187,10 +188,33 @@ func (a *API) handleAuthenticate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "IllegalArgumentException", "invalid JSON body")
 		return
 	}
+	// Rate limit (P1 ygg_rate_limit): IP sliding window + per-identifier
+	// failure lockout. 429 is an additive response — the legacy contract
+	// never defined rate limiting (recorded in docs/compat-matrix.md).
+	idKey := "id:" + strings.ToLower(strings.TrimSpace(req.Username))
+	ipKey := "ip:" + clientIP(r)
+	if a.svc.Limiter != nil {
+		if a.svc.Limiter.Locked(idKey) {
+			ra := int(a.svc.Limiter.RetryAfter(idKey).Seconds()) + 1
+			w.Header().Set("Retry-After", strconv.Itoa(ra))
+			writeError(w, http.StatusTooManyRequests, "TooManyRequests", "Too many failed attempts. Please try again later.")
+			return
+		}
+		if !a.svc.Limiter.Allow(ipKey) {
+			writeError(w, http.StatusTooManyRequests, "TooManyRequests", "Too many requests from your address.")
+			return
+		}
+	}
 	t, players, err := a.svc.Authenticate(r.Context(), req.Username, req.Password, req.ClientToken, req.RequestUser)
 	if err != nil {
+		if a.svc.Limiter != nil {
+			a.svc.Limiter.Fail(idKey)
+		}
 		writeError(w, http.StatusForbidden, "ForbiddenOperationException", "Invalid credentials. Invalid username or password.")
 		return
+	}
+	if a.svc.Limiter != nil {
+		a.svc.Limiter.Succeed(idKey)
 	}
 	writeTokenResponse(w, t, players, req.RequestUser)
 }
@@ -207,6 +231,11 @@ func (a *API) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "IllegalArgumentException", "invalid JSON body")
+		return
+	}
+	// IP sliding window on refresh too (opaque-token brute force).
+	if a.svc.Limiter != nil && !a.svc.Limiter.Allow("ip:"+clientIP(r)) {
+		writeError(w, http.StatusTooManyRequests, "TooManyRequests", "Too many requests from your address.")
 		return
 	}
 	// Honour the client's profile selection (legacy refresh-with-select).
@@ -429,5 +458,9 @@ func clientIP(r *http.Request) string {
 	}
 	return host
 }
+
+// ClientIP exposes the XFF-aware client address for sibling modules
+// (webapi rate limiting shares one definition).
+func ClientIP(r *http.Request) string { return clientIP(r) }
 
 var _ = errors.Is // keep errors import for future sentinel mapping

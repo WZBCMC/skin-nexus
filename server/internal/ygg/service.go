@@ -7,6 +7,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"skin-nexus/server/internal/ratelimit"
 )
 
 // Errors map to the legacy response semantics (docs/phase1-dev-plan.md §1.3).
@@ -98,6 +100,9 @@ type Service struct {
 	// admin options panel writes the `require_verification` option and it
 	// applies without restart (nil = static RequireVerification field).
 	RequireVerificationResolver func(ctx context.Context) bool
+	// Limiter protects authenticate/refresh from credential guessing
+	// (nil = off; main wires settings-panel thresholds).
+	Limiter *ratelimit.Limiter
 }
 
 // requireVerification is the gate's single decision point.
