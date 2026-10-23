@@ -1,10 +1,16 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { api } from '../api.js'
 
 const { t } = useI18n()
 
 const token = ref(localStorage.getItem('admin_token') || '')
+// Token input is a FALLBACK only (blessing parity): an admin session
+// (me.permission > 0) loads admin data directly with cookies alone — the
+// X-Admin-Token row appears only when the session can't reach admin data or
+// a load returns 401/403.
+const needToken = ref(true)
 const overview = ref(null)
 const users = ref([])
 const unionStatus = ref(null)
@@ -104,9 +110,19 @@ async function adminDeleteUser(u) {
 }
 
 async function fetchJSON(path, opts) {
-  const res = await fetch(path, { ...opts, headers: { 'X-Admin-Token': token.value, ...(opts && opts.headers) } })
+  const headers = { ...(opts && opts.headers) }
+  // X-Admin-Token only when a token exists — session-admin calls work with
+  // cookies alone (same-origin fetch sends them by default, no credentials
+  // option needed).
+  if (token.value) headers['X-Admin-Token'] = token.value
+  const res = await fetch(path, { ...opts, headers })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.message || data.error || `HTTP ${res.status}`)
+  if (!res.ok) {
+    // 401/403 = admin access lost (expired session / revoked permission /
+    // wrong token) — fall back to the token card.
+    if (res.status === 401 || res.status === 403) needToken.value = true
+    throw new Error(data.message || data.error || `HTTP ${res.status}`)
+  }
   return data
 }
 
@@ -250,7 +266,15 @@ async function resumeRotation() {
   } catch (e) { unionError.value = e.message }
 }
 
-onMounted(() => { if (token.value) load() })
+onMounted(async () => {
+  // Session-admin detection: permission > 0 means the session alone reaches
+  // admin data — load directly on mount, no token ceremony.
+  try {
+    const me = await api.me()
+    if (Number(me.permission) > 0) needToken.value = false
+  } catch { /* no usable session — the token fallback stays visible */ }
+  if (!needToken.value || token.value) await load()
+})
 </script>
 
 <template>
@@ -258,7 +282,8 @@ onMounted(() => { if (token.value) load() })
     <div class="card">
       <h2>{{ t('admin.title') }}</h2>
       <div class="row">
-        <input v-model="token" type="password" :placeholder="t('admin.tokenPlaceholder')" style="max-width: 320px;" />
+        <!-- X-Admin-Token fallback row: only when the session can't reach admin data -->
+        <input v-if="needToken" v-model="token" type="password" :placeholder="t('admin.tokenPlaceholder')" style="max-width: 320px;" />
         <button @click="load">{{ t('admin.load') }}</button>
       </div>
       <div class="error" v-if="error">{{ error }}</div>
@@ -438,13 +463,18 @@ onMounted(() => { if (token.value) load() })
       <h2>站点设置（原环境变量，管理员可改）</h2>
       <div class="error" v-if="setError">{{ setError }}</div>
       <div class="row" v-for="s in settings" :key="s.key" style="margin-top: 10px; align-items: center;">
-        <label style="width: 180px; font-weight: 600; font-size: 13px;">{{ s.key }}</label>
+        <!-- Chinese-first label: server-provided desc is primary, the raw key
+             demoted to a small muted hint -->
+        <label style="width: 240px; font-weight: 600; font-size: 13px;">
+          {{ s.desc }}
+          <span class="muted" style="display: block; font-weight: 400; font-size: 11px;">{{ s.key }}</span>
+        </label>
         <input v-if="s.key === 'invite_required' || s.key === 'require_verification'"
                type="checkbox" v-model="s.value" true-value="1" false-value="0" style="width: auto;" />
         <textarea v-else-if="s.key === 'skin_domains'" v-model="s.value" style="max-width: 360px; min-height: 38px;"></textarea>
         <input v-else v-model="s.value" style="max-width: 300px;" :placeholder="s.default" />
         <button @click="saveSetting(s)">保存</button>
-        <span class="muted" style="font-size: 11px;">{{ s.desc }}{{ s.restart ? ' · 重启后生效' : ' · 立即生效' }}</span>
+        <span class="muted" style="font-size: 11px;">{{ s.restart ? '重启后生效' : '立即生效' }}</span>
       </div>
     </div>
   </div>

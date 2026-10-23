@@ -13,6 +13,10 @@ import { setLocale } from './i18n.js'
 const { t, locale } = useI18n()
 
 const user = ref(null)
+// Admin panel entry (blessing parity): only accounts with permission > 0 see
+// it — normal users never do. `permission` comes from GET /api/v1/me
+// (0 = normal, >0 = admin, -1 = banned).
+const isAdmin = computed(() => Number(user.value && user.value.permission) > 0)
 // login | register | dashboard | admin | device | apps | union | setup
 const view = ref('login')
 // Per-card messages (review P1-3): one shared ref rendered in four cards.
@@ -146,6 +150,9 @@ async function doLogin() {
   authErr.value = ''
   try {
     user.value = await api.login(identifier.value, password.value)
+    // login returns the bare {id, nickname} shape; me() carries `permission`
+    // (admin-entry gating) — refresh so the entry appears without a reload.
+    try { user.value = await api.me() } catch { /* keep login payload */ }
   } catch (e) { authErr.value = e.message; return }
   // returning from login initiated on the device page keeps the flow alive
   view.value = location.pathname === '/device' ? 'device' : 'dashboard'
@@ -272,7 +279,7 @@ onMounted(boot)
           <button v-if="view === 'dashboard'" class="secondary" @click="goApps">{{ t('nav.apps') }}</button>
           <button v-if="view === 'dashboard'" class="secondary" @click="view = 'union'">{{ t('nav.union') }}</button>
           <button v-if="view === 'apps' || view === 'union'" class="secondary" @click="view = 'dashboard'">{{ t('common.back') }}</button>
-          <button class="secondary" @click="view = view === 'admin' ? 'dashboard' : 'admin'">
+          <button v-if="isAdmin" class="secondary" @click="view = view === 'admin' ? 'dashboard' : 'admin'">
             {{ view === 'admin' ? t('common.back') : t('common.admin') }}
           </button>
           <button class="secondary" @click="doLogout">{{ t('common.logout') }}</button>

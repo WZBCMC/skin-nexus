@@ -1,9 +1,11 @@
 // Package adminapi serves the operator surface: user list, texture list,
 // weak-hash dashboard, signing key fingerprint, audit log.
 //
-// Admin gating: phase-1 uses a shared admin token (X-Admin-Token header,
-// SKIN_ADMIN_TOKEN env) — small-footprint single-operator model. Role-based
-// admin lands when the plugin framework ships (HookAPI v2 admin hooks).
+// Admin gating (blessing parity, 2026-10-24): EITHER a web session whose
+// account carries the legacy admin permission (users.permission > 0) — the
+// admin logs in normally and the panel works without ceremony — OR the
+// shared admin token (X-Admin-Token header, SKIN_ADMIN_TOKEN env) as the
+// machine/API fallback (empty env = token path locked).
 package adminapi
 
 import (
@@ -88,17 +90,60 @@ func (b *Backend) Handler() http.Handler {
 	})
 }
 
-// auth enforces the admin token (constant-time compare; empty token = locked).
+// sessionCookieName is the site session cookie webapi issues (same name the
+// oidc package reads — see oidc.sessionCookie).
+const sessionCookieName = "skin_session"
+
+// actorUIDKey carries the acting admin uid into handlers so audit rows are
+// attributed to the real account on session-authenticated calls; the token
+// path keeps uid 0 (system/API actor).
+type actorUIDKey struct{}
+
+// actorUID returns the session-authenticated admin's uid (0 = token/API path).
+func actorUID(r *http.Request) int64 {
+	uid, _ := r.Context().Value(actorUIDKey{}).(int64)
+	return uid
+}
+
+// sessionAdmin resolves the caller's web session to an admin account
+// (users.permission > 0 — banned/normal sessions do not qualify). Package
+// var per the oidc.sessionCookie precedent so the middleware is testable
+// without a DB; the default body is store-backed (queries live in store:
+// SessionUser + UserPermission).
+var sessionAdmin = func(r *http.Request, st *store.Mysql) (int64, bool) {
+	c, err := r.Cookie(sessionCookieName)
+	if err != nil || c.Value == "" {
+		return 0, false
+	}
+	uid, err := st.SessionUser(r.Context(), c.Value)
+	if err != nil || uid <= 0 {
+		return 0, false
+	}
+	perm, err := st.UserPermission(r.Context(), uid)
+	if err != nil || perm <= 0 {
+		return 0, false
+	}
+	return uid, true
+}
+
+// auth enforces admin access: EITHER the shared admin token (constant-time
+// compare; empty token = token path locked, unchanged behavior) OR a web
+// session of an admin account (blessing parity). A non-admin session gets
+// the same 403 as a wrong token.
 func (b *Backend) auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		got := r.Header.Get("X-Admin-Token")
-		if b.AdminTok == "" || subtle.ConstantTimeCompare([]byte(got), []byte(b.AdminTok)) != 1 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusForbidden)
-			_, _ = w.Write([]byte(`{"error":"Forbidden","message":"admin token invalid"}`))
+		if b.AdminTok != "" && subtle.ConstantTimeCompare([]byte(got), []byte(b.AdminTok)) == 1 {
+			next(w, r) // machine/API fallback: audit actor stays uid 0
 			return
 		}
-		next(w, r)
+		if uid, ok := sessionAdmin(r, b.Store); ok {
+			next(w, r.WithContext(context.WithValue(r.Context(), actorUIDKey{}, uid)))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"Forbidden","message":"admin token invalid"}`))
 	}
 }
 
@@ -156,5 +201,3 @@ func (b *Backend) handleAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"audit": rows})
 }
-
-var _ = context.Background

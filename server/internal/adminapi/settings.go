@@ -104,7 +104,7 @@ func (b *Backend) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "save failed"})
 		return
 	}
-	b.Store.InsertAudit(r.Context(), 0, "settings_update", map[string]any{
+	b.Store.InsertAudit(r.Context(), actorUID(r), "settings_update", map[string]any{
 		"key": req.Key, "value": val,
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "key": req.Key, "value": val})

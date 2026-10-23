@@ -87,7 +87,7 @@ func (b *Backend) handleOIDCClientsCreate(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	b.Store.InsertAudit(r.Context(), 0, "oidc_client_upsert", map[string]any{
+	b.Store.InsertAudit(r.Context(), actorUID(r), "oidc_client_upsert", map[string]any{
 		"client_id": body.ID, "public": body.Public,
 	})
 	resp := map[string]any{"ok": true, "client_id": body.ID}
@@ -112,6 +112,6 @@ func (b *Backend) handleOIDCClientsDelete(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	b.Store.InsertAudit(r.Context(), 0, "oidc_client_delete", map[string]any{"client_id": id})
+	b.Store.InsertAudit(r.Context(), actorUID(r), "oidc_client_delete", map[string]any{"client_id": id})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

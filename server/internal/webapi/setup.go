@@ -72,7 +72,9 @@ func (b *Backend) handleSetup(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "hash failed")
 		return
 	}
-	uid, err := b.Store.CreateUser(r.Context(), req.Email, req.Nickname, hash, req.PlayerLimit)
+	// blessing parity: the wizard's bootstrap account is an ADMIN account
+	// (permission > 0) so the admin panel is reachable by normal login.
+	uid, err := b.Store.CreateUserAdmin(r.Context(), req.Email, req.Nickname, hash, req.PlayerLimit)
 	if err != nil {
 		writeErr(w, http.StatusConflict, "账号创建失败（昵称或邮箱可能已存在）")
 		return

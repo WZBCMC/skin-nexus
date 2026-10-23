@@ -43,7 +43,7 @@ func (b *Backend) handleSEOSave(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	b.Store.InsertAudit(r.Context(), 0, "seo_save", nil)
+	b.Store.InsertAudit(r.Context(), actorUID(r), "seo_save", nil)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -61,7 +61,7 @@ func (b *Backend) handleAppearanceSave(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	b.Store.InsertAudit(r.Context(), 0, "appearance_save", map[string]any{
+	b.Store.InsertAudit(r.Context(), actorUID(r), "appearance_save", map[string]any{
 		"active_theme": s.ActiveTheme,
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})

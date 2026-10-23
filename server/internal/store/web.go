@@ -13,10 +13,22 @@ import (
 
 // CreateUser registers a user. passwordHash is already modern PHC.
 func (m *Mysql) CreateUser(ctx context.Context, email, nickname, passwordHash string, playerLimit int) (int64, error) {
+	return m.createUser(ctx, email, nickname, passwordHash, playerLimit, 0)
+}
+
+// CreateUserAdmin registers the install-wizard bootstrap account with the
+// legacy blessing admin permission (permission = 1 > 0) in the same INSERT —
+// the wizard is a one-way door, so the account must never land half-promoted
+// (otherwise no account could reach the admin panel by login alone).
+func (m *Mysql) CreateUserAdmin(ctx context.Context, email, nickname, passwordHash string, playerLimit int) (int64, error) {
+	return m.createUser(ctx, email, nickname, passwordHash, playerLimit, 1)
+}
+
+func (m *Mysql) createUser(ctx context.Context, email, nickname, passwordHash string, playerLimit, permission int) (int64, error) {
 	res, err := m.db.ExecContext(ctx,
-		`INSERT INTO users (email, nickname, password, password_algo, player_limit, email_verified, can_join_server)
-		 VALUES (?,?,?,'argon2id',?,0,1)`,
-		nullableStr(email), nickname, passwordHash, playerLimit)
+		`INSERT INTO users (email, nickname, password, password_algo, player_limit, email_verified, can_join_server, permission)
+		 VALUES (?,?,?,'argon2id',?,0,1,?)`,
+		nullableStr(email), nickname, passwordHash, playerLimit, permission)
 	if err != nil {
 		return 0, err
 	}
@@ -99,6 +111,19 @@ func (m *Mysql) UserPlayerLimit(ctx context.Context, uid int64) (int, error) {
 		return 0, err
 	}
 	return n, nil
+}
+
+// UserPermission returns the legacy blessing permission column
+// (0 = normal, >0 = admin, -1 = banned). Powers the session-based admin
+// panel gate (blessing parity) and the /api/v1/me `permission` field.
+func (m *Mysql) UserPermission(ctx context.Context, uid int64) (int, error) {
+	var p int
+	err := m.db.QueryRowContext(ctx,
+		`SELECT permission FROM users WHERE id = ?`, uid).Scan(&p)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = ErrNotFound
+	}
+	return p, err
 }
 
 // WeakHashCount powers the 「弱哈希余量」 dashboard.

@@ -50,7 +50,7 @@ func (b *Backend) handleUserSetPassword(w http.ResponseWriter, r *http.Request) 
 	if b.OnUserCredentialChange != nil {
 		b.OnUserCredentialChange(id)
 	}
-	b.Store.InsertAudit(r.Context(), 0, "admin_user_password_reset", map[string]any{"target": id})
+	b.Store.InsertAudit(r.Context(), actorUID(r), "admin_user_password_reset", map[string]any{"target": id})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -88,7 +88,7 @@ func (b *Backend) handleUserDelete(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "delete failed"})
 		return
 	}
-	b.Store.InsertAudit(r.Context(), 0, "admin_user_delete", map[string]any{"target": id})
+	b.Store.InsertAudit(r.Context(), actorUID(r), "admin_user_delete", map[string]any{"target": id})
 	if b.OnUserDeleted != nil {
 		b.OnUserDeleted(id, players) // async inside the hook; never blocks this response
 	}

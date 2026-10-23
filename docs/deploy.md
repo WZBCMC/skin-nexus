@@ -59,7 +59,7 @@ Environment=SKIN_SKIN_DOMAINS=skin.yitmc.cn,skin.cauc.fun,skin.cduestc.fun,skin.
 Environment=SKIN_TEXTURES_DIR=/opt/skin-nexus/data/textures
 Environment=SKIN_SIGN_KEY=/opt/skin-nexus/data/sign-key.pem
 Environment=SKIN_LEGACY_ENV=/opt/skin-nexus/legacy.env
-Environment=SKIN_ADMIN_TOKEN=（随机 64 位 hex，openssl rand -hex 32）
+Environment=SKIN_ADMIN_TOKEN=（随机 64 位 hex，openssl rand -hex 32；机器/API 回退——管理面板首选管理员账号（users.permission>0）登录直用，无需 token）
 # —— 二期：yggc/OIDC 免密登录（不启用可整段移除）——
 Environment=SKIN_OIDC_ENABLED=true
 Environment=SKIN_OIDC_ISSUER=https://skin.wzbcmc.cn

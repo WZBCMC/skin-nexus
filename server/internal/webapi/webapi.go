@@ -327,9 +327,16 @@ func (b *Backend) handleMe(w http.ResponseWriter, r *http.Request) {
 	if n, err := b.Store.UserPlayerLimit(r.Context(), uid); err == nil && n > 0 {
 		limit = n
 	}
+	// blessing parity: raw legacy permission (0 normal, >0 admin, -1 banned)
+	// — the frontend gates the admin panel entry on it. Additive field.
+	perm := 0
+	if p, err := b.Store.UserPermission(r.Context(), uid); err == nil {
+		perm = p
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"id": u.ID, "nickname": u.Nickname,
 		"emailVerified": u.EmailVerified, "playerLimit": limit,
+		"permission": perm,
 	})
 }
 

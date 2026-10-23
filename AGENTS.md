@@ -15,7 +15,7 @@ server/         Go 后端（模块 skin-nexus/server）
   internal/migrate    迁移引擎（.env 解析 / uuid 五步清洗 / 纹理树审计）
   internal/store      MySQL 实现（ygg.Store / oidc.Backend 端口 + web/admin 查询）
   internal/webapi     站内 API（注册/登录 session/上传/角色）
-  internal/adminapi   管理 API（X-Admin-Token 门禁）
+  internal/adminapi   管理 API（管理员账号会话 permission>0 门禁 + X-Admin-Token 机器/API 回退）
   internal/publicapi  公开只读 API + legacy/usm/CustomSkinAPI 兼容路由
   internal/plugin     P0 HookAPI 合约（冻结）
   migrations/         DDL（InnoDB utf8mb4；0001 基础 / 0002 会话 / 0003 OIDC / 0004 Union）

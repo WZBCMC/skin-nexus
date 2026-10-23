@@ -47,7 +47,7 @@ func (b *Backend) handleInvitationGenerate(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"error": "internal error"})
 		return
 	}
-	b.Store.InsertAudit(r.Context(), 0, "admin_invite_generate", map[string]any{
+	b.Store.InsertAudit(r.Context(), actorUID(r), "admin_invite_generate", map[string]any{
 		"amount": req.Amount, "description": req.Description,
 	})
 	writeJSON(w, http.StatusCreated, map[string]interface{}{"codes": codes})
@@ -71,7 +71,7 @@ func (b *Backend) handleInvitationEdit(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"error": "internal error"})
 		return
 	}
-	b.Store.InsertAudit(r.Context(), 0, "admin_invite_edit", map[string]any{
+	b.Store.InsertAudit(r.Context(), actorUID(r), "admin_invite_edit", map[string]any{
 		"id": req.ID, "description": req.Description,
 	})
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
