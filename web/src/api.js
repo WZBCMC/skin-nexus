@@ -15,7 +15,7 @@ async function req(method, path, body) {
 export const api = {
   me: () => req('GET', '/api/v1/me'),
   login: (identifier, password) => req('POST', '/api/v1/login', { identifier, password }),
-  register: (email, nickname, password) => req('POST', '/api/v1/register', { email, nickname, password }),
+  register: (email, nickname, password, invitationCode) => req('POST', '/api/v1/register', { email, nickname, password, invitationCode }),
   logout: () => req('POST', '/api/v1/logout'),
   players: () => req('GET', '/api/v1/me/players'),
   createPlayer: (name) => req('POST', '/api/v1/me/players', { name }),

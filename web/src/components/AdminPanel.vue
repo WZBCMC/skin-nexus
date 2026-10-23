@@ -22,6 +22,12 @@ const appearance = ref(null)
 const appearError = ref('')
 const themes = ref([])
 
+// Invitation codes (1:1 live blessing plugin admin surface)
+const invFree = ref([])
+const invUsed = ref([])
+const invError = ref('')
+const invNew = ref({ amount: 1, description: '' })
+
 async function fetchJSON(path, opts) {
   const res = await fetch(path, { ...opts, headers: { 'X-Admin-Token': token.value, ...(opts && opts.headers) } })
   const data = await res.json().catch(() => ({}))
@@ -66,6 +72,42 @@ async function load() {
     const th = await fetchJSON('/api/admin/v1/themes')
     themes.value = th.themes || []
   } catch (e) { appearError.value = e.message }
+  // Invitation codes
+  invError.value = ''
+  try {
+    const d = await fetchJSON('/api/admin/v1/invitation-codes')
+    invFree.value = d.free || []
+    invUsed.value = d.used || []
+  } catch (e) { invError.value = e.message }
+}
+
+async function invGenerate() {
+  invError.value = ''
+  try {
+    await fetchJSON('/api/admin/v1/invitation-codes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: invNew.value.amount || 1, description: invNew.value.description }),
+    })
+    invNew.value = { amount: 1, description: '' }
+    const d = await fetchJSON('/api/admin/v1/invitation-codes')
+    invFree.value = d.free || []
+    invUsed.value = d.used || []
+  } catch (e) { invError.value = e.message }
+}
+
+async function invEdit(ic) {
+  const next = prompt('修改备注（description）：', ic.description || '')
+  if (next === null) return
+  invError.value = ''
+  try {
+    await fetchJSON('/api/admin/v1/invitation-codes', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: ic.id, description: next }),
+    })
+    const d = await fetchJSON('/api/admin/v1/invitation-codes')
+    invFree.value = d.free || []
+    invUsed.value = d.used || []
+  } catch (e) { invError.value = e.message }
 }
 
 async function seoOneClick() {
@@ -276,6 +318,37 @@ onMounted(() => { if (token.value) load() })
         <button @click="appearSave">保存外观</button>
       </div>
       <div class="error" v-if="appearError">{{ appearError }}</div>
+    </div>
+
+    <!-- 邀请码（1:1 线上 blessing 插件管理面） -->
+    <div class="card">
+      <h2>邀请码（未用 {{ invFree.length }} / 已用 {{ invUsed.length }}）</h2>
+      <div class="row">
+        <input v-model.number="invNew.amount" type="number" min="1" max="1000" placeholder="数量" style="max-width: 100px;" />
+        <input v-model="invNew.description" placeholder="备注（description，如 姓名+学号，选填）" style="max-width: 320px;" />
+        <button @click="invGenerate">生成</button>
+      </div>
+      <div class="error" v-if="invError">{{ invError }}</div>
+      <table v-if="invFree.length" style="margin-top: 10px;">
+        <tr><th>ID</th><th>邀请码</th><th>备注</th><th>生成时间</th><th></th></tr>
+        <tr v-for="ic in invFree" :key="ic.id">
+          <td>{{ ic.id }}</td>
+          <td><code>{{ ic.code }}</code></td>
+          <td class="muted">{{ ic.description || '—' }}</td>
+          <td class="muted">{{ (ic.generated_at || '').slice(0, 19).replace('T', ' ') }}</td>
+          <td><button class="secondary" @click="invEdit(ic)">改备注</button></td>
+        </tr>
+      </table>
+      <table v-if="invUsed.length" style="margin-top: 10px;">
+        <tr><th>ID</th><th>邀请码</th><th>备注</th><th>使用者 UID</th><th>使用时间</th></tr>
+        <tr v-for="ic in invUsed" :key="ic.id">
+          <td>{{ ic.id }}</td>
+          <td><code>{{ ic.code }}</code></td>
+          <td class="muted">{{ ic.description || '—' }}</td>
+          <td>{{ ic.used_by }}</td>
+          <td class="muted">{{ (ic.used_at || '').slice(0, 19).replace('T', ' ') }}</td>
+        </tr>
+      </table>
     </div>
   </div>
 </template>

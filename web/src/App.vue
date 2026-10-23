@@ -23,6 +23,7 @@ const identifier = ref('')
 const password = ref('')
 const email = ref('')
 const nickname = ref('')
+const invitationCode = ref('')
 
 // data
 const players = ref([])
@@ -85,7 +86,7 @@ async function doLogin() {
 async function doRegister() {
   error.value = ''
   try {
-    user.value = await api.register(email.value, nickname.value, password.value)
+    user.value = await api.register(email.value, nickname.value, password.value, invitationCode.value.trim())
     view.value = 'dashboard'
     await load()
   } catch (e) { error.value = e.message }
@@ -182,6 +183,8 @@ onMounted(boot)
       <input v-model="email" type="email" />
       <label>{{ t('auth.passwordMin') }}</label>
       <input v-model="password" type="password" @keyup.enter="doRegister" />
+      <label>{{ t('auth.invitationCode') }}</label>
+      <input v-model="invitationCode" @keyup.enter="doRegister" />
       <div class="error" v-if="error">{{ error }}</div>
       <div class="row" style="margin-top: 14px;">
         <button @click="doRegister">{{ t('common.register') }}</button>

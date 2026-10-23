@@ -31,6 +31,7 @@
     "nickname": "Nickname (MC style)",
     "email": "Email (optional)",
     "passwordMin": "Password (min 8 chars)",
+    "invitationCode": "Invitation code (optional)",
     "toRegister": "Sign up",
     "toLogin": "Back to sign in"
   },

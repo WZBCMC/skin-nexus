@@ -31,6 +31,7 @@
     "nickname": "昵称（MC 风格）",
     "email": "邮箱（可留空）",
     "passwordMin": "密码（≥8 位）",
+    "invitationCode": "邀请码（选填）",
     "toRegister": "注册",
     "toLogin": "返回登录"
   },
