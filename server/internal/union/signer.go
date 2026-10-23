@@ -41,6 +41,15 @@ type UnionSigner struct {
 	now      func() time.Time
 	enabled  bool
 
+	// OnKeyPersist, when set (boot wiring in cmd/skin-nexus, before the first
+	// key lands), receives every accepted key as its raw PEM plus the hub
+	// version string so the caller can persist it across restarts. A nil
+	// callback keeps the old in-memory-only behavior; a callback error is
+	// audited ("union.signer.key.persist_failed") and surfaced to the caller
+	// while the key stays active. RestoreKey installs such a persisted key
+	// WITHOUT firing this callback.
+	OnKeyPersist func(pem, version string) error
+
 	cur atomic.Pointer[signingKey] // nil => fallback mode; lock-free reads
 
 	mu          sync.Mutex
@@ -169,22 +178,62 @@ func (s *UnionSigner) KeyFingerprint() string {
 // may be PKCS#8 or PKCS#1 PEM. Manual switches do not consume the automatic
 // rotation budget — an operator acting deliberately is the human review the
 // suspension asks for — but they do not lift a suspension either; call
-// ResumeRotation to re-arm polling.
+// ResumeRotation to re-arm polling. The landed key is handed to OnKeyPersist
+// (restart continuity); a persistence failure is audited and returned while
+// the key stays active.
 func (s *UnionSigner) SetKey(pemStr, version string) error {
-	if !s.Enabled() {
-		return ErrDisabled
-	}
-	key, err := parsePrivateKeyPEM(pemStr)
-	if err != nil {
-		return fmt.Errorf("union: signing key: %w", err)
-	}
-	pub, der, err := publicPEM(&key.PublicKey)
+	sk, err := s.installKey(pemStr, version)
 	if err != nil {
 		return err
 	}
+	s.audit.call("union.signer.key.set", map[string]any{"version": version, "fingerprint": sk.fp})
+	return s.persistKey(pemStr, version)
+}
+
+// RestoreKey reinstalls a key previously persisted via OnKeyPersist — called
+// at boot BEFORE serving so a restart never falls back to the local key while
+// waiting for the first rotation. Same acceptance rules as SetKey (PKCS#8 or
+// PKCS#1 PEM), but it never re-persists the values it was restored from and
+// never consumes rotation budget; the distinct audit event keeps restarts
+// distinguishable from live key changes.
+func (s *UnionSigner) RestoreKey(pemStr, version string) error {
+	sk, err := s.installKey(pemStr, version)
+	if err != nil {
+		return err
+	}
+	s.audit.call("union.signer.key.restored", map[string]any{"version": version, "fingerprint": sk.fp})
+	return nil
+}
+
+// installKey parses one key document and atomically activates it.
+func (s *UnionSigner) installKey(pemStr, version string) (*signingKey, error) {
+	if !s.Enabled() {
+		return nil, ErrDisabled
+	}
+	key, err := parsePrivateKeyPEM(pemStr)
+	if err != nil {
+		return nil, fmt.Errorf("union: signing key: %w", err)
+	}
+	pub, der, err := publicPEM(&key.PublicKey)
+	if err != nil {
+		return nil, err
+	}
 	sk := &signingKey{key: key, pubPEM: pub, fp: fingerprint(der), version: version}
 	s.cur.Store(sk)
-	s.audit.call("union.signer.key.set", map[string]any{"version": version, "fingerprint": sk.fp})
+	return sk, nil
+}
+
+// persistKey hands a landed key to OnKeyPersist (nil = in-memory only). The
+// failure is audited here so it is never silent even when the caller drops
+// the returned error.
+func (s *UnionSigner) persistKey(pemStr, version string) error {
+	if s.OnKeyPersist == nil {
+		return nil
+	}
+	if err := s.OnKeyPersist(pemStr, version); err != nil {
+		s.audit.call("union.signer.key.persist_failed", map[string]any{"version": version, "error": err.Error()})
+		return fmt.Errorf("union: persist signing key: %w", err)
+	}
 	return nil
 }
 
@@ -321,6 +370,12 @@ func (s *UnionSigner) rotateOnce(ctx context.Context) (bool, error) {
 		"fingerprint": fp,
 		"changes":     s.changes,
 	})
+	// Restart continuity: a rotation-landed key must survive a restart just
+	// like a SetKey-landed one. A persist failure keeps the switch (the old
+	// key is already retired) and is surfaced to the loop for auditing.
+	if err := s.persistKey(doc.PrivateKey, doc.PrivateKeyVersion); err != nil {
+		return true, err
+	}
 	return true, nil
 }
 

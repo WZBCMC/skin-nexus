@@ -325,10 +325,156 @@ func TestSignerDisabledIsInert(t *testing.T) {
 	if err := s.SetKey("garbage", "v"); !errors.Is(err, ErrDisabled) {
 		t.Fatalf("SetKey on disabled = %v", err)
 	}
+	if err := s.RestoreKey("garbage", "v"); !errors.Is(err, ErrDisabled) {
+		t.Fatalf("RestoreKey on disabled = %v", err)
+	}
 	if err := s.StartRotation(context.Background(), 12*time.Minute); !errors.Is(err, ErrDisabled) {
 		t.Fatalf("StartRotation on disabled = %v", err)
 	}
 	if err := s.ResumeRotation(); !errors.Is(err, ErrDisabled) {
 		t.Fatalf("ResumeRotation on disabled = %v", err)
+	}
+}
+
+// TestSignerPersistAndRestoreRoundTrip is the restart-continuity unit: a
+// landed key goes out through OnKeyPersist (what main wires to union_kv) and
+// a SECOND signer rebuilt from those exact values signs with the same key and
+// reports the same version — the pre-fix window where a restart fell back to
+// the local key until the first rotation cannot reappear silently.
+func TestSignerPersistAndRestoreRoundTrip(t *testing.T) {
+	key := genRSA(t, 2048)
+	hubPEM := privPEM(t, key)
+
+	// Signer A: hub key lands via SetKey; the callback captures what a real
+	// deployment would write to union_kv.
+	var gotPEM, gotVersion string
+	calls := 0
+	a := NewUnionSigner(Config{Enabled: true}, nil, &fakeSigner{fp: "SHA256:local"}, nil)
+	a.OnKeyPersist = func(pemStr, version string) error {
+		calls++
+		gotPEM, gotVersion = pemStr, version
+		return nil
+	}
+	if err := a.SetKey(hubPEM, "v7"); err != nil {
+		t.Fatalf("SetKey: %v", err)
+	}
+	if calls != 1 || gotPEM != hubPEM || gotVersion != "v7" {
+		t.Fatalf("persist capture: calls=%d pemMatch=%v version=%q", calls, gotPEM == hubPEM, gotVersion)
+	}
+
+	// Signer B: fresh boot restored from the persisted values. Restore must
+	// NOT fire the persist callback again (the spy proves it).
+	b := NewUnionSigner(Config{Enabled: true}, nil, &fakeSigner{fp: "SHA256:local"}, nil)
+	b.OnKeyPersist = func(string, string) error {
+		t.Error("RestoreKey must not re-persist the key it was restored from")
+		return nil
+	}
+	if err := b.RestoreKey(gotPEM, gotVersion); err != nil {
+		t.Fatalf("RestoreKey: %v", err)
+	}
+	if b.Mode() != ModeUnionManaged {
+		t.Fatalf("restored mode = %s, want %s", b.Mode(), ModeUnionManaged)
+	}
+	if b.PrivateKeyVersion() != "v7" || b.PrivateKeyVersion() != a.PrivateKeyVersion() {
+		t.Fatalf("restored version = %q (a=%q), want v7", b.PrivateKeyVersion(), a.PrivateKeyVersion())
+	}
+	if b.PublicKeyPEM() != a.PublicKeyPEM() || b.KeyFingerprint() != a.KeyFingerprint() {
+		t.Fatal("restored signer must present the same public key/fingerprint")
+	}
+
+	// Signatures from the restored signer verify against the same public key.
+	sig, err := b.SignValue("textures")
+	if err != nil {
+		t.Fatalf("SignValue: %v", err)
+	}
+	raw, err := base64.StdEncoding.DecodeString(sig)
+	if err != nil {
+		t.Fatalf("signature not base64: %v", err)
+	}
+	digest := sha1.Sum([]byte("textures"))
+	if err := rsa.VerifyPKCS1v15(&key.PublicKey, crypto.SHA1, digest[:], raw); err != nil {
+		t.Fatalf("restored signature does not verify against the same key: %v", err)
+	}
+
+	// The PEM is persisted verbatim, so a hub that issued PKCS#1 restores too.
+	c := NewUnionSigner(Config{Enabled: true}, nil, nil, nil)
+	if err := c.RestoreKey(privPEMPKCS1(t, key), "v7"); err != nil {
+		t.Fatalf("RestoreKey(PKCS#1): %v", err)
+	}
+	if c.KeyFingerprint() != b.KeyFingerprint() {
+		t.Fatal("PKCS#1 restore must yield the same key")
+	}
+}
+
+// TestRotateOncePersistsSwitchedKey covers the rotation-loop path of the same
+// continuity: switches persist the raw hub PEM + version, unchanged polls
+// persist nothing.
+func TestRotateOncePersistsSwitchedKey(t *testing.T) {
+	k1, k2 := genRSA(t, 2048), genRSA(t, 2048)
+	hub := newKeyHub(t, []*rsa.PrivateKey{k1, k1, k2})
+	s := newTestSigner(t, hub.URL, nil)
+	var landed, versions []string
+	s.OnKeyPersist = func(pemStr, version string) error {
+		landed = append(landed, pemStr)
+		versions = append(versions, version)
+		return nil
+	}
+	ctx := context.Background()
+
+	if changed, err := s.rotateOnce(ctx); err != nil || !changed {
+		t.Fatalf("first rotation = %v, %v", changed, err)
+	}
+	if len(landed) != 1 || landed[0] != privPEM(t, k1) || versions[0] != "v1" {
+		t.Fatalf("first persist = %d entries, pem match %v, versions %v",
+			len(landed), len(landed) == 1 && landed[0] == privPEM(t, k1), versions)
+	}
+
+	// Identical key again: no switch => no additional persist.
+	if changed, err := s.rotateOnce(ctx); err != nil || changed {
+		t.Fatalf("identical key must not switch: %v, %v", changed, err)
+	}
+	if len(landed) != 1 {
+		t.Fatalf("unchanged poll must not persist: %d entries", len(landed))
+	}
+
+	// Fingerprint change: the new key lands and is persisted.
+	if changed, err := s.rotateOnce(ctx); err != nil || !changed {
+		t.Fatalf("new key must switch: %v, %v", changed, err)
+	}
+	if len(landed) != 2 || landed[1] != privPEM(t, k2) || versions[1] != "v3" {
+		t.Fatalf("second persist = %d entries, pem match %v, versions %v",
+			len(landed), len(landed) == 2 && landed[1] == privPEM(t, k2), versions)
+	}
+}
+
+// TestPersistFailureKeepsKeyActiveAndAudited: a failing OnKeyPersist must
+// surface to the caller and be audited, but never roll back an accepted key.
+func TestPersistFailureKeepsKeyActiveAndAudited(t *testing.T) {
+	key := genRSA(t, 2048)
+
+	// SetKey path.
+	log := &auditLog{}
+	s := NewUnionSigner(Config{Enabled: true}, nil, nil, log.fn())
+	s.OnKeyPersist = func(string, string) error { return errors.New("db down") }
+	if err := s.SetKey(privPEM(t, key), "v1"); err == nil {
+		t.Fatal("persist failure must surface from SetKey")
+	}
+	if s.Mode() != ModeUnionManaged || s.PrivateKeyVersion() != "v1" {
+		t.Fatalf("mode=%s version=%s after persist failure (key must stay active)", s.Mode(), s.PrivateKeyVersion())
+	}
+	if _, ok := log.last("union.signer.key.persist_failed"); !ok {
+		t.Fatalf("persist failure must be audited: %+v", log.events)
+	}
+
+	// Rotation path: the switch still happens, the failure surfaces.
+	hub := newKeyHub(t, []*rsa.PrivateKey{genRSA(t, 2048)})
+	s2 := newTestSigner(t, hub.URL, log)
+	s2.OnKeyPersist = func(string, string) error { return errors.New("db down") }
+	changed, err := s2.rotateOnce(context.Background())
+	if !changed || err == nil {
+		t.Fatalf("rotation with persist failure = changed %v, err %v", changed, err)
+	}
+	if s2.Mode() != ModeUnionManaged {
+		t.Fatal("rotated key must stay active despite persist failure")
 	}
 }

@@ -240,7 +240,44 @@ func main() {
 			log.Fatalf("union api: %v", err)
 		}
 		unionGrant, unionOut, unionSigner = grant, out, usigner
-		activeSigner = usigner                                         // hub-distributed key with local fallback
+		activeSigner = usigner // hub-distributed key with local fallback
+		// Signing-key restart continuity (2026-10-23 hardening): every landed
+		// hub key is persisted to union_kv (the 0004 escape hatch built for
+		// exactly this) and the self-description version follows live
+		// rotations too. Failure is audited by the signer and surfaced to the
+		// rotation/inbound caller.
+		usigner.OnKeyPersist = func(pemStr, version string) error {
+			if err := st.SetUnionKV(context.Background(), "union_private_key", pemStr); err != nil {
+				return err
+			}
+			if err := st.SetUnionKV(context.Background(), "union_private_key_version", version); err != nil {
+				return err
+			}
+			unionAPI.SetPrivateKeyVersion(version) // keep self-description in step
+			return nil
+		}
+		// Restore the persisted hub key BEFORE serving: the signer used to be
+		// memory-only, so every restart signed with the LOCAL fallback key
+		// until the first 10-15min rotation landed and cross-site clients
+		// rejected our profiles in that window.
+		if pemStr, ok, err := st.GetUnionKV(context.Background(), "union_private_key"); err == nil && ok && pemStr != "" {
+			kvVersion, _, _ := st.GetUnionKV(context.Background(), "union_private_key_version")
+			if err := usigner.RestoreKey(pemStr, kvVersion); err != nil {
+				audit("signer_key_restore_failed", map[string]any{"error": err.Error()})
+			} else {
+				log.Printf("union: hub signing key restored (version %q)", kvVersion)
+			}
+		}
+		// Self-description versions survive restarts as well (inbound.go's
+		// caches start empty): key version from the signer state, server list
+		// version from the existing union_server_list_version option written
+		// by OnServerList below.
+		if v := usigner.PrivateKeyVersion(); v != "" {
+			unionAPI.SetPrivateKeyVersion(v)
+		}
+		if v, ok, err := st.GetOption(context.Background(), "union_server_list_version"); err == nil && ok && v != "" {
+			unionAPI.SetServerListVersion(v)
+		}
 		go usigner.StartRotation(context.Background(), 12*time.Minute) // 10–15min base + internal jitter
 		log.Printf("union: enabled (hub %s, queryemail %s)", cfg.UnionAPIRoot, cfg.UnionQueryEmailMode)
 	}
