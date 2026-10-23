@@ -9,6 +9,15 @@ import (
 	"time"
 )
 
+// writeErrStatus keeps the frozen {"error": msg} body shape but reports a
+// real HTTP status (review B/C P2: every error used to answer 200, so any
+// non-SPA client read failures as success).
+func writeErrStatus(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": msg})
+}
+
 // GET /api/v1/oidc/tokens — the caller's live (non-revoked, non-expired)
 // access-token ledger entries, newest first.
 func (p *Provider) listTokens(w http.ResponseWriter, r *http.Request) {
@@ -19,7 +28,7 @@ func (p *Provider) listTokens(w http.ResponseWriter, r *http.Request) {
 	}
 	recs, err := p.backend.ListUserAccessTokens(r.Context(), uid)
 	if err != nil {
-		writeJSON(w, map[string]any{"error": "查询失败"})
+		writeErrStatus(w, http.StatusInternalServerError, "查询失败")
 		return
 	}
 	type item struct {
@@ -60,16 +69,18 @@ func (p *Provider) revokeToken(w http.ResponseWriter, r *http.Request) {
 		All bool   `json:"all"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, map[string]any{"error": "bad body"})
+		writeErrStatus(w, http.StatusBadRequest, "bad body")
 		return
 	}
 	if body.All {
-		if err := p.backend.RevokeUserAccessTokens(r.Context(), uid); err != nil {
-			writeJSON(w, map[string]any{"error": "吊销失败"})
-			return
+		// Both families are attempted even when one fails; the combined error
+		// is reported (review B P3: partial completion was invisible).
+		err := p.backend.RevokeUserAccessTokens(r.Context(), uid)
+		if err2 := p.backend.RevokeUserRefreshTokens(r.Context(), uid); err == nil {
+			err = err2
 		}
-		if err := p.backend.RevokeUserRefreshTokens(r.Context(), uid); err != nil {
-			writeJSON(w, map[string]any{"error": "吊销失败"})
+		if err != nil {
+			writeErrStatus(w, http.StatusInternalServerError, "吊销失败")
 			return
 		}
 		p.auditEvent("oidc.tokens_revoke_all", map[string]any{"uid": uid})
@@ -77,17 +88,17 @@ func (p *Provider) revokeToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.JTI == "" {
-		writeJSON(w, map[string]any{"error": "missing jti"})
+		writeErrStatus(w, http.StatusBadRequest, "missing jti")
 		return
 	}
 	// Ownership check: never let one user revoke another user's jti.
 	rec, err := p.backend.GetAccessToken(r.Context(), body.JTI)
 	if err != nil || rec.UserID != uid {
-		writeJSON(w, map[string]any{"error": "未找到该授权"})
+		writeErrStatus(w, http.StatusNotFound, "未找到该授权")
 		return
 	}
 	if err := p.backend.RevokeAccessToken(r.Context(), body.JTI); err != nil {
-		writeJSON(w, map[string]any{"error": "吊销失败"})
+		writeErrStatus(w, http.StatusInternalServerError, "吊销失败")
 		return
 	}
 	// Refresh table carries no jti: revoke the uid+client refresh scope.

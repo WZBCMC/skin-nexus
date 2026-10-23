@@ -37,11 +37,20 @@ type Limiter struct {
 	failMax  int
 	failWin  time.Duration
 	stop     chan struct{}
+	stopOnce sync.Once
 }
 
 // New builds a limiter and starts its sweeper. Non-positive maxReqs or
-// failMax disables that layer (zero = off).
+// failMax disables that layer (zero = off). Non-positive window/failWin are
+// clamped (review B P2: a zero window panicked the sweeper ticker, and a
+// zero failWin silently killed the lockout layer).
 func New(maxReqs int, window time.Duration, failMax int, failWin time.Duration) *Limiter {
+	if window <= 0 {
+		window = time.Minute
+	}
+	if failWin <= 0 {
+		failWin = 15 * time.Minute
+	}
 	l := &Limiter{
 		requests: make(map[string][]int64),
 		fails:    make(map[string]failRec),
@@ -172,4 +181,7 @@ func (l *Limiter) sweep(now int64) {
 }
 
 // Stop terminates the sweeper (tests).
-func (l *Limiter) Stop() { close(l.stop) }
+// Stop halts the sweeper; idempotent (review B P2: double close panicked).
+func (l *Limiter) Stop() {
+	l.stopOnce.Do(func() { close(l.stop) })
+}
