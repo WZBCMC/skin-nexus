@@ -299,11 +299,26 @@ func main() {
 			oidcProvider.RevokeUserAllTokens(context.Background(), uid)
 		}
 	}
+	// Options panel → request-time join gate (no restart needed).
+	yggSvc.RequireVerificationResolver = func(ctx context.Context) bool {
+		if v, ok, err := st.GetOption(ctx, "require_verification"); err == nil && ok {
+			return v == "1" || v == "true"
+		}
+		return cfg.RequireVerification
+	}
 	if unionOut != nil {
 		backend.MountUnion(unionOut) // registers /api/v1/union/* (zero surface when disabled)
 	}
 	pub := publicapi.New(st, ts)
 	admin := adminapi.New(st, yggSvc)
+	// Settings panel: env-derived fallbacks; option values win per request.
+	admin.SettingsDefaults = map[string]string{
+		"site_name":            cfg.SiteName,
+		"server_name":          cfg.ServerName,
+		"skin_domains":         strings.Join(cfg.SkinDomains, ","),
+		"invite_required":      boolStr(cfg.RequireInvite),
+		"require_verification": boolStr(cfg.RequireVerification),
+	}
 	admin.SetSharedClientID(cfg.SharedClientID) // guards shared launcher client deletion
 	admin.MountAppearance(adminapi.AppearanceDeps{SEO: seoEng, Appear: appearEng, Themes: themeReg})
 	if unionSigner != nil {

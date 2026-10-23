@@ -25,6 +25,9 @@ type Backend struct {
 	union          UnionDeps        // nil until MountUnion (module disabled = no routes)
 	sharedClientID string           // guard: shared launcher client cannot be deleted
 	appearance     *AppearanceDeps  // nil until MountAppearance
+	// SettingsDefaults carries env-derived fallbacks for the settings panel
+	// (injected by main from config).
+	SettingsDefaults map[string]string
 }
 
 func New(st *store.Mysql, yggSvc *ygg.Service) *Backend {
@@ -46,6 +49,8 @@ func (b *Backend) Handler() http.Handler {
 	mux.HandleFunc("GET /api/admin/v1/invitation-codes", b.auth(b.handleInvitationList))
 	mux.HandleFunc("POST /api/admin/v1/invitation-codes", b.auth(b.handleInvitationGenerate))
 	mux.HandleFunc("PUT /api/admin/v1/invitation-codes", b.auth(b.handleInvitationEdit))
+	mux.HandleFunc("GET /api/admin/v1/settings", b.auth(b.handleSettingsGet))
+	mux.HandleFunc("PUT /api/admin/v1/settings", b.auth(b.handleSettingsPut))
 	if b.union.Status != nil {
 		mux.HandleFunc("GET /api/admin/v1/union/status", b.auth(b.handleUnionStatus))
 		mux.HandleFunc("POST /api/admin/v1/union/rotation/resume", b.auth(b.handleUnionRotationResume))

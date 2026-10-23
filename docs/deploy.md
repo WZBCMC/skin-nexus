@@ -28,7 +28,7 @@ docker compose pull && docker compose up -d      # 升级同命令，数据卷�
 
 - **持久化**：`skin-data` 卷挂 `/data`（textures/sign-key.pem/oidc-key.pem/themes/），`skin-db` 卷存 MySQL——**升级只换容器，卷不动，数据零丢失**。
 - **统一数据根**：`SKIN_DATA_DIR`（默认 `./data`）；`SKIN_TEXTURES_DIR`/`SKIN_SIGN_KEY` 等旧变量显式设置时优先。
-- **新环境变量**：`SKIN_DATA_DIR`、`SKIN_THEMES_DIR`（默认 `<data>/themes`）、`SKIN_AUTO_MIGRATE`（**追踪式迁移**：`schema_migrations` 逐文件记标，空库全量、既有库自动补新文件；重复对象冲突容忍、其它错误启动失败）、`SKIN_MIGRATIONS_DIR`（默认 `./migrations`）、`SKIN_REQUIRE_VERIFICATION`（join 邮箱验证门，`true` 开启；默认 `false`，待 P1 验证邮件流落地后再开）、`SKIN_INVITE_REQUIRED`（注册强制邀请码，`true` 时=线上必填语义；默认 `false` 注册开放、邀请码选填）。
+- **新环境变量**：`SKIN_DATA_DIR`、`SKIN_THEMES_DIR`（默认 `<data>/themes`）、`SKIN_AUTO_MIGRATE`（**追踪式迁移**：`schema_migrations` 逐文件记标，空库全量、既有库自动补新文件；重复对象冲突容忍、其它错误启动失败）、`SKIN_MIGRATIONS_DIR`（默认 `./migrations`）、`SKIN_REQUIRE_VERIFICATION`（join 邮箱验证门，`true` 开启；默认 `false`，待 P1 验证邮件流落地后再开）、`SKIN_INVITE_REQUIRED`（注册强制邀请码，`true` 时=线上必填语义；默认 `false` 注册开放、邀请码选填）。**站点类默认值已迁管理 UI**（「管理 → 站点设置」白名单：site_name/server_name/skin_domains/invite_required/require_verification，`options` 表值优先于 env，开关类立即生效、其余重启生效）；凭据类（DSN/密钥/admin token）仍只走环境变量。
 - **健康检查**：`GET /healthz`（DB 探活，compose HEALTHCHECK 已用）。
 - **主题包**：放入 `data/themes/<id>/`（含 theme.json，规范见 docs/theme-spec.md），admin 面板「外观」选择启用；自定义 CSS/JS 亦在「外观」区块（JS 原样注入，仅用可信代码）。
 - **SEO**：admin 面板「SEO」区块一键配置 meta/OG/sitemap/robots；预发可勾整站 noindex。

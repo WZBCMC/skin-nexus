@@ -50,6 +50,15 @@ type Backend struct {
 	unionSrv *unionServerCache
 }
 
+// inviteRequired resolves the register gate per request: options-panel value
+// (`invite_required`) wins when set, otherwise the env-derived static default.
+func (b *Backend) inviteRequired(ctx context.Context) bool {
+	if v, ok, err := b.Store.GetOption(ctx, "invite_required"); err == nil && ok {
+		return v == "1" || v == "true"
+	}
+	return b.RequireInvite
+}
+
 func New(st *store.Mysql, ts *texture.Store, yggSvc *ygg.Service) *Backend {
 	return &Backend{Store: st, Textures: ts, Ygg: yggSvc, MaxChars: 3}
 }
@@ -164,7 +173,7 @@ func (b *Backend) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	code := strings.TrimSpace(req.InvitationCode)
-	if code == "" && b.RequireInvite {
+	if code == "" && b.inviteRequired(r.Context()) {
 		writeErr(w, http.StatusBadRequest, "邀请码不能为空")
 		return
 	}

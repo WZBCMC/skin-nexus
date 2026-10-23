@@ -28,6 +28,29 @@ const invUsed = ref([])
 const invError = ref('')
 const invNew = ref({ amount: 1, description: '' })
 
+// Settings panel: env-migrated site knobs
+const settings = ref([])
+const setError = ref('')
+
+async function loadSettings() {
+  setError.value = ''
+  try {
+    const d = await fetchJSON('/api/admin/v1/settings')
+    settings.value = d.settings || []
+  } catch (e) { setError.value = e.message }
+}
+
+async function saveSetting(s) {
+  setError.value = ''
+  try {
+    await fetchJSON('/api/admin/v1/settings', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: s.key, value: s.value }),
+    })
+    await loadSettings()
+  } catch (e) { setError.value = e.message }
+}
+
 async function fetchJSON(path, opts) {
   const res = await fetch(path, { ...opts, headers: { 'X-Admin-Token': token.value, ...(opts && opts.headers) } })
   const data = await res.json().catch(() => ({}))
@@ -79,6 +102,8 @@ async function load() {
     invFree.value = d.free || []
     invUsed.value = d.used || []
   } catch (e) { invError.value = e.message }
+  // Settings panel
+  await loadSettings()
 }
 
 async function invGenerate() {
@@ -349,6 +374,21 @@ onMounted(() => { if (token.value) load() })
           <td class="muted">{{ (ic.used_at || '').slice(0, 19).replace('T', ' ') }}</td>
         </tr>
       </table>
+    </div>
+
+    <!-- 站点设置（env 迁 UI） -->
+    <div class="card">
+      <h2>站点设置（原环境变量，管理员可改）</h2>
+      <div class="error" v-if="setError">{{ setError }}</div>
+      <div class="row" v-for="s in settings" :key="s.key" style="margin-top: 10px; align-items: center;">
+        <label style="width: 180px; font-weight: 600; font-size: 13px;">{{ s.key }}</label>
+        <input v-if="s.key === 'invite_required' || s.key === 'require_verification'"
+               type="checkbox" v-model="s.value" true-value="1" false-value="0" style="width: auto;" />
+        <textarea v-else-if="s.key === 'skin_domains'" v-model="s.value" style="max-width: 360px; min-height: 38px;"></textarea>
+        <input v-else v-model="s.value" style="max-width: 300px;" :placeholder="s.default" />
+        <button @click="saveSetting(s)">保存</button>
+        <span class="muted" style="font-size: 11px;">{{ s.desc }}{{ s.restart ? ' · 重启后生效' : ' · 立即生效' }}</span>
+      </div>
     </div>
   </div>
 </template>

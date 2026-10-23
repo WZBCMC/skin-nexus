@@ -94,6 +94,18 @@ type Service struct {
 	// mail flow the gate is a dead end for every new user; the P1 mail flow
 	// ships the site setting to turn it on.
 	RequireVerification bool
+	// RequireVerificationResolver, when set, resolves the gate per request —
+	// admin options panel writes the `require_verification` option and it
+	// applies without restart (nil = static RequireVerification field).
+	RequireVerificationResolver func(ctx context.Context) bool
+}
+
+// requireVerification is the gate's single decision point.
+func (s *Service) requireVerification(ctx context.Context) bool {
+	if s.RequireVerificationResolver != nil {
+		return s.RequireVerificationResolver(ctx)
+	}
+	return s.RequireVerification
 }
 
 const (
@@ -229,7 +241,7 @@ func (s *Service) Join(ctx context.Context, accessToken, playerUUID, serverID, s
 	if err != nil {
 		return ErrTokenInvalid
 	}
-	if s.RequireVerification && !u.EmailVerified {
+	if s.requireVerification(ctx) && !u.EmailVerified {
 		return ErrEmailUnverified
 	}
 	if !u.CanJoinServer {
