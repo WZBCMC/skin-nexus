@@ -458,8 +458,10 @@ func (b *Backend) handleCreatePlayer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Union: announce the new profile to the hub (async, 5s bound, never
-	// blocks or fails the user response). Rename/delete endpoints don't exist
-	// yet in webapi — wire SyncProfileRename/SyncProfileDelete when they land.
+	// blocks or fails the user response). Delete is now announced on the
+	// admin user-deletion path (adminapi.Backend.OnUserDeleted, wired in
+	// main.go); rename (SyncProfileRename) is still pending a product
+	// decision, so it stays unwired.
 	if b.union != nil && b.union.Enabled() {
 		name, u := req.Name, uuid
 		go func() {

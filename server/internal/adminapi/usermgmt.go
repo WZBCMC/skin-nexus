@@ -67,6 +67,20 @@ func (b *Backend) handleUserDelete(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "uid 1（管理员账号）不可删除"})
 		return
 	}
+	// Union profile lifecycle: the (uuid, name) pairs must be captured BEFORE
+	// DeleteUser — the transaction removes the players and their uuid_map
+	// rows. Best-effort: a lookup failure just skips the hub announcement
+	// (DeleteUser itself must not be blocked by union bookkeeping).
+	var players [][2]string
+	if b.OnUserDeleted != nil {
+		if ps, err := b.Store.PlayersByUID(r.Context(), id); err == nil {
+			for _, p := range ps {
+				if p.UUID != "" { // no uuid_map row => no union identity to retire
+					players = append(players, [2]string{p.UUID, p.Name})
+				}
+			}
+		}
+	}
 	if err := b.Store.DeleteUser(r.Context(), id); errors.Is(err, store.ErrNotFound) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "用户不存在"})
 		return
@@ -75,5 +89,8 @@ func (b *Backend) handleUserDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b.Store.InsertAudit(r.Context(), 0, "admin_user_delete", map[string]any{"target": id})
+	if b.OnUserDeleted != nil {
+		b.OnUserDeleted(id, players) // async inside the hook; never blocks this response
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

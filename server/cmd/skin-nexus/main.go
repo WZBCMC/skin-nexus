@@ -405,6 +405,30 @@ func main() {
 			}
 		}
 	}
+	// Union profile lifecycle on user deletion (2026-10-23 hardening):
+	// announce SyncProfileDelete per player so the hub (and cross-site
+	// clients) retire the profiles — best-effort async, 5s bound per
+	// announcement, never blocks or fails the admin response. Failures are
+	// audited with a FRESH context (the sync ctx is the thing that just
+	// expired) and logged — same shape as webapi's union_sync_create_failed.
+	admin.OnUserDeleted = func(uid int64, players [][2]string) {
+		if unionOut == nil || !unionOut.Enabled() {
+			return
+		}
+		go func() {
+			for _, p := range players {
+				uuid, name := p[0], p[1]
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				err := unionOut.SyncProfileDelete(ctx, uuid)
+				cancel()
+				if err != nil {
+					st.InsertAudit(context.Background(), 0, "union_sync_delete_failed",
+						map[string]interface{}{"uid": uid, "uuid": uuid, "name": name, "error": err.Error()})
+					log.Printf("union sync delete failed uid=%d uuid=%s name=%s: %v", uid, uuid, name, err)
+				}
+			}
+		}()
+	}
 	admin.SetSharedClientID(cfg.SharedClientID) // guards shared launcher client deletion
 	admin.MountAppearance(adminapi.AppearanceDeps{SEO: seoEng, Appear: appearEng, Themes: themeReg})
 	if unionSigner != nil {

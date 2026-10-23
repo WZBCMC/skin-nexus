@@ -31,6 +31,11 @@ type Backend struct {
 	// OnUserCredentialChange fires on admin password reset (main wires OIDC
 	// grant revocation — same semantics as the self-service change).
 	OnUserCredentialChange func(uid int64)
+	// OnUserDeleted fires after a successful user deletion with the (uuid,
+	// name) pairs of the account's players, read BEFORE the transactional
+	// delete (players/uuid_map rows are gone afterwards). main wires the
+	// best-effort union hub announcement (webapi create-sync precedent).
+	OnUserDeleted func(uid int64, players [][2]string)
 }
 
 func New(st *store.Mysql, yggSvc *ygg.Service) *Backend {
