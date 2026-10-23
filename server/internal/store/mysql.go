@@ -92,7 +92,11 @@ func (m *Mysql) credentials(ctx context.Context, uid int64) (hash, algo string, 
 }
 
 // VerifyPassword implements ygg.Store. Modern digests verify directly; legacy
-// rows walk the configured chain (try-all or pinned method).
+// rows walk the configured chain (try-all or pinned method). PHC
+// self-describing digests (imported $2y$ bcrypt / argon2 rows) verify via the
+// PHC path even when the legacy salt chain is not mounted (SKIN_LEGACY_ENV) —
+// the chain only matters for positional-salt formats (migrate importer marks
+// them `legacy:bcrypt` etc; see docs/migration-import-design.md).
 func (m *Mysql) VerifyPassword(ctx context.Context, uid int64, password string) (bool, error) {
 	hash, algo, err := m.credentials(ctx, uid)
 	if err != nil {
@@ -100,6 +104,9 @@ func (m *Mysql) VerifyPassword(ctx context.Context, uid int64, password string) 
 	}
 	switch {
 	case strings.HasPrefix(algo, "legacy"):
+		if strings.HasPrefix(hash, "$2") || strings.HasPrefix(hash, "$argon2") {
+			return auth.VerifyPHC(password, hash), nil // self-describing
+		}
 		if m.legacy == nil {
 			return false, nil
 		}

@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"skin-nexus/server/internal/migrate"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 const legacyDDL = `
@@ -130,6 +132,29 @@ func TestIntegrationImport(t *testing.T) {
 	}
 	if err := m.db.QueryRowContext(ctx, `SELECT avatar_tid IS NULL FROM users WHERE id = 2`).Scan(&avatarNull); err != nil || avatarNull != 1 {
 		t.Fatalf("user2 avatar must be NULL: %d %v", avatarNull, err)
+	}
+
+	// Credential compatibility (user priority 2026-10-23): a real PHP-style
+	// $2y$ bcrypt row verifies through store.VerifyPassword with NO legacy
+	// salt chain mounted (m.legacy == nil here) — the PHC short-circuit.
+	raw, err := bcrypt.GenerateFromPassword([]byte("s3cret-pw-x"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	phpHash := "$2y$" + string(raw)[4:]
+	if _, err := m.db.ExecContext(ctx,
+		`UPDATE users SET password = ?, password_algo = 'legacy:bcrypt' WHERE id = 1`, phpHash); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := m.VerifyPassword(ctx, 1, "s3cret-pw-x"); err != nil || !ok {
+		t.Fatalf("legacy bcrypt verify ok=%v err=%v", ok, err)
+	}
+	if ok, err := m.VerifyPassword(ctx, 1, "wrong-pass"); err != nil || ok {
+		t.Fatalf("wrong password must fail: ok=%v err=%v", ok, err)
+	}
+	var algoMark string
+	if err := m.db.QueryRowContext(ctx, `SELECT password_algo FROM users WHERE id = 1`).Scan(&algoMark); err != nil || algoMark != "legacy:bcrypt" {
+		t.Fatalf("algo marker = %q %v", algoMark, err)
 	}
 
 	// players: -1/0 normalized to NULL

@@ -57,6 +57,11 @@ func RunImport(ctx context.Context, opt ImportOptions) (ImportReport, error) {
 	p := opt.SourcePrefix
 
 	// ---- users ----
+	// password_algo classification (credential compatibility, user priority
+	// 2026-10-23): PHC bcrypt $2y$/$2a$/$2b$ rows -> "legacy:bcrypt",
+	// argon2 PHC -> "legacy:argon2", anything else -> "legacy" (salt-chain
+	// try-all; needs SKIN_LEGACY_ENV mounted at boot). All 66 production rows
+	// are $2y$ (recon) and verify without the chain (PHC short-circuit).
 	sel := fmt.Sprintf(`
 		SELECT u.uid, u.email, u.nickname, u.password, u.ip,
 		       u.avatar, u.register_at, u.verified, u.score, u.locale,
@@ -100,12 +105,19 @@ func RunImport(ctx context.Context, opt ImportOptions) (ImportReport, error) {
 		if limit < 3 {
 			limit = 3
 		}
+		algo := "legacy" // salt-chain try-all
+		switch {
+		case strings.HasPrefix(u.pw, "$2"):
+			algo = "legacy:bcrypt"
+		case strings.HasPrefix(u.pw, "$argon2"):
+			algo = "legacy:argon2"
+		}
 		avatar := sql.NullInt64{Int64: u.avatar, Valid: u.avatar != 0}
 		created := u.registerAt
 		if !created.Valid {
 			rep.Warnings = append(rep.Warnings, fmt.Sprintf("users uid=%d has NULL register_at", u.id))
 		}
-		args := []any{u.id, u.email, u.nick, u.pw, "legacy:bcrypt", limit, u.ip,
+		args := []any{u.id, u.email, u.nick, u.pw, algo, limit, u.ip,
 			avatar, created, created, u.verified, 1, u.score, u.locale, u.dark,
 			u.permission, u.lastSign, u.verifToken}
 		if opt.DryRun {
