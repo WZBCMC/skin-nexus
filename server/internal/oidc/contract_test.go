@@ -261,10 +261,28 @@ func (m *memBackend) GetDeviceAuthByUserCode(_ context.Context, code string) (De
 func (m *memBackend) UpdateDeviceAuth(_ context.Context, rec DeviceAuthRecord) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, ok := m.devices[rec.DeviceCode]; !ok {
-		return ErrNotFound
+	cur, ok := m.devices[rec.DeviceCode]
+	if !ok || cur.Done || cur.Denied {
+		return ErrNotFound // pending->decided guard, mirrors the SQL store
 	}
 	m.devices[rec.DeviceCode] = rec
+	return nil
+}
+
+func (m *memBackend) ConsumeDeviceAuth(_ context.Context, code string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	rec, ok := m.devices[code]
+	if !ok || !rec.Done || rec.Denied {
+		return ErrNotFound
+	}
+	delete(m.devices, code)
+	for k, v := range m.byUser {
+		if v == code {
+			delete(m.byUser, k)
+			break
+		}
+	}
 	return nil
 }
 

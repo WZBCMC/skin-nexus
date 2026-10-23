@@ -10,6 +10,10 @@
 -- legacy-migrated DB where the columns exist, run this file only after
 -- checking — the defaults below match the legacy semantics
 -- (email_verified=0 pending, can_join_server=1 allowed).
+-- 每条 ALTER 独立成句（review A2 2026-10-23）：合并写法在"两列已存在其一"
+-- 的库上整句 ER1060 被容忍后标记已应用，另一列永远缺失。独立成句各自
+-- 碰撞、各自收敛。
 ALTER TABLE users
-  ADD COLUMN email_verified  TINYINT(1) NOT NULL DEFAULT 0 AFTER player_limit,
+  ADD COLUMN email_verified TINYINT(1) NOT NULL DEFAULT 0 AFTER player_limit;
+ALTER TABLE users
   ADD COLUMN can_join_server TINYINT(1) NOT NULL DEFAULT 1 AFTER email_verified;

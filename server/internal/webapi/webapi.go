@@ -200,7 +200,10 @@ func (b *Backend) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusConflict, "昵称或邮箱已被占用")
 		return
 	}
-	b.issueSession(w, uid)
+	if err := b.issueSession(w, r, uid); err != nil {
+		writeErr(w, http.StatusInternalServerError, "会话创建失败，请重试")
+		return
+	}
 	writeJSON(w, http.StatusCreated, map[string]interface{}{"id": uid, "nickname": req.Nickname})
 }
 
@@ -235,8 +238,15 @@ func (b *Backend) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "账号或密码错误")
 		return
 	}
+	// Verify errors (DB/schema problems) must NOT masquerade as a wrong
+	// password (review P2: at cutover a schema gap would present as
+	// "everyone's password is wrong"). Only a clean !ok is 401.
 	ok, err := b.Store.VerifyPassword(r.Context(), u.ID, req.Password)
-	if err != nil || !ok {
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "登录校验失败，请稍后重试")
+		return
+	}
+	if !ok {
 		if b.Limiter != nil {
 			b.Limiter.Fail(idKey)
 		}
@@ -253,26 +263,41 @@ func (b *Backend) handleLogin(w http.ResponseWriter, r *http.Request) {
 			_ = b.Store.RehashPassword(r.Context(), u.ID, nh)
 		}
 	}
-	b.issueSession(w, u.ID)
+	if err := b.issueSession(w, r, u.ID); err != nil {
+		writeErr(w, http.StatusInternalServerError, "会话创建失败，请重试")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"id": u.ID, "nickname": u.Nickname})
 }
 
-func (b *Backend) issueSession(w http.ResponseWriter, uid int64) {
+// issueSession persists and hands out a session cookie. The store write is
+// no longer swallowed (review P2: a failed INSERT left the client holding a
+// cookie for a nonexistent session — silent 401 loop); Secure follows the
+// request scheme (TLS or trusted-proxy X-Forwarded-Proto).
+func (b *Backend) issueSession(w http.ResponseWriter, r *http.Request, uid int64) error {
 	tok := randomToken()
 	exp := time.Now().Add(30 * 24 * time.Hour)
-	_ = b.Store.CreateSession(context.Background(), tok, uid, exp)
+	if err := b.Store.CreateSession(context.Background(), tok, uid, exp); err != nil {
+		return err
+	}
+	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookie, Value: tok, Path: "/", HttpOnly: true,
-		SameSite: http.SameSiteLaxMode, Expires: exp,
+		SameSite: http.SameSiteLaxMode, Expires: exp, Secure: secure,
 	})
+	return nil
 }
 
 func (b *Backend) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(sessionCookie); err == nil {
 		_ = b.Store.DeleteSession(r.Context(), c.Value)
 	}
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1})
-	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+	http.SetCookie(w, &http.Cookie{
+		Name: sessionCookie, Value: "", Path: "/", MaxAge: -1,
+		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: secure,
+	})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }
 
 func (b *Backend) handleMe(w http.ResponseWriter, r *http.Request) {
@@ -286,9 +311,13 @@ func (b *Backend) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "not logged in")
 		return
 	}
+	limit := b.MaxChars
+	if n, err := b.Store.UserPlayerLimit(r.Context(), uid); err == nil && n > 0 {
+		limit = n
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"id": u.ID, "nickname": u.Nickname,
-		"emailVerified": u.EmailVerified, "playerLimit": b.MaxChars,
+		"emailVerified": u.EmailVerified, "playerLimit": limit,
 	})
 }
 
@@ -401,6 +430,16 @@ func (b *Backend) handleCreatePlayer(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "角色名需 2-16 位")
 		return
 	}
+	// Per-user character limit (review P1: users.player_limit was never
+	// enforced — accounts could create unlimited profiles).
+	limit := b.MaxChars
+	if n, err := b.Store.UserPlayerLimit(r.Context(), uid); err == nil && n > 0 {
+		limit = n
+	}
+	if existing, err := b.Store.PlayersByUID(r.Context(), uid); err == nil && len(existing) >= limit {
+		writeErr(w, http.StatusForbidden, "角色数已达上限")
+		return
+	}
 	pid, uuid, err := b.Store.CreatePlayer(r.Context(), uid, req.Name)
 	if err != nil {
 		writeErr(w, http.StatusConflict, "角色名已被占用")
@@ -488,6 +527,11 @@ func (b *Backend) setPlayerTexture(w http.ResponseWriter, r *http.Request, kind 
 }
 
 func (b *Backend) handleStats(w http.ResponseWriter, r *http.Request) {
+	// Session-gated (review P3: the weak-hash count was public).
+	if _, err := b.currentUser(r); err != nil {
+		writeErr(w, http.StatusUnauthorized, "not logged in")
+		return
+	}
 	weak, _ := b.Store.WeakHashCount(r.Context())
 	writeJSON(w, http.StatusOK, map[string]interface{}{"weakHashUsers": weak})
 }

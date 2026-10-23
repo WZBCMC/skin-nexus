@@ -45,10 +45,24 @@ func (m *Mysql) ListCloset(ctx context.Context, uid int64) ([]ClosetRow, error) 
 // AddClosetEntry puts a texture into the closet. Idempotent: an existing
 // (uid, tid) pair returns created=false without inserting — legacy had no
 // unique key either, so the app dedupes (kept deliberately loose for
-// direct-migration duplicates). The texture must exist (ErrNotFound).
+// direct-migration duplicates).
+//
+// Discoverability gate (review P1 IDOR fix, 2026-10-23): only the owner's own
+// textures or PUBLIC textures may be collected (legacy skinlib visibility
+// semantics). Another user's private texture is rejected as ErrNotFound so
+// closet enumeration cannot leak private hashes/urls.
 func (m *Mysql) AddClosetEntry(ctx context.Context, uid, tid int64, itemName string) (created bool, err error) {
-	if _, err := m.TextureOwner(ctx, tid); err != nil {
+	var owner, pub int64
+	err = m.db.QueryRowContext(ctx,
+		`SELECT uid, public FROM textures WHERE id = ?`, tid).Scan(&owner, &pub)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, ErrNotFound
+	}
+	if err != nil {
 		return false, err
+	}
+	if owner != uid && pub == 0 {
+		return false, ErrNotFound // not discoverable — indistinguishable from missing
 	}
 	var one int
 	err = m.db.QueryRowContext(ctx,

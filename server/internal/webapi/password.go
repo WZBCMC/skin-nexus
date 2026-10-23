@@ -2,11 +2,19 @@ package webapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
-	"strings"
 
 	"skin-nexus/server/internal/auth"
 )
+
+// sessionCookieValue returns the caller's raw session token ("" if none).
+func sessionCookieValue(r *http.Request) string {
+	if c, err := r.Cookie(sessionCookie); err == nil {
+		return c.Value
+	}
+	return ""
+}
 
 // handlePasswordChange: POST /api/v1/me/password
 // {currentPassword, newPassword}. Legacy semantics (phase2 A2 step 8):
@@ -32,7 +40,8 @@ func (b *Backend) handlePasswordChange(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "当前密码不正确")
 		return
 	}
-	req.NewPassword = strings.TrimSpace(req.NewPassword)
+	// Passwords may legitimately contain spaces — never trim (review P3:
+	// the old TrimSpace silently changed the credential the user typed).
 	if len(req.NewPassword) < 8 {
 		writeErr(w, http.StatusBadRequest, "新密码至少 8 位")
 		return
@@ -53,13 +62,28 @@ func (b *Backend) handlePasswordChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Kill every yggdrasil token this user holds (join/validate credentials).
+	// Failure is non-fatal to the login session but must leave a trace
+	// (review P2: silent swallow hid half-done revocations).
 	if err := b.Store.InvalidateUserTokens(r.Context(), uid); err != nil {
-		// non-fatal: password already changed; tokens still die on next TTL
-		_ = err
+		b.Store.InsertAudit(r.Context(), uid, "password_change_token_revoke_failed", map[string]any{"error": err.Error()})
 	}
-	// Launcher/OIDC grants die too (legacy RevokeUserTokens semantics).
+	// Launcher/OIDC grants die too (legacy RevokeUserTokens semantics); the
+	// hook is panic-shielded so a bad hook can't cut the response after the
+	// hash already changed.
 	if b.OnPasswordChange != nil {
-		b.OnPasswordChange(uid)
+		func() {
+			defer func() {
+				if rec := recover(); rec != nil {
+					b.Store.InsertAudit(r.Context(), uid, "password_change_hook_panic", map[string]any{"panic": fmt.Sprint(rec)})
+				}
+			}()
+			b.OnPasswordChange(uid)
+		}()
+	}
+	// Other web sessions die too (stolen-session hygiene); the caller's own
+	// session survives by design.
+	if err := b.Store.DeleteUserSessionsExcept(r.Context(), uid, sessionCookieValue(r)); err != nil {
+		b.Store.InsertAudit(r.Context(), uid, "password_change_session_purge_failed", map[string]any{"error": err.Error()})
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }

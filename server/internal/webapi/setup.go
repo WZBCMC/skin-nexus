@@ -87,7 +87,9 @@ func (b *Backend) handleSetup(w http.ResponseWriter, r *http.Request) {
 	if len(req.SkinDomains) > 0 {
 		_ = b.Store.SetOption(r.Context(), "skin_domains", strings.Join(req.SkinDomains, ","))
 	}
-	_ = b.Store.SetOption(r.Context(), "seo_title", req.SiteName)
+	if req.SiteName != "" { // review P3: empty SiteName used to wipe seo_title
+		_ = b.Store.SetOption(r.Context(), "seo_title", req.SiteName)
+	}
 	_ = b.Store.SetOption(r.Context(), "setup_done", "1")
 	b.Store.InsertAudit(r.Context(), uid, "setup_completed", map[string]interface{}{
 		"site_name": req.SiteName,

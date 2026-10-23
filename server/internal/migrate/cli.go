@@ -148,6 +148,9 @@ func runImport(args []string, out io.Writer) error {
 	if *sourceDSN == "" || *targetDSN == "" || *prefix == "" {
 		return fmt.Errorf("import: --source-dsn, --target-dsn and --source-prefix are required")
 	}
+	if err := ValidateDSNs(*sourceDSN, *targetDSN); err != nil {
+		return err
+	}
 	src, err := sql.Open("mysql", *sourceDSN)
 	if err != nil {
 		return err
@@ -172,10 +175,17 @@ func runImport(args []string, out io.Writer) error {
 	}
 	rep, err := RunImport(context.Background(), opt)
 	if err != nil {
+		// never discard evidence on failure (review A1)
+		printImportReport(out, rep, *dry)
 		return err
 	}
+	printImportReport(out, rep, *dry)
+	return nil
+}
+
+func printImportReport(out io.Writer, rep ImportReport, dry bool) {
 	fmt.Fprintln(out, "== import report ==")
-	if *dry {
+	if dry {
 		fmt.Fprintln(out, "(dry-run: no rows written)")
 	}
 	for _, tbl := range []string{"users", "players", "textures", "uuid_map", "options", "user_closet", "invitation_codes"} {
@@ -191,7 +201,6 @@ func runImport(args []string, out io.Writer) error {
 	for _, w := range rep.Warnings {
 		fmt.Fprintf(out, "WARN %s\n", w)
 	}
-	return nil
 }
 
 func readLines(path string) ([]string, error) {

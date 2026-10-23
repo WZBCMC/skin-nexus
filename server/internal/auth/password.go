@@ -238,6 +238,12 @@ func verifyArgonPHC(password, stored string, idVariant bool) bool {
 	if err != nil {
 		return false
 	}
+	// Guard the params (review A2 P3): ignored ParseUint errors used to feed
+	// zeros into argon2, which panics ("rounds too small" / "parallelism
+	// degree too low") on a corrupt crafted digest.
+	if time < 1 || memory < 8*threads || threads < 1 || threads > 255 || len(want) == 0 {
+		return false
+	}
 	var got []byte
 	if idVariant {
 		got = argon2.IDKey([]byte(password), salt, uint32(time), uint32(memory), uint8(threads), uint32(len(want)))

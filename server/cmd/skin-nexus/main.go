@@ -96,6 +96,18 @@ func main() {
 			cfg.ServerName = v
 		}
 	}
+	// review P1 (2026-10-23): server_name/base_url options were write-only —
+	// the settings panel / setup wizard wrote them and nothing read them.
+	if os.Getenv("SKIN_SERVER_NAME") == "" {
+		if v, ok, err := st.GetOption(context.Background(), "server_name"); err == nil && ok && v != "" {
+			cfg.ServerName = v
+		}
+	}
+	if os.Getenv("SKIN_BASE_URL") == "" {
+		if v, ok, err := st.GetOption(context.Background(), "base_url"); err == nil && ok && v != "" {
+			cfg.BaseURL = strings.TrimRight(v, "/")
+		}
+	}
 	if os.Getenv("SKIN_SKIN_DOMAINS") == "" {
 		if v, ok, err := st.GetOption(context.Background(), "skin_domains"); err == nil && ok && v != "" {
 			for _, d := range strings.Split(v, ",") {
@@ -298,7 +310,9 @@ func main() {
 	backend.RequireInvite = cfg.RequireInvite
 	backend.OnPasswordChange = func(uid int64) {
 		if oidcProvider != nil {
-			oidcProvider.RevokeUserAllTokens(context.Background(), uid)
+			if err := oidcProvider.RevokeUserAllTokens(context.Background(), uid); err != nil {
+				log.Printf("password change: OIDC revoke uid=%d: %v", uid, err)
+			}
 		}
 	}
 	// Options panel → request-time join gate (no restart needed).
@@ -341,7 +355,9 @@ func main() {
 	// Admin user management shares the credential-change revoke semantics.
 	admin.OnUserCredentialChange = func(uid int64) {
 		if oidcProvider != nil {
-			oidcProvider.RevokeUserAllTokens(context.Background(), uid)
+			if err := oidcProvider.RevokeUserAllTokens(context.Background(), uid); err != nil {
+				log.Printf("admin credential change: OIDC revoke uid=%d: %v", uid, err)
+			}
 		}
 	}
 	admin.SetSharedClientID(cfg.SharedClientID) // guards shared launcher client deletion

@@ -47,10 +47,21 @@ func (m *Mysql) DeleteSession(ctx context.Context, token string) error {
 	return err
 }
 
+// DeleteUserSessionsExcept purges a user's other web sessions (password
+// change hygiene: the caller's own session survives, stolen ones do not).
+func (m *Mysql) DeleteUserSessionsExcept(ctx context.Context, uid int64, keepToken string) error {
+	_, err := m.db.ExecContext(ctx,
+		`DELETE FROM web_sessions WHERE user_id = ? AND token <> ?`, uid, keepToken)
+	return err
+}
+
 // RehashPassword updates to modern digest after successful legacy login.
+// Guarded on still-legacy algo so a concurrent password change cannot be
+// clobbered with a rehash of the OLD password (review P3 lost-update race).
 func (m *Mysql) RehashPassword(ctx context.Context, uid int64, newHash string) error {
 	_, err := m.db.ExecContext(ctx,
-		`UPDATE users SET password = ?, password_algo = 'argon2id' WHERE id = ?`, newHash, uid)
+		`UPDATE users SET password = ?, password_algo = 'argon2id' WHERE id = ? AND password_algo LIKE 'legacy%'`,
+		newHash, uid)
 	return err
 }
 
@@ -63,6 +74,18 @@ func (m *Mysql) UserPasswordAlgo(ctx context.Context, uid int64) (string, error)
 		err = ErrNotFound
 	}
 	return algo, err
+}
+
+// UserPlayerLimit returns the per-user character limit (review P1: the
+// column was written at register/setup but never enforced anywhere).
+func (m *Mysql) UserPlayerLimit(ctx context.Context, uid int64) (int, error) {
+	var n int
+	err := m.db.QueryRowContext(ctx,
+		`SELECT player_limit FROM users WHERE id = ?`, uid).Scan(&n)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 // WeakHashCount powers the 「弱哈希余量」 dashboard.

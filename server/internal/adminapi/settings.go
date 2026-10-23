@@ -3,6 +3,7 @@ package adminapi
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -78,12 +79,26 @@ func (b *Backend) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	val := strings.TrimSpace(req.Value)
 	switch req.Key {
 	case "invite_required", "require_verification":
-		val = normalizeBool(val) // "1" / "0"
+		normalized, ok := normalizeBool(val)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "布尔值需为 1/0/true/false/on/off/yes/no"})
+			return
+		}
+		val = normalized
 	case "skin_domains":
 		// accept newline/comma separated, store canonical comma CSV
 		val = strings.Join(strings.FieldsFunc(val, func(r rune) bool {
 			return r == ',' || r == '\n' || r == ' '
 		}), ",")
+	case "rate_limit_auth", "login_fail_limit":
+		// numeric knobs (review P2: garbage silently desynced panel vs boot
+		// fallback, and negatives silently disabled the limiter layers)
+		n, err := strconv.Atoi(val)
+		if err != nil || n < 0 || n > 1000000 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "数值需为 0-1000000 的整数"})
+			return
+		}
+		val = strconv.Itoa(n)
 	}
 	if err := b.Store.SetOption(r.Context(), req.Key, val); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "save failed"})
@@ -95,11 +110,15 @@ func (b *Backend) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "key": req.Key, "value": val})
 }
 
-func normalizeBool(v string) string {
+// normalizeBool maps the accepted boolean spellings to "1"/"0"; ok=false on
+// unknown input (review P2: typos silently became "0", disabling gates).
+func normalizeBool(v string) (string, bool) {
 	switch strings.ToLower(v) {
 	case "1", "true", "on", "yes":
-		return "1"
+		return "1", true
+	case "0", "false", "off", "no":
+		return "0", true
 	default:
-		return "0"
+		return "0", false
 	}
 }

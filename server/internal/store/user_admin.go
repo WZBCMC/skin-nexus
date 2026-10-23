@@ -57,6 +57,10 @@ func (m *Mysql) DeleteUser(ctx context.Context, uid int64) error {
 		{`DELETE FROM ygg_tokens WHERE user_id = ?`},
 		{`DELETE FROM oidc_refresh_tokens WHERE uid = ?`},
 		{`DELETE FROM oidc_access_tokens WHERE uid = ?`},
+		// review P2: device grants and pending auth requests also carry user
+		// state and can still walk into token issuance after deletion.
+		{`DELETE FROM oidc_device_auth WHERE uid = ?`},
+		{`DELETE FROM oidc_auth_requests WHERE subject = CAST(? AS CHAR)`},
 		{`DELETE FROM user_closet WHERE user_uid = ?`},
 		{`DELETE FROM uuid_map WHERE player_id IN (SELECT id FROM players WHERE uid = ?)`},
 		{`DELETE FROM players WHERE uid = ?`},

@@ -25,12 +25,17 @@ import (
 // ApplySQLDirTracked applies pending *.sql files in dir (filename order),
 // skipping files already recorded in schema_migrations.
 func ApplySQLDirTracked(db *sql.DB, dir string) error {
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
-		file       VARCHAR(191) NOT NULL,
-		applied_at DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-		PRIMARY KEY (file)
-	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`); err != nil {
-		return fmt.Errorf("migrate: schema_migrations bootstrap: %w", err)
+	// Bootstrap the marker table only when genuinely absent (review C P2:
+	// an unconditional CREATE blocked boot on read-only / least-privilege
+	// databases even when every file was already marked).
+	if _, err := db.Exec(`SELECT 1 FROM schema_migrations LIMIT 1`); err != nil {
+		if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+			file       VARCHAR(191) NOT NULL,
+			applied_at DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+			PRIMARY KEY (file)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`); err != nil {
+			return fmt.Errorf("migrate: schema_migrations bootstrap: %w", err)
+		}
 	}
 	files, err := filepath.Glob(filepath.Join(dir, "*.sql"))
 	if err != nil {

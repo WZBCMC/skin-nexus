@@ -140,6 +140,9 @@ type Backend interface {
 	GetDeviceAuthByDeviceCode(ctx context.Context, code string) (DeviceAuthRecord, error)
 	GetDeviceAuthByUserCode(ctx context.Context, code string) (DeviceAuthRecord, error)
 	UpdateDeviceAuth(ctx context.Context, rec DeviceAuthRecord) error
+	// ConsumeDeviceAuth burns an approved device row on first redemption
+	// (single-use device codes); ErrNotFound when missing or not approved.
+	ConsumeDeviceAuth(ctx context.Context, deviceCode string) error
 
 	// health probe
 	Health(ctx context.Context) error

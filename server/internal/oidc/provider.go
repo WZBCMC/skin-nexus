@@ -348,6 +348,11 @@ func (p *Provider) deviceSubmit(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"error": "无效的用户码"})
 		return
 	}
+	if time.Now().After(rec.ExpiresAt) {
+		// review P2: expired codes could be "approved" (ok:true) yet never yield tokens
+		writeJSON(w, map[string]any{"error": "用户码已过期"})
+		return
+	}
 	switch decision {
 	case "approve":
 		if err := p.ApproveDevice(r.Context(), uid, userCode, pid); err != nil {
@@ -404,11 +409,15 @@ func (p *Provider) RevokeUserTokens(ctx context.Context, uid int64) error {
 
 // RevokeUserAllTokens kills every access AND refresh token the user holds —
 // the password-change semantic (phase2 A2 step 8: 改密 → 所有启动器授权失效).
-func (p *Provider) RevokeUserAllTokens(ctx context.Context, uid int64) {
-	if err := p.backend.RevokeUserAccessTokens(ctx, uid); err != nil {
-		return
+// Both steps are attempted even when the first fails (review P1: a DB blip
+// used to skip refresh revocation silently); the combined error is returned
+// so callers can log/audit instead of claiming success.
+func (p *Provider) RevokeUserAllTokens(ctx context.Context, uid int64) error {
+	err := p.backend.RevokeUserAccessTokens(ctx, uid)
+	if err2 := p.backend.RevokeUserRefreshTokens(ctx, uid); err == nil {
+		err = err2
 	}
-	_ = p.backend.RevokeUserRefreshTokens(ctx, uid)
+	return err
 }
 
 func (p *Provider) sessionUser(r *http.Request) (int64, error) {

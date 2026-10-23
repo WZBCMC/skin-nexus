@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"log"
 	"strings"
 	"time"
 
@@ -146,7 +147,13 @@ func (s *Service) Authenticate(ctx context.Context, username, password, clientTo
 		return Token{}, nil, ErrBadCredentials
 	}
 	ok, err := s.store.VerifyPassword(ctx, u.ID, password)
-	if err != nil || !ok {
+	if err != nil {
+		// Frozen wire keeps the 403 body, but a verify/db fault must not be
+		// indistinguishable from bad credentials in ops logs (review P2).
+		log.Printf("ygg authenticate: verify uid=%d: %v", u.ID, err)
+		return Token{}, nil, ErrBadCredentials
+	}
+	if !ok {
 		return Token{}, nil, ErrBadCredentials
 	}
 	if clientToken == "" {
@@ -172,7 +179,10 @@ func (s *Service) Authenticate(ctx context.Context, username, password, clientTo
 	return t, players, nil
 }
 
-// Refresh re-issues an access token (authserver/refresh).
+// Refresh re-issues an access token (authserver/refresh). Uses the opaque
+// store lookup (not the dual-state resolver) by design: legacy refresh takes
+// opaque access tokens; OIDC JWTs refresh via /oauth/token (refresh_token
+// grant) instead.
 func (s *Service) Refresh(ctx context.Context, accessToken, clientToken string, selectPID int64) (Token, []Player, error) {
 	old, err := s.store.TokenByAccess(ctx, accessToken)
 	if err != nil || old.Invalidated || s.now().After(old.ExpiresAt) {
@@ -181,7 +191,26 @@ func (s *Service) Refresh(ctx context.Context, accessToken, clientToken string, 
 	if clientToken != "" && clientToken != old.ClientToken {
 		return Token{}, nil, ErrTokenInvalid
 	}
-	// Legacy semantics: a refresh invalidates the previous token.
+	// Ownership gate (review P2: a token holder could select ANY player UUID
+	// and inherit its pid — foreign-profile binding + existence oracle).
+	if selectPID != 0 {
+		mine, err := s.store.PlayersByUID(ctx, old.UserID)
+		if err != nil {
+			return Token{}, nil, ErrTokenInvalid
+		}
+		owned := false
+		for _, pl := range mine {
+			if pl.ID == selectPID {
+				owned = true
+				break
+			}
+		}
+		if !owned {
+			return Token{}, nil, ErrPlayerMismatch
+		}
+	}
+	// Legacy semantics: a refresh invalidates the previous token. (Validation
+	// happens first so a rejected select never burns the caller's token.)
 	_ = s.store.InvalidateToken(ctx, accessToken)
 	t := Token{
 		AccessToken: randomHex(32),

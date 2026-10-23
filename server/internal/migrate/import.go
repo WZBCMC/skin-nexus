@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"skin-nexus/server/internal/texture"
 )
@@ -55,6 +56,18 @@ type ImportReport struct {
 func RunImport(ctx context.Context, opt ImportOptions) (ImportReport, error) {
 	rep := ImportReport{Tables: map[string]TableStat{}}
 	p := opt.SourcePrefix
+
+	// Target schema assertion (review A2): the import column lists require
+	// 0005-0008. Without them the first INSERT dies with a generic
+	// "Unknown column" and looks like data loss. Dry-run needs no target.
+	if !opt.DryRun {
+		var n int
+		err := opt.Target.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM schema_migrations WHERE file = '0008_legacy_preserve.sql'`).Scan(&n)
+		if err != nil || n == 0 {
+			return rep, fmt.Errorf("target schema not ready (0008 marker missing; run one SKIN_AUTO_MIGRATE boot first): %v", err)
+		}
+	}
 
 	// ---- users ----
 	// password_algo classification (credential compatibility, user priority
@@ -100,6 +113,26 @@ func RunImport(ctx context.Context, opt ImportOptions) (ImportReport, error) {
 	}
 	rows.Close()
 	rep.Tables["users"] = TableStat{Selected: int64(len(users))}
+	// Preflight (review A1/A2): target uniques uq_users_email/uq_users_nickname
+	// are ci and do NOT exist in legacy — INSERT IGNORE would silently drop a
+	// conflicting user while their players/closet rows still import. Loud
+	// warnings here; the cutover runbook asserts users.skipped == 0.
+	seenEmail, seenNick := map[string]int64{}, map[string]int64{}
+	for _, u := range users {
+		if len(u.email) > 100 {
+			rep.Warnings = append(rep.Warnings, fmt.Sprintf("users uid=%d email longer than 100", u.id))
+		}
+		if ke := foldName(u.email); seenEmail[ke] != 0 {
+			rep.Warnings = append(rep.Warnings, fmt.Sprintf("users uid=%d email collides with uid=%d (ci) — will be SKIPPED", u.id, seenEmail[ke]))
+		} else {
+			seenEmail[ke] = u.id
+		}
+		if kn := foldName(u.nick); seenNick[kn] != 0 {
+			rep.Warnings = append(rep.Warnings, fmt.Sprintf("users uid=%d nickname collides with uid=%d (ci) — will be SKIPPED", u.id, seenNick[kn]))
+		} else {
+			seenNick[kn] = u.id
+		}
+	}
 	for _, u := range users {
 		limit := u.playerCount
 		if limit < 3 {
@@ -107,19 +140,20 @@ func RunImport(ctx context.Context, opt ImportOptions) (ImportReport, error) {
 		}
 		algo := "legacy" // salt-chain try-all
 		switch {
-		case strings.HasPrefix(u.pw, "$2"):
+		case strings.HasPrefix(u.pw, "$2"): // $2a$/$2b$/$2x$/$2y$ bcrypt family
 			algo = "legacy:bcrypt"
 		case strings.HasPrefix(u.pw, "$argon2"):
 			algo = "legacy:argon2"
 		}
 		avatar := sql.NullInt64{Int64: u.avatar, Valid: u.avatar != 0}
-		created := u.registerAt
-		if !created.Valid {
-			rep.Warnings = append(rep.Warnings, fmt.Sprintf("users uid=%d has NULL register_at", u.id))
+		created := safeTime(u.registerAt, fmt.Sprintf("users uid=%d register_at", u.id), true, &rep)
+		canJoin := int64(1)
+		if u.permission < 0 {
+			canJoin = 0 // legacy permission=-1 = BANNED (review A1)
 		}
 		args := []any{u.id, u.email, u.nick, u.pw, algo, limit, u.ip,
-			avatar, created, created, u.verified, 1, u.score, u.locale, u.dark,
-			u.permission, u.lastSign, u.verifToken}
+			avatar, created, created, u.verified, canJoin, u.score, u.locale, u.dark,
+			u.permission, safeTime(u.lastSign, fmt.Sprintf("users uid=%d last_sign_at", u.id), false, &rep), u.verifToken}
 		if opt.DryRun {
 			continue
 		}
@@ -164,6 +198,19 @@ func RunImport(ctx context.Context, opt ImportOptions) (ImportReport, error) {
 	}
 	rows.Close()
 	rep.Tables["players"] = TableStat{Selected: int64(len(players))}
+	seenPName := map[string]int64{}
+	for _, pl := range players {
+		if len(pl.name) > 16 {
+			// target players.name is VARCHAR(16): strict INSERT IGNORE truncates
+			// to a prefix and can collide with a sibling row (review A1 P0)
+			rep.Warnings = append(rep.Warnings, fmt.Sprintf("players pid=%d name %q longer than 16 chars — needs manual handling", pl.id, pl.name))
+		}
+		if kn := foldName(pl.name); seenPName[kn] != 0 {
+			rep.Warnings = append(rep.Warnings, fmt.Sprintf("players pid=%d name collides with pid=%d (ci) — will be SKIPPED", pl.id, seenPName[kn]))
+		} else {
+			seenPName[kn] = pl.id
+		}
+	}
 	for _, pl := range players {
 		var skin any
 		if pl.skin > 0 {
@@ -176,10 +223,11 @@ func RunImport(ctx context.Context, opt ImportOptions) (ImportReport, error) {
 		if opt.DryRun {
 			continue
 		}
+		created := safeTime(pl.lastModified, fmt.Sprintf("players pid=%d last_modified", pl.id), true, &rep)
 		res, err := opt.Target.ExecContext(ctx, `
 			INSERT IGNORE INTO players (id, uid, name, tid_skin, tid_cape, created_at, updated_at)
 			VALUES (?,?,?,?,?,?,?)`,
-			pl.id, pl.uid, pl.name, skin, cape, pl.lastModified, pl.lastModified)
+			pl.id, pl.uid, pl.name, skin, cape, created, created)
 		if err != nil {
 			return rep, fmt.Errorf("players insert pid=%d: %w", pl.id, err)
 		}
@@ -234,7 +282,8 @@ func RunImport(ctx context.Context, opt ImportOptions) (ImportReport, error) {
 		res, err := opt.Target.ExecContext(ctx, `
 			INSERT IGNORE INTO textures (id, uid, type, hash, model, description, upload_at, public)
 			VALUES (?,?,?,?,?,?,?,?)`,
-			t.id, t.uid, typ, t.hash, model, t.name, t.uploadAt, t.public)
+			t.id, t.uid, typ, t.hash, model, t.name,
+			safeTime(t.uploadAt, fmt.Sprintf("textures tid=%d upload_at", t.id), true, &rep), t.public)
 		if err != nil {
 			return rep, fmt.Errorf("textures insert tid=%d: %w", t.id, err)
 		}
@@ -265,22 +314,34 @@ func RunImport(ctx context.Context, opt ImportOptions) (ImportReport, error) {
 	rows.Close()
 	nameToPID := map[string]int64{}
 	for _, pl := range players {
-		nameToPID[pl.name] = pl.id
+		nameToPID[foldName(pl.name)] = pl.id // folded: ci-faithful matching (review A1)
 	}
 	cleaned, uuidRep := CleanUuidTable(uuidRows, nameToPID)
 	rep.UUID = uuidRep
-	rep.Tables["uuid_map"] = TableStat{Selected: int64(len(uuidRows)), Inserted: int64(len(cleaned))}
+	rep.Tables["uuid_map"] = TableStat{Selected: int64(len(uuidRows))}
 	if !opt.DryRun {
 		for _, r := range cleaned {
-			if _, err := opt.Target.ExecContext(ctx,
+			if !isHexOfLen(r.UUID, 32) {
+				rep.Warnings = append(rep.Warnings, fmt.Sprintf("uuid_map %q has malformed uuid — skipped", r.Name))
+				continue
+			}
+			res, err := opt.Target.ExecContext(ctx,
 				`INSERT IGNORE INTO uuid_map (name, uuid, player_id) VALUES (?,?,?)`,
-				r.Name, normalizeUUID(r.UUID), r.PID); err != nil {
+				r.Name, r.UUID, r.PID) // r.UUID already normalized by the clean
+			if err != nil {
 				return rep, fmt.Errorf("uuid_map insert %s: %w", r.Name, err)
 			}
+			n, _ := res.RowsAffected()
+			st := rep.Tables["uuid_map"]
+			st.Inserted += n
+			st.Skipped += 1 - n
+			rep.Tables["uuid_map"] = st
 		}
 	}
 
-	// ---- options (all rows, ON DUPLICATE KEY keeps reruns idempotent) ----
+	// ---- options (INSERT IGNORE: reruns never clobber operator changes;
+	// duplicates resolved first-wins = lowest id, matching legacy runtime
+	// reads (review A1: ON DUPLICATE kept the LAST id instead)) ----
 	sel = fmt.Sprintf(`SELECT option_name, option_value FROM %soptions ORDER BY id`, p)
 	rows, err = opt.Source.QueryContext(ctx, sel)
 	if err != nil {
@@ -298,12 +359,28 @@ func RunImport(ctx context.Context, opt ImportOptions) (ImportReport, error) {
 	}
 	rows.Close()
 	rep.Tables["options"] = TableStat{Selected: int64(len(opts))}
+	seenOpt := map[string]bool{}
 	for _, o := range opts {
+		if seenOpt[o.k] {
+			rep.Warnings = append(rep.Warnings, fmt.Sprintf("options %q duplicated in source — kept first (lowest id), skipped later", o.k))
+			st := rep.Tables["options"]
+			st.Skipped++
+			rep.Tables["options"] = st
+			continue
+		}
+		seenOpt[o.k] = true
+		if len(o.v) > 65535 { // target options.v is TEXT (64KiB); LONGTEXT source can exceed it
+			rep.Warnings = append(rep.Warnings, fmt.Sprintf("options %q value exceeds 64KiB — skipped", o.k))
+			st := rep.Tables["options"]
+			st.Skipped++
+			rep.Tables["options"] = st
+			continue
+		}
 		if opt.DryRun {
 			continue
 		}
 		if _, err := opt.Target.ExecContext(ctx,
-			`INSERT INTO options (k, v) VALUES (?,?) ON DUPLICATE KEY UPDATE v = VALUES(v)`,
+			`INSERT IGNORE INTO options (k, v) VALUES (?,?)`,
 			o.k, o.v); err != nil {
 			return rep, fmt.Errorf("options insert %s: %w", o.k, err)
 		}
@@ -341,7 +418,9 @@ func RunImport(ctx context.Context, opt ImportOptions) (ImportReport, error) {
 			INSERT INTO user_closet (user_uid, texture_tid, item_name)
 			SELECT ?,?,? FROM DUAL
 			WHERE NOT EXISTS (
-				SELECT 1 FROM user_closet WHERE user_uid = ? AND texture_tid = ? AND item_name <=> ?)`,
+				SELECT 1 FROM user_closet
+				WHERE user_uid = ? AND texture_tid = ?
+				  AND BINARY item_name <=> BINARY ?)`, // BINARY: exact-duplicate policy (review A1: ci/PAD-SPACE collapsed 'Hat'/'hat')
 			c.uid, c.tid, c.itemName, c.uid, c.tid, c.itemName)
 		if err != nil {
 			return rep, fmt.Errorf("closet insert uid=%d tid=%d: %w", c.uid, c.tid, err)
@@ -386,7 +465,11 @@ func RunImport(ctx context.Context, opt ImportOptions) (ImportReport, error) {
 		res, err := opt.Target.ExecContext(ctx, `
 			INSERT IGNORE INTO invitation_codes (id, code, generated_at, used_by, used_at, description)
 			VALUES (?,?,?,?,?,?)`,
-			i.id, i.code, i.generatedAt, i.usedBy, i.usedAt, i.description)
+			i.id, i.code,
+			safeTime(i.generatedAt, fmt.Sprintf("invitation id=%d generated_at", i.id), true, &rep),
+			i.usedBy,
+			safeTime(i.usedAt, fmt.Sprintf("invitation id=%d used_at", i.id), false, &rep),
+			i.description)
 		if err != nil {
 			return rep, fmt.Errorf("invitation insert id=%d: %w", i.id, err)
 		}
@@ -414,8 +497,13 @@ func RunImport(ctx context.Context, opt ImportOptions) (ImportReport, error) {
 					continue // broken/anomalous names are in the scan report already
 				}
 				src := filepath.Join(opt.TexturesSrc, e.Name())
+				// warn-and-continue (review A1: one anomalous file used to
+				// abort the run AFTER all DB rows committed, and the report
+				// was discarded — scan.go treats the same condition as
+				// report-only)
 				if _, err := MigrateFile(opt.TexturesDst, src, e.Name()); err != nil {
-					return rep, fmt.Errorf("copy %s: %w", e.Name(), err)
+					rep.Warnings = append(rep.Warnings, fmt.Sprintf("texture file %s: %v — skipped", e.Name(), err))
+					continue
 				}
 				rep.FilesCopied++
 			}
@@ -424,9 +512,53 @@ func RunImport(ctx context.Context, opt ImportOptions) (ImportReport, error) {
 	return rep, nil
 }
 
+// ValidateDSNs enforces the driver settings the importer depends on
+// (review A1): parseTime=true on both sides (otherwise every time.Time scan
+// fails at runtime) and identical loc= (otherwise wall-clock timestamps
+// shift by the UTC offset between the two sides).
+func ValidateDSNs(src, tgt string) error {
+	if !strings.Contains(src, "parseTime=true") || !strings.Contains(tgt, "parseTime=true") {
+		return fmt.Errorf("import: both DSNs must carry parseTime=true")
+	}
+	if locOf(src) != locOf(tgt) {
+		return fmt.Errorf("import: DSNs must use the same loc (got %q vs %q)", locOf(src), locOf(tgt))
+	}
+	return nil
+}
+
+// locOf extracts the loc= query parameter ("" = driver default UTC).
+func locOf(dsn string) string {
+	q := dsn
+	if i := strings.Index(dsn, "?"); i >= 0 {
+		q = dsn[i+1:]
+	}
+	for _, kv := range strings.Split(q, "&") {
+		if v, ok := strings.CutPrefix(kv, "loc="); ok {
+			return v
+		}
+	}
+	return ""
+}
+
+// safeTime normalizes a scanned legacy timestamp (review A1/A2: NULL or
+// '0000-00-00' values become driver zero-time and strict-mode inserts abort
+// the whole run). required -> substitute now(); nullable -> collapse to NULL.
+// Both paths leave a warning as evidence.
+func safeTime(t sql.NullTime, label string, required bool, rep *ImportReport) sql.NullTime {
+	if t.Valid && !t.Time.IsZero() {
+		return t
+	}
+	rep.Warnings = append(rep.Warnings, label+" is NULL/zero date")
+	if required {
+		return sql.NullTime{Time: time.Now(), Valid: true}
+	}
+	return sql.NullTime{}
+}
+
 // normalizeUUID defensively canonicalizes a legacy uuid string to the
 // 32-lowercase-hex form uuid_map stores (legacy values are already clean,
-// but dashes/case would violate CHAR(32)).
+// but dashes/case would violate CHAR(32)). Non-hex garbage is left as-is;
+// callers gate with isHexOfLen(r.UUID, 32) before insert.
 func normalizeUUID(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	return strings.ReplaceAll(s, "-", "")

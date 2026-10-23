@@ -416,15 +416,22 @@ func (m *Mysql) GetRefreshToken(ctx context.Context, token string) (oidc.Refresh
 }
 
 // RotateRefreshToken revokes old and stores new atomically (single tx).
+// The revoke is guarded (`AND revoked = 0`): two concurrent refreshes of the
+// same token race the guard and exactly one wins — RFC 6749 single-use
+// (review P2: the unguarded UPDATE let both reuse attempts rotate).
 func (m *Mysql) RotateRefreshToken(ctx context.Context, old, new oidc.RefreshTokenRecord) error {
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE oidc_refresh_tokens SET revoked = 1 WHERE token = ?`, old.Token); err != nil {
+	res, err := tx.ExecContext(ctx,
+		`UPDATE oidc_refresh_tokens SET revoked = 1 WHERE token = ? AND revoked = 0`, old.Token)
+	if err != nil {
 		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return oidc.ErrNotFound // already consumed or revoked
 	}
 	scopes, err := encodeStringList(new.Scopes)
 	if err != nil {
@@ -535,33 +542,39 @@ func (m *Mysql) GetDeviceAuthByUserCode(ctx context.Context, code string) (oidc.
 }
 
 // UpdateDeviceAuth applies the verification-page outcome (done / denied / uid
-// / selected_pid / auth_time) to the row named by device_code. A stale code
-// reports oidc.ErrNotFound; a same-values re-save is a no-op success.
+// / selected_pid / auth_time) to the row named by device_code, as a guarded
+// pending->decided transition: a second decision or a stale code reports
+// oidc.ErrNotFound (review P2: the unguarded UPDATE let concurrent approve/
+// deny writes overwrite each other, last writer silently winning).
 func (m *Mysql) UpdateDeviceAuth(ctx context.Context, rec oidc.DeviceAuthRecord) error {
 	res, err := m.db.ExecContext(ctx,
 		`UPDATE oidc_device_auth SET done = ?, denied = ?, uid = ?, selected_pid = ?, auth_time = ?
-		 WHERE device_code = ?`,
+		 WHERE device_code = ? AND done = 0 AND denied = 0`,
 		rec.Done, rec.Denied, rec.UserID, nullableInt(rec.SelectedPID),
 		nullableTime(rec.AuthTime), rec.DeviceCode)
 	if err != nil {
 		return err
 	}
-	if n, aerr := res.RowsAffected(); aerr == nil && n > 0 {
-		return nil
+	if n, _ := res.RowsAffected(); n == 0 {
+		return oidc.ErrNotFound // already decided, consumed, or unknown
 	}
-	// MySQL reports changed rows, not matched rows: probe to tell an
-	// identical re-save (exists, fine) from a stale device_code (ErrNotFound).
-	var one int
-	err = m.db.QueryRowContext(ctx,
-		`SELECT 1 FROM oidc_device_auth WHERE device_code = ?`, rec.DeviceCode).Scan(&one)
-	switch {
-	case err == nil:
-		return nil
-	case errors.Is(err, sql.ErrNoRows):
-		return oidc.ErrNotFound
-	default:
+	return nil
+}
+
+// ConsumeDeviceAuth burns an approved device authorization on first token
+// redemption (single-use device codes — review P2: replays within the code
+// lifetime minted a fresh pair per poll). Rows not in the approved state
+// report oidc.ErrNotFound.
+func (m *Mysql) ConsumeDeviceAuth(ctx context.Context, deviceCode string) error {
+	res, err := m.db.ExecContext(ctx,
+		`DELETE FROM oidc_device_auth WHERE device_code = ? AND done = 1 AND denied = 0`, deviceCode)
+	if err != nil {
 		return err
 	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return oidc.ErrNotFound
+	}
+	return nil
 }
 
 // ---- health probe ----

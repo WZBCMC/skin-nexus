@@ -3,6 +3,7 @@ package ygg
 import (
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -448,15 +449,32 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// clientIP returns the client address for rate limiting. X-Forwarded-For is
+// only honoured when the direct peer is a trusted proxy (loopback/private —
+// our nginx sits on the docker bridge), and the LAST entry is taken: that is
+// the hop our proxy appended. Client-supplied leading entries are spoofing
+// attempts and are ignored (review P1, 2026-10-23: first-entry trust let any
+// caller rotate fake XFF values to bypass the IP sliding window).
 func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return strings.TrimSpace(strings.Split(xff, ",")[0])
-	}
 	host := r.RemoteAddr
 	if i := strings.LastIndex(host, ":"); i > 0 {
-		return host[:i]
+		host = host[:i]
+	}
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" && isTrustedProxy(host) {
+		parts := strings.Split(xff, ",")
+		return strings.TrimSpace(parts[len(parts)-1])
 	}
 	return host
+}
+
+// isTrustedProxy reports whether the peer address is inside the local trust
+// zone (loopback or RFC1918 — docker bridge / same-host nginx).
+func isTrustedProxy(host string) bool {
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() || ip.IsPrivate()
 }
 
 // ClientIP exposes the XFF-aware client address for sibling modules

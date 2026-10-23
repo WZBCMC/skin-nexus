@@ -315,12 +315,20 @@ func (s *Storage) CreateAccessAndRefreshTokens(ctx context.Context, request op.T
 		CreatedAt:   time.Now(),
 	}
 	if currentRefreshToken != "" {
-		if old, gerr := s.backend.GetRefreshToken(ctx, currentRefreshToken); gerr == nil {
-			if err := s.backend.RotateRefreshToken(ctx, old, rt); err != nil {
-				return "", "", time.Time{}, err
-			}
-			return jti, newRT, exp, nil
+		old, gerr := s.backend.GetRefreshToken(ctx, currentRefreshToken)
+		if gerr != nil {
+			// Unknown refresh token must NOT mint a fresh 30-day pair
+			// (review P2: silent fall-through turned stale/rogue tokens
+			// into brand-new grants).
+			return "", "", time.Time{}, op.ErrInvalidRefreshToken
 		}
+		if err := s.backend.RotateRefreshToken(ctx, old, rt); err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return "", "", time.Time{}, op.ErrInvalidRefreshToken // reuse race loser
+			}
+			return "", "", time.Time{}, err
+		}
+		return jti, newRT, exp, nil
 	}
 	if err := s.backend.SaveRefreshToken(ctx, rt); err != nil {
 		return "", "", time.Time{}, err
@@ -339,8 +347,15 @@ func (s *Storage) TokenRequestByRefreshToken(ctx context.Context, token string) 
 	return &refreshTokenRequest{rec: rec, scopes: rec.Scopes}, nil
 }
 
+// TerminateSession kills BOTH token families (review P3: access-only left
+// launchers holding 30-day refresh tokens silently re-minting after logout).
 func (s *Storage) TerminateSession(ctx context.Context, userID string, _ string) error {
-	return s.backend.RevokeUserAccessTokens(ctx, subjectUID(userID))
+	uid := subjectUID(userID)
+	err := s.backend.RevokeUserAccessTokens(ctx, uid)
+	if err2 := s.backend.RevokeUserRefreshTokens(ctx, uid); err == nil {
+		err = err2
+	}
+	return err
 }
 
 func (s *Storage) RevokeToken(ctx context.Context, tokenOrTokenID, userID, _ string) *oidc.Error {
@@ -494,6 +509,15 @@ func (s *Storage) GetDeviceAuthorizatonState(ctx context.Context, clientID, devi
 	}
 	if rec.ClientID != clientID {
 		return nil, ErrNotFound
+	}
+	if rec.Done && !rec.Denied {
+		// Single-use redemption (review P2: the code stayed replayable within
+		// its lifetime — each poll minted a fresh access+refresh pair). The
+		// approved row is consumed atomically on first successful read; any
+		// later poll sees not-found and errors as expired/invalid.
+		if err := s.backend.ConsumeDeviceAuth(ctx, deviceCode); err != nil {
+			return nil, err
+		}
 	}
 	state := &op.DeviceAuthorizationState{
 		ClientID: rec.ClientID,
