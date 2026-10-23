@@ -344,14 +344,32 @@ func TestIntegrationLoginRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Lazy rehash is guarded to legacy rows only (review P3 lost-update fix:
+	// an unconditional UPDATE could clobber a concurrent password change),
+	// so mark the row as a migrated legacy user first.
+	if _, err := m.db.ExecContext(ctx,
+		`UPDATE users SET password_algo = 'legacy:bcrypt' WHERE id = ?`, uid); err != nil {
+		t.Fatal(err)
+	}
 	if err := m.RehashPassword(ctx, uid, h); err != nil {
 		t.Fatalf("rehash: %v", err)
+	}
+	var algo string
+	if err := m.db.QueryRowContext(ctx, `SELECT password_algo FROM users WHERE id = ?`, uid).Scan(&algo); err != nil || algo != "argon2id" {
+		t.Fatalf("rehash must flip marker to argon2id: %q %v", algo, err)
 	}
 	if ok, err := m.VerifyPassword(ctx, uid, "hunter2-xyz"); err != nil || !ok {
 		t.Fatalf("verify ok = %v %v", ok, err)
 	}
 	if ok, err := m.VerifyPassword(ctx, uid, "wrong-pass"); err != nil || ok {
 		t.Fatalf("verify wrong = %v %v", ok, err)
+	}
+	// Guard: rehash on a non-legacy row is a no-op (doesn't clobber).
+	if err := m.RehashPassword(ctx, uid, "ignored-hash"); err != nil {
+		t.Fatalf("guarded rehash: %v", err)
+	}
+	if ok, err := m.VerifyPassword(ctx, uid, "hunter2-xyz"); err != nil || !ok {
+		t.Fatalf("guarded rehash must not clobber: %v %v", ok, err)
 	}
 }
 
