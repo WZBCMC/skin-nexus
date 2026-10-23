@@ -108,6 +108,39 @@ func TestJoinAcceptsWireForms(t *testing.T) {
 	}
 }
 
+// TestMetadataSkinDomainsFormula pins the live legacy whitelist formula:
+// config ∪ union hosts ∪ site_url host ∪ request host, deduplicated.
+func TestMetadataSkinDomainsFormula(t *testing.T) {
+	api, _ := newTestAPI(t)
+	api.cfg.SkinDomains = []string{"skin.wzbcmc.cn"}
+	api.cfg.Homepage = "https://site.example"
+	api.cfg.ExtraSkinDomains = func() []string {
+		return []string{"skin.union-a.example", "skin.wzbcmc.cn", "site.example:8443"}
+	}
+	rec := do(t, api.Handler(), "GET", "/api/yggdrasil/", "", nil)
+	var doc struct {
+		SkinDomains []string `json:"skinDomains"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		"skin.wzbcmc.cn":        true,
+		"skin.union-a.example":  true,
+		"site.example:8443":     true,
+		"site.example":          true,
+		"example.com":           true, // httptest request host
+	}
+	if len(doc.SkinDomains) != len(want) {
+		t.Fatalf("skinDomains = %v (want %d unique)", doc.SkinDomains, len(want))
+	}
+	for _, d := range doc.SkinDomains {
+		if !want[d] {
+			t.Fatalf("unexpected domain %q in %v", d, doc.SkinDomains)
+		}
+	}
+}
+
 // TestJoinEmailVerificationGate pins the configurable require_verification
 // gate: default off (no mail flow yet — gate would dead-end every new user),
 // on blocks unverified users like the fork did.

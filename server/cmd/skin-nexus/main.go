@@ -11,6 +11,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -180,6 +181,22 @@ func main() {
 		hooks := union.Hooks{
 			OnServerList: func(list any, version string) {
 				_ = st.SetOption(context.Background(), "union_server_list_version", version)
+				// Legacy skinDomains formula: member hosts feed the texture
+				// whitelist (options-cached like union_server_list).
+				if raw, err := json.Marshal(list); err == nil {
+					var entries []struct {
+						BSRoot string `json:"bs_root"`
+					}
+					if err := json.Unmarshal(raw, &entries); err == nil {
+						hosts := make([]string, 0, len(entries))
+						for _, e := range entries {
+							if u, err := url.Parse(e.BSRoot); err == nil && u.Host != "" {
+								hosts = append(hosts, u.Host)
+							}
+						}
+						_ = st.SetOption(context.Background(), "union_skin_domains", strings.Join(hosts, ","))
+					}
+				}
 			},
 			OnMemberKeyRotated: func(newKey string) {
 				if err := st.SetOption(context.Background(), "union_member_key", newKey); err != nil {
@@ -270,6 +287,12 @@ func main() {
 		Register:               cfg.BaseURL + "/auth/register",
 		SkinDomains:            cfg.SkinDomains,
 		OpenIDConfigurationURL: oidcDiscoveryURL,
+		ExtraSkinDomains: func() []string {
+			if v, ok, err := st.GetOption(context.Background(), "union_skin_domains"); err == nil && ok && v != "" {
+				return strings.Split(v, ",")
+			}
+			return nil
+		},
 	})
 	backend := webapi.New(st, ts, yggSvc)
 	if unionOut != nil {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -31,6 +32,10 @@ type MetadataConfig struct {
 	// OpenIDConfigurationURL enables meta.feature.openid_configuration_url
 	// (yggc/OIDC passwordless login discovery; phase 2, absent when empty).
 	OpenIDConfigurationURL string
+	// ExtraSkinDomains supplies dynamic whitelist entries per request
+	// (union member hosts, options-cached). The legacy formula is
+	// config ∪ union hosts ∪ site_url host ∪ request host.
+	ExtraSkinDomains func() []string
 }
 
 // API serves the Yggdrasil HTTP surface mounted at /api/yggdrasil.
@@ -105,7 +110,7 @@ func (a *API) handleMetadata(w http.ResponseWriter, r *http.Request) {
 		writeJSONString(&b, a.cfg.OpenIDConfigurationURL)
 	}
 	b.WriteString(`},"skinDomains":[`)
-	for i, d := range a.cfg.SkinDomains {
+	for i, d := range a.skinDomains(r) {
 		if i > 0 {
 			b.WriteByte(',')
 		}
@@ -118,6 +123,35 @@ func (a *API) handleMetadata(w http.ResponseWriter, r *http.Request) {
 	// Authlib-injector discovery: relative or absolute location of this API.
 	w.Header().Set("X-Authlib-Injector-API-Location", apiLocation(r))
 	_, _ = w.Write([]byte(b.String()))
+}
+
+// skinDomains computes the texture whitelist per the live legacy formula
+// (yggdrasil-connect ConfigController.php:138-147): configured domains,
+// union member hosts, the site_url host, and the current request host.
+// authlib-injector trusts textures only from listed hosts, so Union
+// cross-station skins keep verifying on member stations.
+func (a *API) skinDomains(r *http.Request) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, 8)
+	add := func(d string) {
+		if d != "" && !seen[d] {
+			seen[d] = true
+			out = append(out, d)
+		}
+	}
+	for _, d := range a.cfg.SkinDomains {
+		add(d)
+	}
+	if a.cfg.ExtraSkinDomains != nil {
+		for _, d := range a.cfg.ExtraSkinDomains() {
+			add(d)
+		}
+	}
+	if u, err := url.Parse(a.cfg.Homepage); err == nil {
+		add(u.Host)
+	}
+	add(r.Host)
+	return out
 }
 
 // apiLocation derives the ALI value from the request so the deployment
