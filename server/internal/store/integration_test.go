@@ -69,7 +69,8 @@ func applyMigrations(t *testing.T, m *Mysql) {
 	}
 }
 
-// seedSeq makes seedUser callable multiple times per test (uq_users_nickname).
+// seedSeq makes plain seedUser callable multiple times per run
+// (uq_users_nickname); tests that pin identity literals use seedUserAs.
 var seedSeq int64
 
 func seedUser(t *testing.T, m *Mysql) int64 {
@@ -77,6 +78,17 @@ func seedUser(t *testing.T, m *Mysql) int64 {
 	seedSeq++
 	uid, err := m.CreateUser(context.Background(),
 		fmt.Sprintf("it%d@example.com", seedSeq), fmt.Sprintf("it_user%d", seedSeq), "x", 3)
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	return uid
+}
+
+// seedUserAs creates a user with a fixed email/nickname (identity-asserting
+// tests). Callers must not repeat an identity within one suite run.
+func seedUserAs(t *testing.T, m *Mysql, email, nick string) int64 {
+	t.Helper()
+	uid, err := m.CreateUser(context.Background(), email, nick, "x", 3)
 	if err != nil {
 		t.Fatalf("create user: %v", err)
 	}
@@ -246,7 +258,7 @@ func TestIntegrationUnionAndAudit(t *testing.T) {
 func TestIntegrationProfileHooks(t *testing.T) {
 	m := openTestStore(t)
 	ctx := context.Background()
-	uid := seedUser(t, m)
+	uid := seedUserAs(t, m, "it@example.com", "it_user")
 
 	pid, uuid, err := m.CreatePlayer(ctx, uid, "HookSteve")
 	if err != nil || pid == 0 || uuid == "" {
@@ -311,13 +323,13 @@ func TestIntegrationSessionLifecycle(t *testing.T) {
 func TestIntegrationLoginRoundTrip(t *testing.T) {
 	m := openTestStore(t)
 	ctx := context.Background()
-	uid := seedUser(t, m)
+	uid := seedUserAs(t, m, "login@example.com", "login_user")
 
 	// identifier lookup: nickname hit, case-insensitive email hit, miss
-	if u, err := m.UserByIdentifier(ctx, "it_user"); err != nil || u.ID != uid {
+	if u, err := m.UserByIdentifier(ctx, "login_user"); err != nil || u.ID != uid {
 		t.Fatalf("by nickname = %+v %v", u, err)
 	}
-	if u, err := m.UserByIdentifier(ctx, "IT@Example.com"); err != nil || u.ID != uid {
+	if u, err := m.UserByIdentifier(ctx, "LOGIN@Example.com"); err != nil || u.ID != uid {
 		t.Fatalf("by email ci = %+v %v", u, err)
 	}
 	if _, err := m.UserByIdentifier(ctx, "missing_user"); err == nil {
