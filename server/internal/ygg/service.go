@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"log"
+	"net"
 	"strings"
 	"time"
 
@@ -143,7 +144,28 @@ func (s *Service) ResolveToken(ctx context.Context, access string) (Token, error
 // Authenticate issues a token pair (authserver/authenticate).
 func (s *Service) Authenticate(ctx context.Context, username, password, clientToken string, withProfiles bool) (Token, []Player, error) {
 	u, err := s.store.UserByIdentifier(ctx, username)
+	autoPID := int64(0)
 	if err != nil {
+		// legacy non_email_login (metadata advertises this): the identifier
+		// may be a PLAYER name — reverse-lookup the owning user and
+		// auto-bind that profile (CheckLoginCredentials.php parity: the
+		// response then carries selectedProfile and only that profile).
+		p, perr := s.store.PlayerByName(ctx, username)
+		if perr != nil {
+			return Token{}, nil, ErrBadCredentials
+		}
+		u, err = s.store.UserByID(ctx, p.UID)
+		if err != nil {
+			return Token{}, nil, ErrBadCredentials
+		}
+		autoPID = p.ID
+	}
+	// Legacy CheckLoginCredentials gates at authenticate, not only at join:
+	// banned users and (gate on) unverified users are rejected at login.
+	if s.requireVerification(ctx) && !u.EmailVerified {
+		return Token{}, nil, ErrEmailUnverified
+	}
+	if !u.CanJoinServer {
 		return Token{}, nil, ErrBadCredentials
 	}
 	ok, err := s.store.VerifyPassword(ctx, u.ID, password)
@@ -160,6 +182,15 @@ func (s *Service) Authenticate(ctx context.Context, username, password, clientTo
 		clientToken = randomHex(16)
 	}
 	players, _ := s.store.PlayersByUID(ctx, u.ID)
+	if autoPID != 0 {
+		// player-name login: availableProfiles collapses to that profile
+		for _, pl := range players {
+			if pl.ID == autoPID {
+				players = []Player{pl}
+				break
+			}
+		}
+	}
 	t := Token{
 		AccessToken: randomHex(32),
 		ClientToken: clientToken,
@@ -298,6 +329,17 @@ func (s *Service) Join(ctx context.Context, accessToken, playerUUID, serverID, s
 	})
 }
 
+// sameIP compares two IP spellings by value (chain-trace P2: string compare
+// killed IPv6 players — Go's net.IP text vs Java InetAddress.getHostAddress()
+// normalize the same address differently). Falls back to exact string match
+// when either side does not parse.
+func sameIP(a, b string) bool {
+	if ia, ib := net.ParseIP(a), net.ParseIP(b); ia != nil && ib != nil {
+		return ia.Equal(ib)
+	}
+	return a == b
+}
+
 // NormalizeUUID maps the UUID wire formats seen in the wild (bare 32-hex and
 // hyphenated 8-4-4-4-12, any case) onto the canonical lowercase 32-hex form
 // used in storage — both spellings must be tolerated (live capture 2026-10-23).
@@ -319,6 +361,11 @@ func (s *Service) PlayerPIDByUUID(ctx context.Context, uuid string) (int64, erro
 // Returns ErrSessionNotFound (HTTP 204) on: unknown session, expired,
 // serverId mismatch, or IP mismatch (fork behavior).
 func (s *Service) HasJoined(ctx context.Context, username, serverID, serverIP string) (Profile, error) {
+	// legacy: missing parameters answer 204 directly (chain-trace P2: an
+	// empty serverId used to match ANY live join and return a signed profile)
+	if username == "" || serverID == "" {
+		return Profile{}, ErrSessionNotFound
+	}
 	p, err := s.store.PlayerByName(ctx, username)
 	if err != nil {
 		return Profile{}, ErrProfileNotFound
@@ -349,8 +396,8 @@ func (s *Service) findLiveJoin(ctx context.Context, p Player, serverID, serverIP
 		if serverID != "" && j.ServerID != serverID {
 			continue
 		}
-		if serverIP != "" && j.ServerIP != "" && j.ServerIP != serverIP {
-			continue
+		if serverIP != "" && j.ServerIP != "" && !sameIP(j.ServerIP, serverIP) {
+			continue // fork: IP mismatch -> 204
 		}
 		return j, nil
 	}

@@ -58,9 +58,22 @@ func (m *Mysql) DeleteUserSessionsExcept(ctx context.Context, uid int64, keepTok
 // RehashPassword updates to modern digest after successful legacy login.
 // Guarded on still-legacy algo so a concurrent password change cannot be
 // clobbered with a rehash of the OLD password (review P3 lost-update race).
+// Deliberately NOT used by the password-change flow — that must always write.
 func (m *Mysql) RehashPassword(ctx context.Context, uid int64, newHash string) error {
 	_, err := m.db.ExecContext(ctx,
 		`UPDATE users SET password = ?, password_algo = 'argon2id' WHERE id = ? AND password_algo LIKE 'legacy%'`,
+		newHash, uid)
+	return err
+}
+
+// SetPasswordHash writes a new credential UNCONDITIONALLY (self-service
+// password change). Chain-trace P0 (2026-10-23): the change flow once reused
+// the legacy-guarded RehashPassword — for argon2id users the UPDATE silently
+// matched zero rows (password unchanged!) while every token was still
+// revoked, turning "change password to stop a leak" into an amplifier.
+func (m *Mysql) SetPasswordHash(ctx context.Context, uid int64, newHash string) error {
+	_, err := m.db.ExecContext(ctx,
+		`UPDATE users SET password = ?, password_algo = 'argon2id' WHERE id = ?`,
 		newHash, uid)
 	return err
 }

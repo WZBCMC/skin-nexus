@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"skin-nexus/server/internal/store"
 	"skin-nexus/server/internal/union"
 )
 
@@ -248,9 +249,12 @@ func (b *Backend) handleUnionRemapUUID(w http.ResponseWriter, r *http.Request) {
 		b.unionOwnErr(w, err)
 		return
 	}
-	target, err := b.ownedPlayer(r.Context(), uid, body.Target)
-	if err != nil {
-		b.unionOwnErr(w, err)
+	// target is the union-MAPPED uuid — frequently ANOTHER site's uuid for
+	// the same profile (MUA review P1: requiring local ownership made the
+	// cross-site 1.19+ remap impossible). Only shape is validated here.
+	target := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(body.Target), "-", ""))
+	if !isHex32(target) {
+		writeErr(w, http.StatusBadRequest, "目标 UUID 不合法")
 		return
 	}
 	if err := b.union.RemapUUID(r.Context(), me, target); err != nil {
@@ -258,7 +262,33 @@ func (b *Backend) handleUnionRemapUUID(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, st, msg)
 		return
 	}
+	// Converge our own row BEFORE saying ok (MUA review P1: returning ok
+	// while the local table kept the stale uuid left this site as the only
+	// one not converged — the signed-profile breakage persisted).
+	if err := b.Store.ConvergeUUID(r.Context(), me, target); err != nil {
+		b.Store.InsertAudit(r.Context(), uid, "union_remapuuid_local_conflict",
+			map[string]any{"me": me, "target": target, "error": err.Error()})
+		if errors.Is(err, store.ErrUUIDConflict) {
+			writeErr(w, http.StatusConflict, "联盟已受理，但本地目标 UUID 已被占用，请人工合并")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "联盟已受理，本地收敛失败，请重试")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// isHex32 validates the canonical uuid_map identity shape.
+func isHex32(s string) bool {
+	if len(s) != 32 {
+		return false
+	}
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func (b *Backend) unionOwnErr(w http.ResponseWriter, err error) {

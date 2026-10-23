@@ -1,6 +1,8 @@
 package ygg
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net"
@@ -441,7 +443,29 @@ func writeTokenResponse(w http.ResponseWriter, t Token, players []Player, withUs
 	if selected != nil {
 		resp["selectedProfile"] = selected
 	}
+	if withUser {
+		// live legacy capture parity (requestUser:true is sent by every
+		// launcher login/refresh): user.id = uuid5(NAMESPACE_DNS, uid) as
+		// 32 lowercase hex, properties [] (chain-trace P2 2026-10-23).
+		resp["user"] = map[string]interface{}{
+			"id":         uuid5DNSHex(strconv.FormatInt(t.UserID, 10)),
+			"properties": []interface{}{},
+		}
+	}
 	writeJSON(w, resp)
+}
+
+// uuid5DNSHex computes uuid5(NAMESPACE_DNS, s) in the 32-lowercase-hex
+// spelling the legacy wire uses (no dashes).
+func uuid5DNSHex(s string) string {
+	ns, _ := hex.DecodeString("6ba7b8109dad11d180b400c04fd430c8")
+	h := sha1.New()
+	h.Write(ns)
+	h.Write([]byte(s))
+	sum := h.Sum(nil)
+	sum[6] = (sum[6] & 0x0f) | 0x50 // version 5
+	sum[8] = (sum[8] & 0x3f) | 0x80 // RFC 4122 variant
+	return hex.EncodeToString(sum[:16])
 }
 
 func writeJSON(w http.ResponseWriter, v interface{}) {

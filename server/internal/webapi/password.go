@@ -55,9 +55,11 @@ func (b *Backend) handlePasswordChange(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "hash error")
 		return
 	}
-	// RehashPassword sets password + password_algo='argon2id' in one shot —
-	// legacy weak-hash rows are upgraded by the change itself.
-	if err := b.Store.RehashPassword(r.Context(), uid, hash); err != nil {
+	// SetPasswordHash writes UNCONDITIONALLY (chain-trace P0: the legacy-
+	// guarded RehashPassword is for lazy upgrade ONLY — reusing it here made
+	// the change a silent no-op for argon2id users while tokens were still
+	// revoked, turning "change password to stop a leak" into an amplifier).
+	if err := b.Store.SetPasswordHash(r.Context(), uid, hash); err != nil {
 		writeErr(w, http.StatusInternalServerError, "update failed")
 		return
 	}

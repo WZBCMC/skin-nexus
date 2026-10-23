@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -465,8 +466,12 @@ func (b *Backend) handleCreatePlayer(w http.ResponseWriter, r *http.Request) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := b.union.SyncProfileCreate(ctx, u, name); err != nil {
-				b.Store.InsertAudit(ctx, 0, "union_sync_create_failed",
+				// fresh ctx for the audit (MUA review P2: reusing the expired
+				// sync ctx made the compensation record fail on the exact
+				// timeout it exists for) + error logged, not just audited.
+				b.Store.InsertAudit(context.Background(), 0, "union_sync_create_failed",
 					map[string]interface{}{"uuid": u, "name": name, "error": err.Error()})
+				log.Printf("union sync create failed uuid=%s name=%s: %v", u, name, err)
 			}
 		}()
 	}

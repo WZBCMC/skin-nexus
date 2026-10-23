@@ -281,16 +281,50 @@ func TestIntegrationProfileHooks(t *testing.T) {
 		t.Fatalf("missing player lookup ok=%v err=%v", ok, err)
 	}
 
-	// RemapUUIDs applies hub-issued batch; only mapped rows move.
-	if err := m.RemapUUIDs(ctx, map[string]string{uuid: "cafebabecafebabecafebabecafebabe"}); err != nil {
-		t.Fatalf("remap: %v", err)
+	// RemapUUIDs applies hub-issued batch; only mapped rows move; counts are
+	// truthful (MUA review P1).
+	applied, skipped, err := m.RemapUUIDs(ctx, map[string]string{uuid: "cafebabecafebabecafebabecafebabe"})
+	if err != nil || applied != 1 || skipped != 0 {
+		t.Fatalf("remap applied=%d skipped=%d err=%v", applied, skipped, err)
 	}
 	if p, err := m.PlayerByUUID(ctx, "cafebabecafebabecafebabecafebabe"); err != nil || p.ID != pid {
 		t.Fatalf("after remap = %+v %v", p, err)
 	}
-	// Unknown old uuid: no error, nothing moved.
-	if err := m.RemapUUIDs(ctx, map[string]string{"0000000000000000000000000000dead": "0000000000000000000000000000beef"}); err != nil {
-		t.Fatalf("remap unknown: %v", err)
+	// Unknown old uuid: no error, counted as skipped.
+	applied, skipped, err = m.RemapUUIDs(ctx, map[string]string{"0000000000000000000000000000dead": "0000000000000000000000000000beef"})
+	if err != nil || applied != 0 || skipped != 1 {
+		t.Fatalf("remap unknown applied=%d skipped=%d err=%v", applied, skipped, err)
+	}
+	// Hub values are normalized (dashed/uppercase used to TRUNCATE into a
+	// wrong identity under non-strict sql_mode).
+	applied, skipped, err = m.RemapUUIDs(ctx, map[string]string{"cafebabecafebabecafebabecafebabe": "ABCD-ABCD-ABCD-ABCD-ABCD-ABCD-ABCD-ABCD"})
+	if err != nil || applied != 1 || skipped != 0 {
+		t.Fatalf("remap normalize applied=%d skipped=%d err=%v", applied, skipped, err)
+	}
+	// Collision-tolerant batch: a merge batch never rolls back everything and
+	// never overwrites an existing target row.
+	pid2, uuid2, err := m.CreatePlayer(ctx, uid, "HookAlex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	applied, skipped, err = m.RemapUUIDs(ctx, map[string]string{uuid2: "abcdabcdabcdabcdabcdabcdabcdabcd"})
+	if err != nil || applied != 0 || skipped != 1 {
+		t.Fatalf("collision batch applied=%d skipped=%d err=%v", applied, skipped, err)
+	}
+	if p, err := m.PlayerByUUID(ctx, "abcdabcdabcdabcdabcdabcdabcdabcd"); err != nil || p.ID != pid {
+		t.Fatalf("target row must keep original owner: %+v %v", p, err)
+	}
+	// ConvergeUUID: conflicts are refused ...
+	if err := m.ConvergeUUID(ctx, uuid2, "abcdabcdabcdabcdabcdabcdabcdabcd"); !errors.Is(err, ErrUUIDConflict) {
+		t.Fatalf("converge conflict = %v", err)
+	}
+	// ... and a fresh target converges the local row (requesting site must
+	// converge before answering ok — MUA review P1).
+	if err := m.ConvergeUUID(ctx, uuid2, "0123456789abcdef0123456789abcdef"); err != nil {
+		t.Fatalf("converge: %v", err)
+	}
+	if p, err := m.PlayerByUUID(ctx, "0123456789abcdef0123456789abcdef"); err != nil || p.ID != pid2 {
+		t.Fatalf("after converge = %+v %v", p, err)
 	}
 }
 
@@ -370,6 +404,21 @@ func TestIntegrationLoginRoundTrip(t *testing.T) {
 	}
 	if ok, err := m.VerifyPassword(ctx, uid, "hunter2-xyz"); err != nil || !ok {
 		t.Fatalf("guarded rehash must not clobber: %v %v", ok, err)
+	}
+	// P0 regression (chain-trace 2026-10-23): the password CHANGE path must
+	// write unconditionally — even for rows already at argon2id.
+	h2, err := auth.HashArgon2id("new-pass-456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.SetPasswordHash(ctx, uid, h2); err != nil {
+		t.Fatalf("set password: %v", err)
+	}
+	if ok, err := m.VerifyPassword(ctx, uid, "new-pass-456"); err != nil || !ok {
+		t.Fatalf("after change, new password must verify: %v %v", ok, err)
+	}
+	if ok, err := m.VerifyPassword(ctx, uid, "hunter2-xyz"); err != nil || ok {
+		t.Fatalf("after change, old password must fail: %v %v", ok, err)
 	}
 }
 

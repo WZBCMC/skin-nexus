@@ -38,7 +38,10 @@ type Config struct {
 	// (0 disables the window layer). LoginFailLimit = consecutive failures
 	// per identifier before a 15-minute lockout (0 disables). Both tunable
 	// from the admin settings panel (boot-read with env fallback).
-	RateLimitAuth  int // SKIN_RATE_LIMIT_AUTH (default 20)
+	// Default 120 (chain-trace P1 2026-10-23): 20 tripped campus/NAT exits
+	// within minutes — register + web login + ygg auth + refresh share one
+	// bucket per IP, so shared exits got collective 429s.
+	RateLimitAuth  int // SKIN_RATE_LIMIT_AUTH (default 120)
 	LoginFailLimit int // SKIN_LOGIN_FAIL_LIMIT (default 5)
 
 	// Registration requires a valid invitation code (live plugin's mandatory
@@ -87,7 +90,7 @@ func Load() (*Config, error) {
 		OIDCEnabled:    getenv("SKIN_OIDC_ENABLED", "false") == "true",
 		RequireVerification: getenv("SKIN_REQUIRE_VERIFICATION", "false") == "true",
 		RequireInvite:       getenv("SKIN_INVITE_REQUIRED", "false") == "true",
-		RateLimitAuth:       atoiDefault(getenv("SKIN_RATE_LIMIT_AUTH", "20"), 20),
+		RateLimitAuth:       atoiDefault(getenv("SKIN_RATE_LIMIT_AUTH", "120"), 120),
 		LoginFailLimit:      atoiDefault(getenv("SKIN_LOGIN_FAIL_LIMIT", "5"), 5),
 		OIDCIssuer:     strings.TrimRight(getenv("SKIN_OIDC_ISSUER", strings.TrimRight(getenv("SKIN_BASE_URL", "http://localhost:8080"), "/")), "/"),
 		OIDCSignKey:    resolveDataPath("SKIN_OIDC_SIGN_KEY", dataDir, "oidc-key.pem"),

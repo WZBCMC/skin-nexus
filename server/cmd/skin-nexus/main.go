@@ -218,7 +218,15 @@ func main() {
 				audit("member_key_rotated", nil)
 			},
 			OnRemapUUID: func(remap map[string]string) error {
-				return st.RemapUUIDs(context.Background(), remap)
+				applied, skipped, err := st.RemapUUIDs(context.Background(), remap)
+				if err != nil {
+					return err
+				}
+				// true counts (MUA review P1: the old audit logged len(batch)
+				// regardless of rows actually moved)
+				st.InsertAudit(context.Background(), 0, "union_remapuuid_detail",
+					map[string]interface{}{"applied": applied, "skipped": skipped})
+				return nil
 			},
 			ProfileListFunc: func() (map[string]string, error) {
 				return st.ProfileNameByUUID(context.Background())
@@ -391,7 +399,14 @@ func main() {
 		root.Handle("/api/v1/oidc/", oidcProvider.DeviceAPIHandler())
 	}
 	if unionAPI != nil {
-		root.Handle("/api/union/", unionAPI.Handler())
+		// 1 MiB body cap (MUA review P2): /api/union/* verified its signature
+		// over io.ReadAll — an unbounded body was a memory DoS surface.
+		root.Handle("/api/union/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Body != nil {
+				r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+			}
+			unionAPI.Handler().ServeHTTP(w, r)
+		}))
 		root.Handle("GET /api/union/member/oauth2/grant", unionGrantHandler(unionGrant, unionOut, st, cfg.UnionAPIRoot))
 	}
 	root.Handle("/api/v1/", backend.Handler())
