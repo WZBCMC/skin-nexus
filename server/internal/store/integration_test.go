@@ -33,7 +33,7 @@ var testTables = []string{
 	"oidc_auth_requests", "oidc_clients",
 	"union_kv", "web_sessions", "audit_log", "options",
 	"ygg_join_sessions", "ygg_tokens", "uuid_map", "textures", "players", "users",
-	"invitation_codes",
+	"invitation_codes", "schema_migrations",
 }
 
 func openTestStore(t *testing.T) *Mysql {
@@ -57,12 +57,13 @@ func openTestStore(t *testing.T) *Mysql {
 	return m
 }
 
-// applyMigrations executes migrations/*.sql in filename order via the shared
-// migrate.ApplySQLDir helper (also used by the empty-DB boot path).
+// applyMigrations executes migrations/*.sql in filename order via the tracked
+// path (per-file markers + duplicate-object tolerance) — the same helper the
+// empty-DB and existing-DB boot paths run.
 func applyMigrations(t *testing.T, m *Mysql) {
 	t.Helper()
 	dir := filepath.Join("..", "..", "migrations")
-	if err := migrate.ApplySQLDir(m.db, dir); err != nil {
+	if err := migrate.ApplySQLDirTracked(m.db, dir); err != nil {
 		t.Fatalf("apply migrations: %v", err)
 	}
 }

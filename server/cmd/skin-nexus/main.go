@@ -75,16 +75,14 @@ func main() {
 	}
 	defer st.Close()
 
-	// Phase 3: empty-database bootstrap. When the schema is missing and
-	// SKIN_AUTO_MIGRATE=1 (docker default), apply migrations/ automatically;
-	// the /setup wizard then completes site initialization on first visit.
+	// Phase 3 / plan option A (2026-10-23): tracked migrations. Runs on every
+	// SKIN_AUTO_MIGRATE boot — new files reach EXISTING databases (the
+	// empty-DB-only path left 0006 unapplied on the live test instance);
+	// schema_migrations markers skip completed files, duplicate-object
+	// collisions from pre-tracking databases are tolerated, all else fatal.
 	if cfg.AutoMigrate {
-		if ok, err := st.TableExists(context.Background(), "users"); err == nil && !ok {
-			log.Printf("schema: empty database — applying %s", cfg.MigrationsDir)
-			if err := migrate.ApplySQLDir(st.DB(), cfg.MigrationsDir); err != nil {
-				log.Fatalf("schema: %v", err)
-			}
-			log.Printf("schema: migrations applied")
+		if err := migrate.ApplySQLDirTracked(st.DB(), cfg.MigrationsDir); err != nil {
+			log.Fatalf("schema: %v", err)
 		}
 	}
 
