@@ -377,6 +377,10 @@ func TestIntegrationInvitationFlow(t *testing.T) {
 	if err := m.SetInvitationCodeDescription(ctx, one[0].ID, "new-desc"); err != nil {
 		t.Fatalf("edit description: %v", err)
 	}
+	// same-value edit must be ok (MySQL changed-rows semantics, no false 404)
+	if err := m.SetInvitationCodeDescription(ctx, one[0].ID, "new-desc"); err != nil {
+		t.Fatalf("idempotent edit: %v", err)
+	}
 	if err := m.SetInvitationCodeDescription(ctx, 999999, "x"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("edit unknown id err = %v (want ErrNotFound)", err)
 	}

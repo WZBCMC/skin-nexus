@@ -109,16 +109,26 @@ func (m *Mysql) ListInvitationCodes(ctx context.Context) (free, used []Invitatio
 }
 
 // SetInvitationCodeDescription updates the description (live plugin PUT edit).
+// MySQL reports RowsAffected as CHANGED rows: setting the same value yields 0
+// but the row exists — an existence check separates "no change" (ok) from
+// "no row" (ErrNotFound); treating 0 as missing gave false 404s (e2e, 2026-10-23).
 func (m *Mysql) SetInvitationCodeDescription(ctx context.Context, id int64, description string) error {
 	res, err := m.db.ExecContext(ctx,
 		`UPDATE invitation_codes SET description = ? WHERE id = ?`, nullableStr(description), id)
 	if err != nil {
 		return err
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
+	if n, _ := res.RowsAffected(); n > 0 {
+		return nil
 	}
-	return nil
+	var one int
+	if err := m.db.QueryRowContext(ctx, `SELECT 1 FROM invitation_codes WHERE id = ?`, id).Scan(&one); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	return nil // row exists, value already identical
 }
 
 // CreateUserWithInvitation registers a user and burns the invitation code in
