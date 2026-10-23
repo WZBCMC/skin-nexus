@@ -407,6 +407,8 @@ func main() {
 		return total, err
 	}
 	// Settings panel: env-derived fallbacks; option values win per request.
+	// B4 keys use blessing原名 defaults (config/options.php) so the panel
+	// shows what an un-set option actually behaves as.
 	admin.SettingsDefaults = map[string]string{
 		"site_name":            cfg.SiteName,
 		"server_name":          cfg.ServerName,
@@ -415,6 +417,12 @@ func main() {
 		"require_verification": boolStr(cfg.RequireVerification),
 		"rate_limit_auth":      strconv.Itoa(cfg.RateLimitAuth),
 		"login_fail_limit":     strconv.Itoa(cfg.LoginFailLimit),
+		"announcement":         "",
+		"regs_per_ip":          "3",
+		"max_upload_file_size": "1024",
+		"player_name_rule":     "official",
+		"player_name_length_min": "3",
+		"player_name_length_max": "16",
 	}
 	// Admin user management shares the credential-change revoke semantics.
 	admin.OnUserCredentialChange = func(uid int64) {

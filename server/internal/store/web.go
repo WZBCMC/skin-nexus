@@ -11,9 +11,11 @@ import (
 )
 // ---- registration & web sessions ----
 
-// CreateUser registers a user. passwordHash is already modern PHC.
-func (m *Mysql) CreateUser(ctx context.Context, email, nickname, passwordHash string, playerLimit int) (int64, error) {
-	return m.createUser(ctx, email, nickname, passwordHash, playerLimit, 0)
+// CreateUser registers a user. passwordHash is already modern PHC. ip is the
+// registrant address (blessing records it per-account for the regs_per_ip
+// cap; empty = unknown, never counted).
+func (m *Mysql) CreateUser(ctx context.Context, email, nickname, passwordHash string, playerLimit int, ip string) (int64, error) {
+	return m.createUser(ctx, email, nickname, passwordHash, playerLimit, 0, ip)
 }
 
 // CreateUserAdmin registers the install-wizard bootstrap account with the
@@ -21,14 +23,14 @@ func (m *Mysql) CreateUser(ctx context.Context, email, nickname, passwordHash st
 // the wizard is a one-way door, so the account must never land half-promoted
 // (otherwise no account could reach the admin panel by login alone).
 func (m *Mysql) CreateUserAdmin(ctx context.Context, email, nickname, passwordHash string, playerLimit int) (int64, error) {
-	return m.createUser(ctx, email, nickname, passwordHash, playerLimit, 1)
+	return m.createUser(ctx, email, nickname, passwordHash, playerLimit, 1, "")
 }
 
-func (m *Mysql) createUser(ctx context.Context, email, nickname, passwordHash string, playerLimit, permission int) (int64, error) {
+func (m *Mysql) createUser(ctx context.Context, email, nickname, passwordHash string, playerLimit, permission int, ip string) (int64, error) {
 	res, err := m.db.ExecContext(ctx,
-		`INSERT INTO users (email, nickname, password, password_algo, player_limit, email_verified, can_join_server, permission)
-		 VALUES (?,?,?,'argon2id',?,0,1,?)`,
-		nullableStr(email), nickname, passwordHash, playerLimit, permission)
+		`INSERT INTO users (email, nickname, password, password_algo, player_limit, email_verified, can_join_server, permission, ip)
+		 VALUES (?,?,?,'argon2id',?,0,1,?,?)`,
+		nullableStr(email), nickname, passwordHash, playerLimit, permission, nullableStr(ip))
 	if err != nil {
 		return 0, err
 	}

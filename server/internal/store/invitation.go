@@ -135,16 +135,16 @@ func (m *Mysql) SetInvitationCodeDescription(ctx context.Context, id int64, desc
 // one transaction. The atomic "used_by = 0" guard closes the double-use race
 // the legacy plugin left open (session stash + after-the-fact update).
 // ErrNotFound = the code is missing or already used (nothing is created).
-func (m *Mysql) CreateUserWithInvitation(ctx context.Context, email, nickname, passwordHash string, playerLimit int, code string) (int64, error) {
+func (m *Mysql) CreateUserWithInvitation(ctx context.Context, email, nickname, passwordHash string, playerLimit int, code, ip string) (int64, error) {
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx,
-		`INSERT INTO users (email, nickname, password, password_algo, player_limit, email_verified, can_join_server)
-		 VALUES (?,?,?,'argon2id',?,0,1)`,
-		nullableStr(email), nickname, passwordHash, playerLimit)
+		`INSERT INTO users (email, nickname, password, password_algo, player_limit, email_verified, can_join_server, ip)
+		 VALUES (?,?,?,'argon2id',?,0,1,?)`,
+		nullableStr(email), nickname, passwordHash, playerLimit, nullableStr(ip))
 	if err != nil {
 		return 0, err
 	}

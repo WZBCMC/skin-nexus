@@ -44,6 +44,7 @@
   },
   "dashboard": {
     "uploadTitle": "Upload texture",
+    "announcement": "Announcement",
     "typeSkin": "Skin",
     "typeCape": "Cape",
     "modelDefault": "default (Steve)",

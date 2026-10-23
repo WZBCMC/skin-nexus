@@ -158,7 +158,14 @@ onMounted(load)
         </label>
         <input v-if="s.key === 'invite_required' || s.key === 'require_verification'"
                type="checkbox" v-model="s.value" true-value="1" false-value="0" style="width: auto;" />
-        <textarea v-else-if="s.key === 'skin_domains'" v-model="s.value" style="max-width: 360px; min-height: 38px;"></textarea>
+        <textarea v-else-if="s.key === 'skin_domains' || s.key === 'announcement' || s.key === 'custom_player_name_regexp' || s.key === 'texture_name_regexp'"
+                  v-model="s.value" style="max-width: 360px; min-height: 38px;"></textarea>
+        <select v-else-if="s.key === 'player_name_rule'" v-model="s.value" style="max-width: 160px;">
+          <option value="official">official（字母/数字/下划线）</option>
+          <option value="cjk">cjk（+ 中文/§）</option>
+          <option value="utf8">utf8（任意非空白）</option>
+          <option value="custom">custom（自定义正则）</option>
+        </select>
         <input v-else v-model="s.value" style="max-width: 300px;" :placeholder="s.default" />
         <button @click="saveSetting(s)">保存</button>
         <span class="muted" style="font-size: 11px;">{{ s.restart ? '重启后生效' : '立即生效' }}</span>

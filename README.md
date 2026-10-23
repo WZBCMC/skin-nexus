@@ -2,7 +2,7 @@
 
 > 下一代 Minecraft 皮肤站：Yggdrasil 外置登录兼容、一键迁移 blessing-skin-server、自托管优先。
 
-**状态**（每轮开发收尾同步 · 2026-10-24）：一期开发完成（M0–M5）· 二期开发完成（免密登录 + Union 可开关模块 + 前端/管理/集成全量）· 三期骨架完成（i18n / SEO / 主题 / Docker / 空库初始化）· 管理面板账号会话化（2026-10-24：管理员账号登录即用管理面板、普通用户不见入口，X-Admin-Token 降为机器/API 回退；设置面板中文标签优先）· 真机验收（A2）待执行 · 迁移切流窗口待排期
+**状态**（每轮开发收尾同步 · 2026-10-24）：一期开发完成（M0–M5）· 二期开发完成（免密登录 + Union 可开关模块 + 前端/管理/集成全量）· 三期骨架完成（i18n / SEO / 主题 / Docker / 空库初始化）· 管理面板账号会话化（2026-10-24：管理员账号登录即用管理面板、普通用户不见入口，X-Admin-Token 降为机器/API 回退；设置面板中文标签优先）· 管理面板对齐 blessing 第一批 B1+B2（2026-10-24：侧边栏布局 / 仪表盘统计卡含存储占用 / 运行状态页 / 邀请码布局对齐 / 用户管理表搜索·分页·行内编辑·权限三护栏）· 真机验收（A2）待执行 · 迁移切流窗口待排期
 **许可**：AGPL-3.0 · **发起人/著作权人**：YMZS
 
 ## 这是什么
@@ -35,6 +35,8 @@ SkinNexus（肤枢）是对年久失修的 [blessing-skin-server](https://github
 | 兼容矩阵 | blessing/yggdrasil-connect 1:1 复刻缺口（2026-10-23 实测基线） | ✅ 36 端点全量只读实测完成：Yggdrasil/yggc-OIDC/兼容面协议全对齐（join 双形态、refresh 选角、discovery 双挂载已修）；**P1 主干全清**——邀请码 + 改密 + 衣柜 + 管理面（设置面板 env 迁 UI、用户改密/删除）+ 认证限流（滑动窗口+失败锁定）均落地实测过闸；**迁移导入器落地**（`migrate import`，ID 1:1、加密兼容 `$2y$` 直迁直验、生产 dry-run 对账全一致）；追踪式迁移让既有库自动收新 DDL；邮箱验证流延后为独立线 |
 | 三期骨架 | i18n / SEO 一键配置 / 主题与自定义 CSS-JS / Docker Compose / 空库初始化 | ✅ 骨架完成（2026-10-23）：vue-i18n 双语言包、SEO 注入+sitemap/robots、theme.json 主题包（docs/theme-spec.md 含 AI 提示词模板）、Dockerfile+compose 双 DB 模式、自动迁移+安装向导；功能填充见开发过程文档 phase3 计划 §6 |
 | 部署管线 | CI 构建生产镜像→GHCR，部署机只拉不编 | ✅ 完成（2026-10-23）：CI docker job（多阶段 Dockerfile 每轮实证，`:latest`+`:sha-*`），升级=`compose pull && up -d`，数据卷持久化 |
+| 管理面板对齐 B1+B2 | 侧边栏布局 / 仪表盘统计卡 / 运行状态页 / 邀请码布局 / 用户管理表 | ✅ 完成（2026-10-24）：侧边栏七视图（`components/admin/*`）、四统计卡（存储=纹理目录实测字节）、`GET /api/admin/v1/status`（版本/Go/MySQL/迁移水位/模块开关）、用户表搜索+分页+行内编辑（邮箱/昵称/验证/权限）+ blessing 权限三护栏（禁改自己/目标须更低/授 ADMIN 需 SUPER_ADMIN，Token 路径禁改权限） |
+| 管理面板对齐 B3–B5 | 角色管理表 / 站点配置扩白名单 / ygg 双档令牌 + Union 运维 + 联合黑名单 | ⬜ B3/B4 Flash 续做，B5 需 Pro 陪跑（语义敏感，见开发计划 dev-plan-admin-panel-batch1.md） |
 | 正版绑定 / 插件宿主 | Auth Source 第二实现 / goja 宿主运行时 | ⬜ 后置规划 |
 
 ## 文档

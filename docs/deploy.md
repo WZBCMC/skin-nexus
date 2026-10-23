@@ -111,6 +111,14 @@ location / {
 ```
 
 > `X-Forwarded-Proto` 必传：ALI 响应头的协议判断依赖它。
+>
+> `X-Forwarded-For` 同样必传（2026-10-24 B4 起）：注册按 IP 计数（`regs_per_ip`）与
+> `users.ip` 记录、认证限流窗口都走 `ygg.ClientIP`。缺了它，容器看到的对端全是
+> 反代地址——**全站共享一个计数桶，第三个注册就把所有人挡在门外**，且所有账号的
+> `ip` 列都会记成同一个值（切流后追溯困难）。服务端只在对端处于
+> loopback/RFC1918 信任区时才采信 XFF 的**最后一跳**（防伪造绕限流），所以
+> 反代必须用 `$proxy_add_x_forwarded_for` 或 `$remote_addr` 追加真实地址，
+> 不要改成透传客户端原样头。
 
 ## 四、数据迁移执行序（见 phase1-dev-plan §5）
 

@@ -89,6 +89,10 @@ func (b *Backend) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/v1/me/closet/{id}", b.handleClosetRename)
 	mux.HandleFunc("DELETE /api/v1/me/closet/{id}", b.handleClosetRemove)
 	mux.HandleFunc("GET /api/v1/stats", b.handleStats)
+	// Site announcement (blessing parity): public read, admin-edited via
+	// the settings panel (option `announcement`). Plain text only — the
+	// frontend interpolates it, so no HTML/Markdown injection surface.
+	mux.HandleFunc("GET /api/v1/announcement", b.handleAnnouncement)
 	// Install wizard (empty-DB init): state-gated, one-way door after done.
 	mux.HandleFunc("GET /api/v1/setup/status", b.handleSetupStatus)
 	mux.HandleFunc("POST /api/v1/setup", b.handleSetup)
@@ -187,6 +191,14 @@ func (b *Backend) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "密码至少 8 位")
 		return
 	}
+	// Per-IP registration cap (blessing AuthController: count >= regs_per_ip
+	// rejects; default 3, 0 = off). Checked before any hashing work.
+	if limit := b.Store.RegsPerIP(r.Context()); limit > 0 {
+		if n, err := b.Store.CountUsersByIP(r.Context(), ygg.ClientIP(r)); err == nil && n >= limit {
+			writeErr(w, http.StatusForbidden, "该 IP 注册数已达上限")
+			return
+		}
+	}
 	hash, err := auth.HashArgon2id(req.Password)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "hash error")
@@ -199,13 +211,13 @@ func (b *Backend) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	var uid int64
 	if code != "" {
-		uid, err = b.Store.CreateUserWithInvitation(r.Context(), req.Email, req.Nickname, hash, b.MaxChars, code)
+		uid, err = b.Store.CreateUserWithInvitation(r.Context(), req.Email, req.Nickname, hash, b.MaxChars, code, ygg.ClientIP(r))
 		if errors.Is(err, store.ErrNotFound) {
 			writeErr(w, http.StatusBadRequest, "邀请码无效")
 			return
 		}
 	} else {
-		uid, err = b.Store.CreateUser(r.Context(), req.Email, req.Nickname, hash, b.MaxChars)
+		uid, err = b.Store.CreateUser(r.Context(), req.Email, req.Nickname, hash, b.MaxChars, ygg.ClientIP(r))
 	}
 	if err != nil {
 		// unique constraint violation -> nickname/email taken
@@ -389,12 +401,30 @@ func (b *Backend) handleUploadTexture(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "type must be skin|cape")
 		return
 	}
-	file, _, err := r.FormFile("file")
+	file, hdr, err := r.FormFile("file")
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "file required")
 		return
 	}
 	defer file.Close()
+	// Admin upload-size knob (blessing max_upload_file_size, KB; default
+	// 1024) — clamped to the pipeline's hard anti-bomb ceiling, never a
+	// bypass of it.
+	if limitKB := b.Store.MaxUploadKB(r.Context(), texture.MaxUploadBytes>>10); hdr.Size > int64(limitKB)<<10 {
+		writeErr(w, http.StatusRequestEntityTooLarge, "文件超过上传大小上限（"+strconv.Itoa(limitKB)+" KB）")
+		return
+	}
+	// Optional texture naming rule (blessing texture_name_regexp; empty =
+	// no check). Applies to the description field when supplied.
+	desc := strings.TrimSpace(r.FormValue("description"))
+	if desc != "" {
+		if re, _, _ := b.Store.GetOption(r.Context(), "texture_name_regexp"); re != "" {
+			if !regexp.MustCompile(re).MatchString(desc) {
+				writeErr(w, http.StatusBadRequest, "材质备注不符合命名规则")
+				return
+			}
+		}
+	}
 
 	res, err := texture.Process(file, typ, r.FormValue("model"))
 	if err != nil {
@@ -405,7 +435,7 @@ func (b *Backend) handleUploadTexture(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "save failed")
 		return
 	}
-	tid, err := b.Store.AddTexture(r.Context(), uid, string(typ), res.Hash, res.Model, r.FormValue("description"))
+	tid, err := b.Store.AddTexture(r.Context(), uid, string(typ), res.Hash, res.Model, desc)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "db error")
 		return
@@ -445,8 +475,11 @@ func (b *Backend) handleCreatePlayer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Name = strings.TrimSpace(req.Name)
-	if !nickRe.MatchString(req.Name) || len(req.Name) > 16 {
-		writeErr(w, http.StatusBadRequest, "角色名需 2-16 位")
+	// Configurable name rule group (blessing parity: player_name_rule +
+	// custom regexp + length bounds; default official 3-16). Only NEW
+	// writes are validated — imported legacy names stay as-is.
+	if err := b.Store.ValidatePlayerName(r.Context(), req.Name); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	// Per-user character limit (review P1: users.player_limit was never
@@ -559,6 +592,12 @@ func (b *Backend) handleStats(w http.ResponseWriter, r *http.Request) {
 	}
 	weak, _ := b.Store.WeakHashCount(r.Context())
 	writeJSON(w, http.StatusOK, map[string]interface{}{"weakHashUsers": weak})
+}
+
+// handleAnnouncement: public site announcement (plain text; empty string
+// hides the card client-side).
+func (b *Backend) handleAnnouncement(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]interface{}{"announcement": b.Store.Announcement(r.Context())})
 }
 
 var _ = errors.Is

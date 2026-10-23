@@ -44,6 +44,7 @@
   },
   "dashboard": {
     "uploadTitle": "上传纹理",
+    "announcement": "公告",
     "typeSkin": "皮肤",
     "typeCape": "披风",
     "modelDefault": "default (Steve)",

@@ -81,7 +81,7 @@ func seedUser(t *testing.T, m *Mysql) int64 {
 	t.Helper()
 	seedSeq++
 	uid, err := m.CreateUser(context.Background(),
-		fmt.Sprintf("it%d@example.com", seedSeq), fmt.Sprintf("it_user%d", seedSeq), "x", 3)
+		fmt.Sprintf("it%d@example.com", seedSeq), fmt.Sprintf("it_user%d", seedSeq), "x", 3, "")
 	if err != nil {
 		t.Fatalf("create user: %v", err)
 	}
@@ -92,7 +92,7 @@ func seedUser(t *testing.T, m *Mysql) int64 {
 // tests). Callers must not repeat an identity within one suite run.
 func seedUserAs(t *testing.T, m *Mysql, email, nick string) int64 {
 	t.Helper()
-	uid, err := m.CreateUser(context.Background(), email, nick, "x", 3)
+	uid, err := m.CreateUser(context.Background(), email, nick, "x", 3, "")
 	if err != nil {
 		t.Fatalf("create user: %v", err)
 	}
@@ -442,7 +442,7 @@ func TestIntegrationInvitationFlow(t *testing.T) {
 		t.Fatalf("find free: %v ok=%v %+v", err, ok, got)
 	}
 
-	uid, err := m.CreateUserWithInvitation(ctx, "inv@example.com", "inv_user", "x", 3, codes[0].Code)
+	uid, err := m.CreateUserWithInvitation(ctx, "inv@example.com", "inv_user", "x", 3, codes[0].Code, "")
 	if err != nil {
 		t.Fatalf("register with code: %v", err)
 	}
@@ -452,14 +452,14 @@ func TestIntegrationInvitationFlow(t *testing.T) {
 	}
 
 	// double-use guard: same code again must fail and create no user
-	if _, err := m.CreateUserWithInvitation(ctx, "inv2@example.com", "inv_user2", "x", 3, codes[0].Code); !errors.Is(err, ErrNotFound) {
+	if _, err := m.CreateUserWithInvitation(ctx, "inv2@example.com", "inv_user2", "x", 3, codes[0].Code, ""); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("double-use err = %v (want ErrNotFound)", err)
 	}
 	if _, err := m.UserByIdentifier(ctx, "inv_user2"); err == nil {
 		t.Fatal("double-use must not create a user")
 	}
 	// unknown code
-	if _, err := m.CreateUserWithInvitation(ctx, "inv3@example.com", "inv_user3", "x", 3, "nosuch"); !errors.Is(err, ErrNotFound) {
+	if _, err := m.CreateUserWithInvitation(ctx, "inv3@example.com", "inv_user3", "x", 3, "nosuch", ""); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown code err = %v (want ErrNotFound)", err)
 	}
 
@@ -744,4 +744,130 @@ func tokenRowFor(uid, pid int64) ygg.Token {
 	now := time.Now()
 	return ygg.Token{UserID: uid, ClientToken: "padmin-ct", AccessToken: "padmin-at",
 		SelectedPID: pid, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
+}
+
+// ---- site options consumption (B4) ----
+
+func TestIntegrationSiteOptions(t *testing.T) {
+	m := openTestStore(t)
+	ctx := context.Background()
+
+	// defaults with an empty options table (blessing config/options.php)
+	if got := m.RegsPerIP(ctx); got != 3 {
+		t.Fatalf("RegsPerIP default = %d, want 3", got)
+	}
+	if got := m.MaxUploadKB(ctx, 2048); got != 1024 {
+		t.Fatalf("MaxUploadKB default = %d, want 1024", got)
+	}
+	if got := m.MaxUploadKB(ctx, 512); got != 512 {
+		t.Fatalf("MaxUploadKB clamp to hard ceiling = %d, want 512", got)
+	}
+	if got := m.Announcement(ctx); got != "" {
+		t.Fatalf("Announcement default = %q, want empty", got)
+	}
+
+	// overrides + blessing 'true'/'false' spelling tolerance
+	if err := m.SetOption(ctx, "regs_per_ip", "5"); err != nil {
+		t.Fatalf("set regs_per_ip: %v", err)
+	}
+	if got := m.RegsPerIP(ctx); got != 5 {
+		t.Fatalf("RegsPerIP override = %d, want 5", got)
+	}
+	if err := m.SetOption(ctx, "max_upload_file_size", "99999"); err != nil {
+		t.Fatalf("set max_upload: %v", err)
+	}
+	if got := m.MaxUploadKB(ctx, 2048); got != 2048 {
+		t.Fatalf("MaxUploadKB clamp = %d, want hard ceiling 2048", got)
+	}
+	if err := m.SetOption(ctx, "announcement", "维护通知：今晚 22:00 重启。"); err != nil {
+		t.Fatalf("set announcement: %v", err)
+	}
+	if got := m.Announcement(ctx); got != "维护通知：今晚 22:00 重启。" {
+		t.Fatalf("Announcement = %q", got)
+	}
+
+	// per-IP counting backs regs_per_ip (blessing User::where('ip',...)).
+	// Two accounts from one address, one from another: buckets stay separate.
+	if _, err := m.CreateUser(ctx, "ipcap-b@example.com", "ipcap_user_b", "x", 3, "203.0.113.9"); err != nil {
+		t.Fatalf("create with ip: %v", err)
+	}
+	if _, err := m.CreateUser(ctx, "ipcap-c@example.com", "ipcap_user_c", "x", 3, "203.0.113.9"); err != nil {
+		t.Fatalf("create with ip: %v", err)
+	}
+	if _, err := m.CreateUser(ctx, "ipcap-d@example.com", "ipcap_user_d", "x", 3, "198.51.100.7"); err != nil {
+		t.Fatalf("create with other ip: %v", err)
+	}
+	if n, err := m.CountUsersByIP(ctx, "203.0.113.9"); err != nil || n != 2 {
+		t.Fatalf("CountUsersByIP = %d %v, want 2", n, err)
+	}
+	if n, err := m.CountUsersByIP(ctx, "198.51.100.7"); err != nil || n != 1 {
+		t.Fatalf("CountUsersByIP other bucket = %d %v, want 1", n, err)
+	}
+	// ip='' -> NULL: never lands in any bucket (unknown address is not a
+	// shared bucket — a misconfigured proxy degrades to unlimited, not to
+	// a whole-site lockout after N registrations)
+	if n, err := m.CountUsersByIP(ctx, ""); err != nil || n != 0 {
+		t.Fatalf("CountUsersByIP empty ip = %d %v, want 0", n, err)
+	}
+}
+
+func TestIntegrationValidatePlayerName(t *testing.T) {
+	m := openTestStore(t)
+	ctx := context.Background()
+
+	// default rule: official, 3-16
+	if err := m.ValidatePlayerName(ctx, "Steve_01"); err != nil {
+		t.Fatalf("official valid name rejected: %v", err)
+	}
+	if err := m.ValidatePlayerName(ctx, "史蒂夫"); err == nil {
+		t.Fatal("official rule accepted CJK name")
+	}
+	if err := m.ValidatePlayerName(ctx, "ab"); err == nil {
+		t.Fatal("min length 3 not enforced")
+	}
+	if err := m.ValidatePlayerName(ctx, "abcdefghijklmnoq"); err == nil { // 17
+		t.Fatal("max length 16 not enforced")
+	}
+
+	// cjk rule
+	if err := m.SetOption(ctx, "player_name_rule", "cjk"); err != nil {
+		t.Fatalf("set rule: %v", err)
+	}
+	if err := m.ValidatePlayerName(ctx, "史蒂夫01"); err != nil {
+		t.Fatalf("cjk rule rejected CJK name: %v", err)
+	}
+	if err := m.ValidatePlayerName(ctx, "bad name"); err == nil {
+		t.Fatal("cjk rule accepted whitespace")
+	}
+
+	// custom rule (invalid stored regexp fails CLOSED)
+	if err := m.SetOption(ctx, "player_name_rule", "custom"); err != nil {
+		t.Fatalf("set rule: %v", err)
+	}
+	if err := m.SetOption(ctx, "custom_player_name_regexp", `^A[0-9]+$`); err != nil {
+		t.Fatalf("set custom regexp: %v", err)
+	}
+	if err := m.ValidatePlayerName(ctx, "A42"); err != nil {
+		t.Fatalf("custom rule rejected match: %v", err)
+	}
+	if err := m.ValidatePlayerName(ctx, "B42"); err == nil {
+		t.Fatal("custom rule accepted non-match")
+	}
+	if err := m.SetOption(ctx, "custom_player_name_regexp", "(["); err != nil {
+		t.Fatalf("set bad regexp: %v", err)
+	}
+	if err := m.ValidatePlayerName(ctx, "A42"); err == nil {
+		t.Fatal("broken custom regexp must fail closed")
+	}
+
+	// length bounds are configurable (blessing player_name_length_min/max)
+	if err := m.SetOption(ctx, "player_name_rule", "official"); err != nil {
+		t.Fatalf("reset rule: %v", err)
+	}
+	if err := m.SetOption(ctx, "player_name_length_min", "2"); err != nil {
+		t.Fatalf("set min: %v", err)
+	}
+	if err := m.ValidatePlayerName(ctx, "ab"); err != nil {
+		t.Fatalf("min=2 should accept 2-char name: %v", err)
+	}
 }

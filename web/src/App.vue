@@ -57,6 +57,16 @@ const uploading = ref(false)
 const closet = ref([])
 const closetIds = computed(() => new Set(closet.value.map((c) => c.textureId)))
 
+// site announcement (public, plain text — no HTML/Markdown surface)
+const announcement = ref('')
+
+async function loadAnnouncement() {
+  try {
+    const d = await fetch('/api/v1/announcement').then((r) => r.json())
+    announcement.value = d.announcement || ''
+  } catch { announcement.value = '' }
+}
+
 // 401 on any authenticated call means the session is gone (review P1-6):
 // drop to the login form instead of leaving a dead screen behind.
 function guard(e) {
@@ -104,6 +114,7 @@ async function boot() {
     const d = await r.json()
     if (d.needs_setup) { view.value = 'setup'; return }
   } catch { /* server down or old backend — fall through */ }
+  loadAnnouncement() // best-effort, never blocks the boot flow
   // Launcher verification page: /device?user_code=… is path-probed so the
   // minimal /device.html fallback and the SPA share one URL contract.
   const isDevice = location.pathname === '/device'
@@ -358,6 +369,12 @@ onMounted(boot)
     </template>
 
     <template v-else>
+      <!-- site announcement (plain text; hidden when empty) -->
+      <div class="card" v-if="announcement">
+        <h2>{{ t('dashboard.announcement') }}</h2>
+        <p style="white-space: pre-wrap; margin: 8px 0 0;">{{ announcement }}</p>
+      </div>
+
       <!-- upload -->
       <div class="card">
         <h2>{{ t('dashboard.uploadTitle') }}</h2>

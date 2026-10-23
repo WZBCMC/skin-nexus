@@ -3,6 +3,7 @@ package adminapi
 import (
 	"context"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -32,6 +33,15 @@ var settingsWhitelist = []struct {
 	{"require_verification", false, "join 前须邮箱验证（立即生效；邮件流未上线前开了会挡住所有新号进服）"},
 	{"rate_limit_auth", true, "认证端点每 IP 每 10 分钟请求数上限（0=关闭；重启后生效）"},
 	{"login_fail_limit", true, "同账号连续失败锁定阈值（0=关闭；重启后生效）"},
+	// B4 (blessing 原名 — 迁移导入器原样搬运生产 options，改名会让存量值成死键)
+	{"announcement", false, "站点公告（纯文本，用户中心公告卡显示，留空隐藏）"},
+	{"regs_per_ip", false, "每 IP 可注册账号数上限（0=不限制，立即生效）"},
+	{"max_upload_file_size", false, "材质上传大小上限（KB，不超过服务端硬顶，立即生效）"},
+	{"player_name_rule", false, "角色名规则：official/cjk/utf8/custom（仅拦新写入，立即生效）"},
+	{"custom_player_name_regexp", false, "自定义角色名正则（player_name_rule=custom 时生效）"},
+	{"player_name_length_min", false, "角色名最小长度（字符）"},
+	{"player_name_length_max", false, "角色名最大长度（字符）"},
+	{"texture_name_regexp", false, "材质备注命名正则（空=不限制，仅拦新上传）"},
 }
 
 func (b *Backend) settingValue(ctx context.Context, key, def string) string {
@@ -90,7 +100,7 @@ func (b *Backend) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 		val = strings.Join(strings.FieldsFunc(val, func(r rune) bool {
 			return r == ',' || r == '\n' || r == ' '
 		}), ",")
-	case "rate_limit_auth", "login_fail_limit":
+	case "rate_limit_auth", "login_fail_limit", "regs_per_ip", "player_name_length_min", "player_name_length_max":
 		// numeric knobs (review P2: garbage silently desynced panel vs boot
 		// fallback, and negatives silently disabled the limiter layers)
 		n, err := strconv.Atoi(val)
@@ -99,6 +109,36 @@ func (b *Backend) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		val = strconv.Itoa(n)
+	case "max_upload_file_size":
+		n, err := strconv.Atoi(val)
+		if err != nil || n < 1 || n > 65536 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "上传上限需为 1-65536 的整数（KB）"})
+			return
+		}
+		val = strconv.Itoa(n)
+	case "player_name_rule":
+		switch val {
+		case "official", "cjk", "utf8", "custom":
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "角色名规则需为 official/cjk/utf8/custom"})
+			return
+		}
+	case "custom_player_name_regexp", "texture_name_regexp":
+		// an unparsable regexp would silently fail-closed at every new write
+		if val != "" {
+			if _, err := regexp.Compile(val); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "正则表达式无效：" + err.Error()})
+				return
+			}
+		}
+	case "announcement":
+		// plain text only — no markdown/HTML rendering surface (dev plan §7:
+		// sanitizer choice stays with Pro); length cap keeps the options
+		// TEXT column honest.
+		if len(val) > 4096 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "公告最长 4096 字符"})
+			return
+		}
 	}
 	if err := b.Store.SetOption(r.Context(), req.Key, val); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "save failed"})

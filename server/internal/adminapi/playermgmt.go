@@ -56,8 +56,10 @@ func (b *Backend) handleAdminPlayerRename(w http.ResponseWriter, r *http.Request
 		return
 	}
 	req.Name = strings.TrimSpace(req.Name)
-	if !adminNickRe.MatchString(req.Name) || len(req.Name) > 16 {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "角色名需 2-16 位字母/数字/下划线/中文"})
+	// Same configurable rule group as user-side creation (blessing parity;
+	// legacy imported names are never re-validated).
+	if err := b.Store.ValidatePlayerName(r.Context(), req.Name); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
 	before, err := b.Store.PlayerByID(r.Context(), pid)
