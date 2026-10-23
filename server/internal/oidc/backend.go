@@ -113,8 +113,10 @@ type Backend interface {
 	GetAccessToken(ctx context.Context, jti string) (AccessTokenRecord, error)
 	RevokeAccessToken(ctx context.Context, jti string) error
 	RevokeUserAccessTokens(ctx context.Context, uid int64) error
-	// ListUserAccessTokens returns the user's live (non-revoked, non-expired)
-	// ledger entries, newest first. Backs the "authorized apps" management UI.
+	// ListUserAccessTokens returns the user's active grants (one row per
+	// client: latest non-revoked access entry, kept while the access token is
+	// live OR a live refresh token for the same client exists), newest first.
+	// Backs the "authorized apps" management UI.
 	ListUserAccessTokens(ctx context.Context, uid int64) ([]AccessTokenRecord, error)
 
 	// refresh tokens

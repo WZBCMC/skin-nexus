@@ -326,14 +326,27 @@ func (m *Mysql) RevokeUserAccessTokens(ctx context.Context, uid int64) error {
 	return err
 }
 
-// ListUserAccessTokens returns the user's live ledger entries (not revoked,
-// not expired), newest first. Backs the authorized-apps management UI.
+// ListUserAccessTokens returns the user's active GRANTS, newest first: one
+// row per client (its latest non-revoked access entry), shown when the access
+// token is still live OR the same client still holds a live refresh token.
+// The authorized-apps UI lists authorizations, and refresh grants outlive the
+// 1-hour access tokens — live-only filtering showed 0 while two launchers
+// still refreshed fine (F12 report, 2026-10-23).
 func (m *Mysql) ListUserAccessTokens(ctx context.Context, uid int64) ([]oidc.AccessTokenRecord, error) {
 	rows, err := m.db.QueryContext(ctx,
-		`SELECT jti, uid, client_id, scopes, selected_pid, expires_at, created_at
-		 FROM oidc_access_tokens
-		 WHERE uid = ? AND revoked_at IS NULL AND expires_at > NOW(3)
-		 ORDER BY created_at DESC LIMIT 100`, uid)
+		`SELECT a.jti, a.uid, a.client_id, a.scopes, a.selected_pid, a.expires_at, a.created_at
+		 FROM oidc_access_tokens a
+		 JOIN (SELECT client_id, MAX(created_at) AS mc
+		       FROM oidc_access_tokens
+		       WHERE uid = ? AND revoked_at IS NULL
+		       GROUP BY client_id) latest
+		   ON latest.client_id = a.client_id AND latest.mc = a.created_at
+		 WHERE a.uid = ? AND a.revoked_at IS NULL
+		   AND (a.expires_at > NOW(3)
+		        OR EXISTS (SELECT 1 FROM oidc_refresh_tokens r
+		                   WHERE r.uid = a.uid AND r.client_id = a.client_id
+		                     AND r.revoked = 0 AND r.expires_at > NOW(3)))
+		 ORDER BY a.created_at DESC LIMIT 100`, uid, uid)
 	if err != nil {
 		return nil, err
 	}
