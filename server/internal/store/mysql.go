@@ -128,7 +128,10 @@ func (m *Mysql) VerifyPassword(ctx context.Context, uid int64, password string) 
 // ---- players ----
 
 func (m *Mysql) PlayerByID(ctx context.Context, id int64) (ygg.Player, error) {
-	return m.scanPlayer(ctx, "id = ?", id)
+	// p.id must be qualified: playerSelect joins textures (ts/tc also carry
+	// id columns) — a bare `id` raised ER1052 ambiguity on first admin use
+	// (CI integration suite, 2026-10-24).
+	return m.scanPlayer(ctx, "p.id = ?", id)
 }
 
 func (m *Mysql) PlayerByUUID(ctx context.Context, uuid string) (ygg.Player, error) {

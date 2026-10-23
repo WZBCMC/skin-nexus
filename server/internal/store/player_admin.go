@@ -40,9 +40,15 @@ func (m *Mysql) AdminPlayers(ctx context.Context, q string, uidFilter int64, pag
 		where += ")"
 	}
 	from := ` FROM players p
-	  LEFT JOIN users usr ON usr.id = p.uid WHERE 1=1` + where
+	  LEFT JOIN users usr ON usr.id = p.uid
+	  LEFT JOIN uuid_map u ON u.player_id = p.id
+	  LEFT JOIN textures ts ON ts.id = p.tid_skin
+	  LEFT JOIN textures tc ON tc.id = p.tid_cape
+	  WHERE 1=1` + where
+	// COUNT(DISTINCT p.id): the identity joins are 1:1 in practice but the
+	// count must never drift if a legacy uuid_map anomaly duplicates a row.
 	var total int
-	if err := m.db.QueryRowContext(ctx, `SELECT COUNT(*)`+from, args...).Scan(&total); err != nil {
+	if err := m.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT p.id)`+from, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	rows, err := m.db.QueryContext(ctx,

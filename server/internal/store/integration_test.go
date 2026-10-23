@@ -694,8 +694,8 @@ func TestIntegrationAdminPlayers(t *testing.T) {
 	if rows, total, err := m.AdminPlayers(ctx, "padminrenamed", 0, 1, 50); err != nil || total != 1 || rows[0]["id"] != pid {
 		t.Fatalf("search by name: total=%d rows=%+v err=%v", total, rows, err)
 	}
-	if _, total, err := m.AdminPlayers(ctx, "padmin_user_b", 0, 1, 50); err != nil || total != 2 {
-		t.Fatalf("search by owner nickname: total=%d err=%v", total, err)
+	if _, total, err := m.AdminPlayers(ctx, "padmin_user_b", 0, 1, 50); err != nil || total != 1 {
+		t.Fatalf("search by owner nickname: total=%d err=%v, want 1 (only the re-homed pid)", total, err)
 	}
 	if _, total, err := m.AdminPlayers(ctx, "", other, 1, 50); err != nil || total != 1 {
 		t.Fatalf("uid filter: total=%d err=%v", total, err)
@@ -825,7 +825,7 @@ func TestIntegrationValidatePlayerName(t *testing.T) {
 	if err := m.ValidatePlayerName(ctx, "ab"); err == nil {
 		t.Fatal("min length 3 not enforced")
 	}
-	if err := m.ValidatePlayerName(ctx, "abcdefghijklmnoq"); err == nil { // 17
+	if err := m.ValidatePlayerName(ctx, "abcdefghijklmnopq"); err == nil { // 17 runes
 		t.Fatal("max length 16 not enforced")
 	}
 
