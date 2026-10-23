@@ -69,11 +69,14 @@ func ApplySQLDirTracked(db *sql.DB, dir string) error {
 }
 
 // isDuplicateCollision matches the MySQL duplicate-object errors that mean
-// "this statement already took effect". ER1062 (duplicate data entry) is
-// deliberately NOT tolerated — data collisions must fail loud.
+// "this statement already took effect". go-sql-driver formats them as
+// "Error 1050 (42S01): Table 'users' already exists" (SQLSTATE included —
+// the pre-fix matcher required "Error 1050:" and crash-looped the deploy).
+// ER1062 (duplicate data entry) is deliberately NOT tolerated — data
+// collisions must fail loud.
 func isDuplicateCollision(err error) bool {
 	msg := err.Error()
-	for _, code := range []string{"Error 1050:", "Error 1060:", "Error 1061:"} {
+	for _, code := range []string{"Error 1050", "Error 1060", "Error 1061"} {
 		if strings.Contains(msg, code) {
 			return true
 		}
