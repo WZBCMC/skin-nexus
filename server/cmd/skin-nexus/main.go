@@ -294,6 +294,11 @@ func main() {
 	})
 	backend := webapi.New(st, ts, yggSvc)
 	backend.RequireInvite = cfg.RequireInvite
+	backend.OnPasswordChange = func(uid int64) {
+		if oidcProvider != nil {
+			oidcProvider.RevokeUserAllTokens(context.Background(), uid)
+		}
+	}
 	if unionOut != nil {
 		backend.MountUnion(unionOut) // registers /api/v1/union/* (zero surface when disabled)
 	}

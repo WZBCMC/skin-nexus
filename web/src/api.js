@@ -17,6 +17,7 @@ export const api = {
   login: (identifier, password) => req('POST', '/api/v1/login', { identifier, password }),
   register: (email, nickname, password, invitationCode) => req('POST', '/api/v1/register', { email, nickname, password, invitationCode }),
   logout: () => req('POST', '/api/v1/logout'),
+  changePassword: (currentPassword, newPassword) => req('POST', '/api/v1/me/password', { currentPassword, newPassword }),
   players: () => req('GET', '/api/v1/me/players'),
   createPlayer: (name) => req('POST', '/api/v1/me/players', { name }),
   textures: () => req('GET', '/api/v1/me/textures'),

@@ -38,6 +38,9 @@ type Backend struct {
 	// (SKIN_INVITE_REQUIRED). Default off = optional code, validated and
 	// burned when supplied (legacy live semantics: required + "邀请码不能为空").
 	RequireInvite bool
+	// OnPasswordChange fires after a successful password change (main wires
+	// OIDC grant revocation — legacy RevokeUserTokens semantics).
+	OnPasswordChange func(uid int64)
 	Ygg      *ygg.Service
 	MaxChars int // per-user player limit
 
@@ -66,6 +69,7 @@ func (b *Backend) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/me/players", b.handleCreatePlayer)
 	mux.HandleFunc("PUT /api/v1/me/players/{id}/skin", b.handleSetSkin)
 	mux.HandleFunc("PUT /api/v1/me/players/{id}/cape", b.handleSetCape)
+	mux.HandleFunc("POST /api/v1/me/password", b.handlePasswordChange)
 	mux.HandleFunc("GET /api/v1/stats", b.handleStats)
 	// Install wizard (empty-DB init): state-gated, one-way door after done.
 	mux.HandleFunc("GET /api/v1/setup/status", b.handleSetupStatus)

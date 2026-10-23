@@ -25,6 +25,11 @@ const email = ref('')
 const nickname = ref('')
 const invitationCode = ref('')
 
+// password change (dashboard)
+const curPw = ref('')
+const newPw = ref('')
+const pwDone = ref('')
+
 // data
 const players = ref([])
 const textures = ref([])
@@ -96,6 +101,15 @@ async function doLogout() {
   await api.logout()
   user.value = null
   view.value = 'login'
+}
+
+async function doChangePassword() {
+  error.value = ''; pwDone.value = ''
+  try {
+    await api.changePassword(curPw.value, newPw.value)
+    pwDone.value = t('auth.pwChanged')
+    curPw.value = ''; newPw.value = ''
+  } catch (e) { error.value = e.message }
 }
 
 async function addPlayer() {
@@ -288,6 +302,19 @@ onMounted(boot)
             </select>
           </div>
         </div>
+      </div>
+
+      <!-- password change -->
+      <div class="card">
+        <h2>{{ t('auth.pwTitle') }}</h2>
+        <div class="row">
+          <input v-model="curPw" type="password" :placeholder="t('auth.pwCurrent')" style="max-width: 220px;" />
+          <input v-model="newPw" type="password" :placeholder="t('auth.pwNew')" style="max-width: 220px;" @keyup.enter="doChangePassword" />
+          <button @click="doChangePassword">{{ t('auth.pwSubmit') }}</button>
+        </div>
+        <div class="error" v-if="error">{{ error }}</div>
+        <div class="success" v-if="pwDone">{{ pwDone }}</div>
+        <div class="muted" style="margin-top: 8px; font-size: 12px;">{{ t('auth.pwHint') }}</div>
       </div>
     </template>
   </div>

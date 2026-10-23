@@ -32,6 +32,12 @@
     "email": "Email (optional)",
     "passwordMin": "Password (min 8 chars)",
     "invitationCode": "Invitation code (optional)",
+    "pwTitle": "Change password",
+    "pwCurrent": "Current password",
+    "pwNew": "New password (min 8 chars)",
+    "pwSubmit": "Change",
+    "pwChanged": "Password changed — all launcher authorizations were revoked; sign in again next launch.",
+    "pwHint": "Changing the password revokes every Yggdrasil token and launcher grant (including refresh); this session stays signed in.",
     "toRegister": "Sign up",
     "toLogin": "Back to sign in"
   },

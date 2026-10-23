@@ -32,6 +32,12 @@
     "email": "邮箱（可留空）",
     "passwordMin": "密码（≥8 位）",
     "invitationCode": "邀请码（选填）",
+    "pwTitle": "修改密码",
+    "pwCurrent": "当前密码",
+    "pwNew": "新密码（≥8 位）",
+    "pwSubmit": "修改",
+    "pwChanged": "密码已修改——所有启动器授权已失效，下次启动需重新登录。",
+    "pwHint": "改密会吊销全部 Yggdrasil 令牌与启动器免密授权（含 refresh）；本机会话保持登录。",
     "toRegister": "注册",
     "toLogin": "返回登录"
   },

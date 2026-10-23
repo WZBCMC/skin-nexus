@@ -402,6 +402,15 @@ func (p *Provider) RevokeUserTokens(ctx context.Context, uid int64) error {
 	return p.backend.RevokeUserAccessTokens(ctx, uid)
 }
 
+// RevokeUserAllTokens kills every access AND refresh token the user holds —
+// the password-change semantic (phase2 A2 step 8: 改密 → 所有启动器授权失效).
+func (p *Provider) RevokeUserAllTokens(ctx context.Context, uid int64) {
+	if err := p.backend.RevokeUserAccessTokens(ctx, uid); err != nil {
+		return
+	}
+	_ = p.backend.RevokeUserRefreshTokens(ctx, uid)
+}
+
 func (p *Provider) sessionUser(r *http.Request) (int64, error) {
 	if p.SessionResolver == nil {
 		return 0, errors.New("oidc: no session resolver")
