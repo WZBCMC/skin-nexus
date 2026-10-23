@@ -157,15 +157,17 @@ func TestIntegrationImport(t *testing.T) {
 		t.Fatalf("algo marker = %q %v", algoMark, err)
 	}
 
-	// players: -1/0 normalized to NULL
-	var skinNull, capeNull int
+	// players: -1/0 unset normalized to NULL, real ids kept
+	var skinNull, capeNull, capeVal int
 	if err := m.db.QueryRowContext(ctx,
-		`SELECT tid_skin IS NULL, tid_cape IS NULL FROM players WHERE id = 11`).
-		Scan(&skinNull, &capeNull); err != nil || skinNull != 1 || capeNull != 1 {
-		t.Fatalf("player11 NULL mapping: %d %d %v", skinNull, capeNull, err)
+		`SELECT tid_skin IS NULL, tid_cape IS NULL, tid_cape FROM players WHERE id = 11`).
+		Scan(&skinNull, &capeNull, &capeVal); err != nil || skinNull != 1 || capeNull != 0 || capeVal != 6 {
+		t.Fatalf("player11 mapping: skinNull=%d capeNull=%d cape=%d err=%v", skinNull, capeNull, capeVal, err)
 	}
-	if err := m.db.QueryRowContext(ctx, `SELECT tid_skin FROM players WHERE id = 10`).Scan(&skinNull); err != nil || skinNull != 5 {
-		t.Fatalf("player10 skin=5: %v", err)
+	if err := m.db.QueryRowContext(ctx,
+		`SELECT tid_skin, tid_cape IS NULL FROM players WHERE id = 10`).
+		Scan(&capeVal, &capeNull); err != nil || capeVal != 5 || capeNull != 1 {
+		t.Fatalf("player10 mapping: skin=%d capeNull=%d err=%v", capeVal, capeNull, err)
 	}
 
 	// textures: steve/alex/cape -> type+model, public carried
