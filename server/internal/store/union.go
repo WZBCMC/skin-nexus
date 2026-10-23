@@ -16,6 +16,9 @@ import (
 var ErrUUIDConflict = errors.New("uuid already mapped locally")
 
 func isDupKey(err error) bool {
+	if err == nil {
+		return false // nil is not an error (callers may probe unconditionally)
+	}
 	var me *mysql.MySQLError
 	if errors.As(err, &me) {
 		return me.Number == 1062
