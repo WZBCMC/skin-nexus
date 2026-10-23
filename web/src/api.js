@@ -8,7 +8,13 @@ async function req(method, path, body) {
   const res = await fetch(path, opts)
   if (res.status === 204) return null
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`)
+  if (!res.ok) {
+    // OIDC errors are {error}-only and some 401s are empty-bodied (review UI
+    // P1): surface every message variant and carry the status for callers.
+    const err = new Error(data.message || data.error || `HTTP ${res.status}`)
+    err.status = res.status
+    throw err
+  }
   return data
 }
 
@@ -56,6 +62,10 @@ export async function uploadTexture(type, file, model, description) {
   if (description) fd.append('description', description)
   const res = await fetch('/api/v1/me/textures', { method: 'POST', body: fd })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`)
+  if (!res.ok) {
+    const err = new Error(data.message || data.error || `HTTP ${res.status}`)
+    err.status = res.status
+    throw err
+  }
   return data
 }

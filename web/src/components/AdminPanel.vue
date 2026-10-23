@@ -36,7 +36,15 @@ async function loadSettings() {
   setError.value = ''
   try {
     const d = await fetchJSON('/api/admin/v1/settings')
-    settings.value = d.settings || []
+    // Bool rows normalize to "1"/"0" on load (review B P2: the checkbox uses
+    // true-value="1", so a stored "true"/"on"/"yes" rendered as UNCHECKED and
+    // the next save silently wrote the feature back to "0").
+    const boolKeys = new Set(['invite_required', 'require_verification'])
+    settings.value = (d.settings || []).map((s) =>
+      boolKeys.has(s.key)
+        ? { ...s, value: ['1', 'true', 'on', 'yes'].includes(String(s.value).toLowerCase()) ? '1' : '0' }
+        : s
+    )
   } catch (e) { setError.value = e.message }
 }
 
