@@ -1,0 +1,105 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+)
+
+// ClosetRow is one衣柜 entry joined with its texture metadata. Orphan legacy
+// rows (texture_tid no longer in textures) stay visible with empty metadata —
+// data-compat rule 7: they can still be listed and removed, never hidden.
+type ClosetRow struct {
+	ID        int64
+	TextureID int64
+	ItemName  string
+	Type      string
+	Hash      string
+	Model     string
+}
+
+// ListCloset returns the user's closet, newest entry first.
+func (m *Mysql) ListCloset(ctx context.Context, uid int64) ([]ClosetRow, error) {
+	rows, err := m.db.QueryContext(ctx,
+		`SELECT c.id, c.texture_tid, COALESCE(c.item_name, ''),
+		        COALESCE(t.type, ''), COALESCE(t.hash, ''), COALESCE(t.model, '')
+		 FROM user_closet c
+		 LEFT JOIN textures t ON t.id = c.texture_tid
+		 WHERE c.user_uid = ?
+		 ORDER BY c.id DESC`, uid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]ClosetRow, 0)
+	for rows.Next() {
+		var c ClosetRow
+		if err := rows.Scan(&c.ID, &c.TextureID, &c.ItemName, &c.Type, &c.Hash, &c.Model); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// AddClosetEntry puts a texture into the closet. Idempotent: an existing
+// (uid, tid) pair returns created=false without inserting — legacy had no
+// unique key either, so the app dedupes (kept deliberately loose for
+// direct-migration duplicates). The texture must exist (ErrNotFound).
+func (m *Mysql) AddClosetEntry(ctx context.Context, uid, tid int64, itemName string) (created bool, err error) {
+	if _, err := m.TextureOwner(ctx, tid); err != nil {
+		return false, err
+	}
+	var one int
+	err = m.db.QueryRowContext(ctx,
+		`SELECT id FROM user_closet WHERE user_uid = ? AND texture_tid = ? LIMIT 1`,
+		uid, tid).Scan(&one)
+	if err == nil {
+		return false, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+	}
+	if _, err := m.db.ExecContext(ctx,
+		`INSERT INTO user_closet (user_uid, texture_tid, item_name) VALUES (?, ?, ?)`,
+		uid, tid, nullableStr(itemName)); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// SetClosetItemName updates the alias of one entry (ownership scoped by uid).
+// MySQL changed-rows semantics: same-value update on an existing row is ok.
+func (m *Mysql) SetClosetItemName(ctx context.Context, uid, id int64, name string) error {
+	res, err := m.db.ExecContext(ctx,
+		`UPDATE user_closet SET item_name = ? WHERE id = ? AND user_uid = ?`,
+		nullableStr(name), id, uid)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		return nil
+	}
+	var one int
+	if err := m.db.QueryRowContext(ctx,
+		`SELECT id FROM user_closet WHERE id = ? AND user_uid = ?`, id, uid).Scan(&one); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+// RemoveClosetEntry deletes one entry (ownership scoped by uid).
+func (m *Mysql) RemoveClosetEntry(ctx context.Context, uid, id int64) error {
+	res, err := m.db.ExecContext(ctx,
+		`DELETE FROM user_closet WHERE id = ? AND user_uid = ?`, id, uid)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

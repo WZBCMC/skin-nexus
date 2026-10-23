@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api, uploadTexture } from './api.js'
 import SkinPreview from './components/SkinPreview.vue'
@@ -39,6 +39,39 @@ const uploadModel = ref('default')
 const uploadFile = ref(null)
 const uploading = ref(false)
 
+// closet (衣柜)
+const closet = ref([])
+const closetIds = computed(() => new Set(closet.value.map((c) => c.textureId)))
+
+async function addToCloset(tx) {
+  error.value = ''; success.value = ''
+  try {
+    await api.closetAdd(tx.id)
+    const cl = await api.closet()
+    closet.value = cl.closet || []
+    success.value = t('dashboard.closetAdded')
+  } catch (e) { error.value = e.message }
+}
+
+async function renameCloset(entry) {
+  const next = prompt(t('dashboard.closetRenamePrompt'), entry.itemName || '')
+  if (next === null) return
+  error.value = ''
+  try {
+    await api.closetRename(entry.id, next)
+    const cl = await api.closet()
+    closet.value = cl.closet || []
+  } catch (e) { error.value = e.message }
+}
+
+async function removeCloset(entry) {
+  error.value = ''
+  try {
+    await api.closetRemove(entry.id)
+    closet.value = closet.value.filter((c) => c.id !== entry.id)
+  } catch (e) { error.value = e.message }
+}
+
 async function boot() {
   // Fresh install: the wizard takes over before anything else (empty-DB init).
   try {
@@ -73,9 +106,10 @@ function onLocaleChange(e) {
 }
 
 async function load() {
-  const [p, tx] = await Promise.all([api.players(), api.textures()])
+  const [p, tx, cl] = await Promise.all([api.players(), api.textures(), api.closet()])
   players.value = p.players || []
   textures.value = tx.textures || []
+  closet.value = cl.closet || []
 }
 
 async function doLogin() {
@@ -266,15 +300,39 @@ onMounted(boot)
       <div class="card">
         <h2>{{ t('dashboard.texturesTitle', { count: textures.length }) }}</h2>
         <table v-if="textures.length">
-          <tr><th>{{ t('dashboard.colType') }}</th><th>{{ t('dashboard.colModel') }}</th><th>{{ t('dashboard.colPreview') }}</th><th>{{ t('dashboard.colHash') }}</th></tr>
-          <tr v-for="t in textures" :key="t.id">
-            <td>{{ t.type }}</td>
-            <td>{{ t.model || '—' }}</td>
-            <td><img :src="t.url" style="height: 48px; image-rendering: pixelated;" /></td>
-            <td class="muted">{{ t.hash.slice(0, 12) }}…</td>
+          <tr><th>{{ t('dashboard.colType') }}</th><th>{{ t('dashboard.colModel') }}</th><th>{{ t('dashboard.colPreview') }}</th><th>{{ t('dashboard.colHash') }}</th><th></th></tr>
+          <tr v-for="tx in textures" :key="tx.id">
+            <td>{{ tx.type }}</td>
+            <td>{{ tx.model || '—' }}</td>
+            <td><img :src="tx.url" style="height: 48px; image-rendering: pixelated;" /></td>
+            <td class="muted">{{ tx.hash.slice(0, 12) }}…</td>
+            <td>
+              <button class="secondary" v-if="!closetIds.has(tx.id)" @click="addToCloset(tx)">{{ t('dashboard.closetAdd') }}</button>
+              <span class="muted" v-else style="font-size: 12px;">{{ t('dashboard.closetIn') }}</span>
+            </td>
           </tr>
         </table>
         <div v-else class="muted">{{ t('dashboard.texturesEmpty') }}</div>
+      </div>
+
+      <!-- closet -->
+      <div class="card">
+        <h2>{{ t('dashboard.closetTitle', { count: closet.length }) }}</h2>
+        <table v-if="closet.length">
+          <tr><th>{{ t('dashboard.colPreview') }}</th><th>{{ t('dashboard.colType') }}</th><th>{{ t('dashboard.closetName') }}</th><th></th></tr>
+          <tr v-for="c in closet" :key="c.id">
+            <td><img v-if="c.url" :src="c.url" style="height: 48px; image-rendering: pixelated;" /><span v-else class="muted">—</span></td>
+            <td>{{ c.type || '—' }}</td>
+            <td>{{ c.itemName || '—' }}</td>
+            <td>
+              <button class="secondary" @click="renameCloset(c)">{{ t('dashboard.closetRename') }}</button>
+              <button class="secondary" @click="removeCloset(c)" style="margin-left: 6px;">{{ t('dashboard.closetRemove') }}</button>
+            </td>
+          </tr>
+        </table>
+        <div v-else class="muted">{{ t('dashboard.closetEmpty') }}</div>
+        <div class="error" v-if="error">{{ error }}</div>
+        <div class="success" v-if="success">{{ success }}</div>
       </div>
 
       <!-- players -->

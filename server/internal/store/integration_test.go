@@ -33,7 +33,7 @@ var testTables = []string{
 	"oidc_auth_requests", "oidc_clients",
 	"union_kv", "web_sessions", "audit_log", "options",
 	"ygg_join_sessions", "ygg_tokens", "uuid_map", "textures", "players", "users",
-	"invitation_codes", "schema_migrations",
+	"invitation_codes", "user_closet", "schema_migrations",
 }
 
 func openTestStore(t *testing.T) *Mysql {
@@ -391,5 +391,60 @@ func TestIntegrationInvitationFlow(t *testing.T) {
 	}
 	if len(free) != 2 || len(used) != 1 || used[0].ID != codes[0].ID {
 		t.Fatalf("list split: free=%d used=%d", len(free), len(used))
+	}
+}
+
+func TestIntegrationCloset(t *testing.T) {
+	m := openTestStore(t)
+	ctx := context.Background()
+	uid := seedUser(t, m)
+	owner := seedUser(t, m)
+	tid, err := m.AddTexture(ctx, owner, "skin", "abc123hash", "", "seed")
+	if err != nil {
+		t.Fatalf("seed texture: %v", err)
+	}
+
+	if created, err := m.AddClosetEntry(ctx, uid, tid, "my-skin"); err != nil || !created {
+		t.Fatalf("add = %v %v", created, err)
+	}
+	// idempotent dup (legacy table has no unique key — app dedupes)
+	if created, err := m.AddClosetEntry(ctx, uid, tid, "dup"); err != nil || created {
+		t.Fatalf("dup add = %v %v (want created=false)", created, err)
+	}
+	// unknown texture rejected
+	if _, err := m.AddClosetEntry(ctx, uid, 999999, ""); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown texture err = %v", err)
+	}
+
+	list, err := m.ListCloset(ctx, uid)
+	if err != nil || len(list) != 1 || list[0].ItemName != "my-skin" || list[0].Hash != "abc123hash" {
+		t.Fatalf("list = %+v %v", list, err)
+	}
+
+	if err := m.SetClosetItemName(ctx, uid, list[0].ID, "renamed"); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	// same-value rename ok (changed-rows semantics)
+	if err := m.SetClosetItemName(ctx, uid, list[0].ID, "renamed"); err != nil {
+		t.Fatalf("idempotent rename: %v", err)
+	}
+	// foreign uid cannot rename or remove
+	other := seedUser(t, m)
+	if err := m.SetClosetItemName(ctx, other, list[0].ID, "hijack"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("foreign rename err = %v", err)
+	}
+	if err := m.RemoveClosetEntry(ctx, other, list[0].ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("foreign remove err = %v", err)
+	}
+
+	if err := m.RemoveClosetEntry(ctx, uid, list[0].ID); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if list, _ := m.ListCloset(ctx, uid); len(list) != 0 {
+		t.Fatalf("not empty: %+v", list)
+	}
+	// unknown id
+	if err := m.RemoveClosetEntry(ctx, uid, 999999); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown remove err = %v", err)
 	}
 }

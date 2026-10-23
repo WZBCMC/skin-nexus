@@ -70,6 +70,10 @@ func (b *Backend) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/v1/me/players/{id}/skin", b.handleSetSkin)
 	mux.HandleFunc("PUT /api/v1/me/players/{id}/cape", b.handleSetCape)
 	mux.HandleFunc("POST /api/v1/me/password", b.handlePasswordChange)
+	mux.HandleFunc("GET /api/v1/me/closet", b.handleClosetList)
+	mux.HandleFunc("POST /api/v1/me/closet", b.handleClosetAdd)
+	mux.HandleFunc("PUT /api/v1/me/closet/{id}", b.handleClosetRename)
+	mux.HandleFunc("DELETE /api/v1/me/closet/{id}", b.handleClosetRemove)
 	mux.HandleFunc("GET /api/v1/stats", b.handleStats)
 	// Install wizard (empty-DB init): state-gated, one-way door after done.
 	mux.HandleFunc("GET /api/v1/setup/status", b.handleSetupStatus)
