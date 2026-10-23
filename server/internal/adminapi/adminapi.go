@@ -39,6 +39,10 @@ type Backend struct {
 	// delete (players/uuid_map rows are gone afterwards). main wires the
 	// best-effort union hub announcement (webapi create-sync precedent).
 	OnUserDeleted func(uid int64, players [][2]string)
+	// OnPlayerDeleted fires after an admin player deletion with the
+	// (uuid, name) captured before the delete — main wires the same
+	// best-effort union hub announcement as OnUserDeleted (B3).
+	OnPlayerDeleted OnPlayerDeletedHook
 	// Version is the build version injected by main (status page display).
 	Version string
 	// StorageBytes sums the texture files on disk (main injects a walk of
@@ -75,6 +79,12 @@ func (b *Backend) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/admin/v1/users/{id}/verification", b.auth(b.handleUserSetVerification))
 	mux.HandleFunc("PUT /api/admin/v1/users/{id}/permission", b.auth(b.handleUserSetPermission))
 	mux.HandleFunc("DELETE /api/admin/v1/users/{id}", b.auth(b.handleUserDelete))
+	// Player management (B3, blessing 玩家管理 parity).
+	mux.HandleFunc("GET /api/admin/v1/players", b.auth(b.handleAdminPlayers))
+	mux.HandleFunc("PUT /api/admin/v1/players/{pid}/name", b.auth(b.handleAdminPlayerRename))
+	mux.HandleFunc("PUT /api/admin/v1/players/{pid}/owner", b.auth(b.handleAdminPlayerOwner))
+	mux.HandleFunc("PUT /api/admin/v1/players/{pid}/textures", b.auth(b.handleAdminPlayerTextures))
+	mux.HandleFunc("DELETE /api/admin/v1/players/{pid}", b.auth(b.handleAdminPlayerDelete))
 	if b.union.Status != nil {
 		mux.HandleFunc("GET /api/admin/v1/union/status", b.auth(b.handleUnionStatus))
 		mux.HandleFunc("POST /api/admin/v1/union/rotation/resume", b.auth(b.handleUnionRotationResume))

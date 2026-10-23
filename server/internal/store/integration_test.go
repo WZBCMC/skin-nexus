@@ -15,6 +15,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -25,6 +26,7 @@ import (
 	"skin-nexus/server/internal/auth"
 	"skin-nexus/server/internal/migrate"
 	"skin-nexus/server/internal/oidc"
+	"skin-nexus/server/internal/ygg"
 )
 
 // testTables mirrors the DDL the suite owns; dropped before apply so reruns
@@ -624,4 +626,122 @@ func TestIntegrationAdminUserEdits(t *testing.T) {
 			}
 		}
 	}
+}
+
+// ---- admin player management (B3) ----
+
+func TestIntegrationAdminPlayers(t *testing.T) {
+	m := openTestStore(t)
+	ctx := context.Background()
+	uid := seedUserAs(t, m, "padmin-a@example.com", "padmin_user_a")
+	other := seedUserAs(t, m, "padmin-b@example.com", "padmin_user_b")
+
+	pid, uuid, err := m.CreatePlayer(ctx, uid, "PAdminSteve")
+	if err != nil {
+		t.Fatalf("create player: %v", err)
+	}
+	tid, err := m.AddTexture(ctx, uid, "skin", "padminhash00000000000000000000000000000000000000000000000000000", "", "seed")
+	if err != nil {
+		t.Fatalf("seed texture: %v", err)
+	}
+
+	// rename: UUID MUST NOT MOVE (zero-drift iron rule) — uuid_map.uuid
+	// stays byte-identical while the name columns follow.
+	if err := m.AdminRenamePlayer(ctx, pid, "PAdminRenamed"); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	p, err := m.PlayerByID(ctx, pid)
+	if err != nil || p.Name != "PAdminRenamed" {
+		t.Fatalf("after rename: %+v %v", p, err)
+	}
+	if p.UUID != uuid {
+		t.Fatalf("UUID drifted on rename: before=%s after=%s", uuid, p.UUID)
+	}
+	// union view follows the rename without touching uuid
+	if list, _ := m.ProfileNameByUUID(ctx); list[uuid] != "PAdminRenamed" {
+		t.Fatalf("profile list after rename = %v", list)
+	}
+	// name collision → ErrDuplicate
+	pid2, _, err := m.CreatePlayer(ctx, uid, "PAdminOther")
+	if err != nil {
+		t.Fatalf("create second: %v", err)
+	}
+	if err := m.AdminRenamePlayer(ctx, pid2, "PAdminRenamed"); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("rename collision err = %v, want ErrDuplicate", err)
+	}
+	// unknown pid → ErrNotFound
+	if err := m.AdminRenamePlayer(ctx, 999999, "Whatever"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("rename missing err = %v, want ErrNotFound", err)
+	}
+
+	// owner change
+	if err := m.AdminSetPlayerOwner(ctx, pid, other); err != nil {
+		t.Fatalf("owner change: %v", err)
+	}
+	if p, _ := m.PlayerByID(ctx, pid); p.UID != other {
+		t.Fatalf("owner after change = %d, want %d", p.UID, other)
+	}
+
+	// texture mount via the shared semantics
+	if err := m.SetPlayerTextures(ctx, pid, tid, 0); err != nil {
+		t.Fatalf("set textures: %v", err)
+	}
+	if skin, cape, err := m.PlayerTextureIDs(ctx, pid); err != nil || skin != tid || cape != 0 {
+		t.Fatalf("texture ids = %d %d %v", skin, cape, err)
+	}
+
+	// list: search by name / owner nickname / owner uid; uid filter
+	if rows, total, err := m.AdminPlayers(ctx, "padminrenamed", 0, 1, 50); err != nil || total != 1 || rows[0]["id"] != pid {
+		t.Fatalf("search by name: total=%d rows=%+v err=%v", total, rows, err)
+	}
+	if _, total, err := m.AdminPlayers(ctx, "padmin_user_b", 0, 1, 50); err != nil || total != 2 {
+		t.Fatalf("search by owner nickname: total=%d err=%v", total, err)
+	}
+	if _, total, err := m.AdminPlayers(ctx, "", other, 1, 50); err != nil || total != 1 {
+		t.Fatalf("uid filter: total=%d err=%v", total, err)
+	}
+	// list rows carry preview hashes + uuid
+	if rows, _, err := m.AdminPlayers(ctx, "padminrenamed", 0, 1, 50); err != nil {
+		t.Fatalf("list: %v", err)
+	} else if rows[0]["uuid"] != uuid || rows[0]["skinHash"] != "padminhash00000000000000000000000000000000000000000000000000000" {
+		t.Fatalf("list row = %+v", rows[0])
+	}
+
+	// delete: uuid_map row + token selection cleaned; texture kept
+	if err := m.SaveToken(ctx, tokenRowFor(uid, pid)); err != nil {
+		t.Fatalf("seed token: %v", err)
+	}
+	delUUID, delName, err := m.AdminDeletePlayer(ctx, pid)
+	if err != nil || delUUID != uuid || delName != "PAdminRenamed" {
+		t.Fatalf("delete return = %q %q %v", delUUID, delName, err)
+	}
+	if _, err := m.PlayerByID(ctx, pid); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("player survived delete: %v", err)
+	}
+	var nUUIDMap int
+	if err := m.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM uuid_map WHERE player_id = ?`, pid).Scan(&nUUIDMap); err != nil || nUUIDMap != 0 {
+		t.Fatalf("uuid_map survived delete: n=%d err=%v", nUUIDMap, err)
+	}
+	var nTex int
+	if err := m.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM textures WHERE id = ?`, tid).Scan(&nTex); err != nil || nTex != 1 {
+		t.Fatalf("texture row must be kept: n=%d err=%v", nTex, err)
+	}
+	var sel sql.NullInt64
+	if err := m.db.QueryRowContext(ctx, `SELECT selected_pid FROM ygg_tokens WHERE user_id = ?`, uid).Scan(&sel); err != nil {
+		t.Fatalf("token lookup: %v", err)
+	}
+	if sel.Valid {
+		t.Fatalf("selected_pid = %d, want NULL after player delete", sel.Int64)
+	}
+	// deleting a missing player → ErrNotFound
+	if _, _, err := m.AdminDeletePlayer(ctx, 999999); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("delete missing err = %v, want ErrNotFound", err)
+	}
+}
+
+// tokenRowFor builds a ygg.Token for the delete-cleanup assertion.
+func tokenRowFor(uid, pid int64) ygg.Token {
+	now := time.Now()
+	return ygg.Token{UserID: uid, ClientToken: "padmin-ct", AccessToken: "padmin-at",
+		SelectedPID: pid, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
 }

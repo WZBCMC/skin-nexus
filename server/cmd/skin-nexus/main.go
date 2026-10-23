@@ -449,6 +449,24 @@ func main() {
 		}()
 	}
 	admin.SetSharedClientID(cfg.SharedClientID) // guards shared launcher client deletion
+	// Admin player deletion (B3): same best-effort union announcement as
+	// user deletion — retire the profile on the hub so cross-site clients
+	// stop seeing it.
+	admin.OnPlayerDeleted = func(uuid, name string) {
+		if unionOut == nil || !unionOut.Enabled() {
+			return
+		}
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			err := unionOut.SyncProfileDelete(ctx, uuid)
+			cancel()
+			if err != nil {
+				st.InsertAudit(context.Background(), 0, "union_sync_delete_failed",
+					map[string]interface{}{"uuid": uuid, "name": name, "error": err.Error()})
+				log.Printf("union sync delete failed (admin player) uuid=%s name=%s: %v", uuid, name, err)
+			}
+		}()
+	}
 	admin.MountAppearance(adminapi.AppearanceDeps{SEO: seoEng, Appear: appearEng, Themes: themeReg})
 	if unionSigner != nil {
 		admin.MountUnion(adminapi.UnionDeps{
