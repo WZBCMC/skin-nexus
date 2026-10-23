@@ -42,6 +42,10 @@ func (b *Backend) Handler() http.Handler {
 	mux.HandleFunc("GET /api/admin/v1/users", b.auth(b.handleUsers))
 	mux.HandleFunc("GET /api/admin/v1/textures", b.auth(b.handleTextures))
 	mux.HandleFunc("GET /api/admin/v1/audit", b.auth(b.handleAudit))
+	// Invitation codes (1:1 live blessing plugin admin surface).
+	mux.HandleFunc("GET /api/admin/v1/invitation-codes", b.auth(b.handleInvitationList))
+	mux.HandleFunc("POST /api/admin/v1/invitation-codes", b.auth(b.handleInvitationGenerate))
+	mux.HandleFunc("PUT /api/admin/v1/invitation-codes", b.auth(b.handleInvitationEdit))
 	if b.union.Status != nil {
 		mux.HandleFunc("GET /api/admin/v1/union/status", b.auth(b.handleUnionStatus))
 		mux.HandleFunc("POST /api/admin/v1/union/rotation/resume", b.auth(b.handleUnionRotationResume))

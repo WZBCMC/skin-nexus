@@ -32,6 +32,7 @@ var testTables = []string{
 	"oidc_auth_requests", "oidc_clients",
 	"union_kv", "web_sessions", "audit_log", "options",
 	"ygg_join_sessions", "ygg_tokens", "uuid_map", "textures", "players", "users",
+	"invitation_codes",
 }
 
 func openTestStore(t *testing.T) *Mysql {
@@ -329,5 +330,60 @@ func TestIntegrationLoginRoundTrip(t *testing.T) {
 	}
 	if ok, err := m.VerifyPassword(ctx, uid, "wrong-pass"); err != nil || ok {
 		t.Fatalf("verify wrong = %v %v", ok, err)
+	}
+}
+
+func TestIntegrationInvitationFlow(t *testing.T) {
+	m := openTestStore(t)
+	ctx := context.Background()
+
+	codes, err := m.CreateInvitationCodes(ctx, 2, "")
+	if err != nil || len(codes) != 2 {
+		t.Fatalf("create codes: %v len=%d", err, len(codes))
+	}
+	one, err := m.CreateInvitationCodes(ctx, 1, "legacy-desc")
+	if err != nil || len(one) != 1 || one[0].Description != "legacy-desc" {
+		t.Fatalf("single-with-description: %v %+v", err, one)
+	}
+
+	got, ok, err := m.FindInvitationCode(ctx, codes[0].Code)
+	if err != nil || !ok || got.UsedBy != 0 {
+		t.Fatalf("find free: %v ok=%v %+v", err, ok, got)
+	}
+
+	uid, err := m.CreateUserWithInvitation(ctx, "inv@example.com", "inv_user", "x", 3, codes[0].Code)
+	if err != nil {
+		t.Fatalf("register with code: %v", err)
+	}
+	after, ok, err := m.FindInvitationCode(ctx, codes[0].Code)
+	if err != nil || !ok || after.UsedBy != uid || after.UsedAt == nil {
+		t.Fatalf("code burned: %v ok=%v %+v", err, ok, after)
+	}
+
+	// double-use guard: same code again must fail and create no user
+	if _, err := m.CreateUserWithInvitation(ctx, "inv2@example.com", "inv_user2", "x", 3, codes[0].Code); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("double-use err = %v (want ErrNotFound)", err)
+	}
+	if _, err := m.UserByIdentifier(ctx, "inv_user2"); err == nil {
+		t.Fatal("double-use must not create a user")
+	}
+	// unknown code
+	if _, err := m.CreateUserWithInvitation(ctx, "inv3@example.com", "inv_user3", "x", 3, "nosuch"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown code err = %v (want ErrNotFound)", err)
+	}
+
+	if err := m.SetInvitationCodeDescription(ctx, one[0].ID, "new-desc"); err != nil {
+		t.Fatalf("edit description: %v", err)
+	}
+	if err := m.SetInvitationCodeDescription(ctx, 999999, "x"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("edit unknown id err = %v (want ErrNotFound)", err)
+	}
+
+	free, used, err := m.ListInvitationCodes(ctx)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(free) != 2 || len(used) != 1 || used[0].ID != codes[0].ID {
+		t.Fatalf("list split: free=%d used=%d", len(free), len(used))
 	}
 }

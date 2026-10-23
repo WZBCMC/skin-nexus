@@ -34,6 +34,10 @@ var (
 type Backend struct {
 	Store    *store.Mysql
 	Textures *texture.Store
+	// RequireInvite forces invitationCode at registration
+	// (SKIN_INVITE_REQUIRED). Default off = optional code, validated and
+	// burned when supplied (legacy live semantics: required + "邀请码不能为空").
+	RequireInvite bool
 	Ygg      *ygg.Service
 	MaxChars int // per-user player limit
 
@@ -126,6 +130,8 @@ func (b *Backend) handleRegister(w http.ResponseWriter, r *http.Request) {
 		Email    string `json:"email"`
 		Nickname string `json:"nickname"`
 		Password string `json:"password"`
+		// invitationCode is the legacy field name (blessing plugin register form).
+		InvitationCode string `json:"invitationCode"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid JSON")
@@ -149,7 +155,21 @@ func (b *Backend) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "hash error")
 		return
 	}
-	uid, err := b.Store.CreateUser(r.Context(), req.Email, req.Nickname, hash, b.MaxChars)
+	code := strings.TrimSpace(req.InvitationCode)
+	if code == "" && b.RequireInvite {
+		writeErr(w, http.StatusBadRequest, "邀请码不能为空")
+		return
+	}
+	var uid int64
+	if code != "" {
+		uid, err = b.Store.CreateUserWithInvitation(r.Context(), req.Email, req.Nickname, hash, b.MaxChars, code)
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusBadRequest, "邀请码无效")
+			return
+		}
+	} else {
+		uid, err = b.Store.CreateUser(r.Context(), req.Email, req.Nickname, hash, b.MaxChars)
+	}
 	if err != nil {
 		// unique constraint violation -> nickname/email taken
 		writeErr(w, http.StatusConflict, "昵称或邮箱已被占用")

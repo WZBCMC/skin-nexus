@@ -35,6 +35,10 @@ type Config struct {
 	// Default off until the verification mail flow ships (P1).
 	RequireVerification bool // SKIN_REQUIRE_VERIFICATION
 
+	// Registration requires a valid invitation code (live plugin's mandatory
+	// semantics). Default off = optional code, validated and burned when given.
+	RequireInvite bool // SKIN_INVITE_REQUIRED
+
 	// Phase 2: MUA Union member module (off by default; zero surface when off).
 	UnionEnabled           bool
 	UnionAPIRoot           string
@@ -76,6 +80,7 @@ func Load() (*Config, error) {
 
 		OIDCEnabled:    getenv("SKIN_OIDC_ENABLED", "false") == "true",
 		RequireVerification: getenv("SKIN_REQUIRE_VERIFICATION", "false") == "true",
+		RequireInvite:       getenv("SKIN_INVITE_REQUIRED", "false") == "true",
 		OIDCIssuer:     strings.TrimRight(getenv("SKIN_OIDC_ISSUER", strings.TrimRight(getenv("SKIN_BASE_URL", "http://localhost:8080"), "/")), "/"),
 		OIDCSignKey:    resolveDataPath("SKIN_OIDC_SIGN_KEY", dataDir, "oidc-key.pem"),
 		SharedClientID: getenv("SKIN_OIDC_SHARED_CLIENT_ID", "2"),

@@ -295,6 +295,7 @@ func main() {
 		},
 	})
 	backend := webapi.New(st, ts, yggSvc)
+	backend.RequireInvite = cfg.RequireInvite
 	if unionOut != nil {
 		backend.MountUnion(unionOut) // registers /api/v1/union/* (zero surface when disabled)
 	}
