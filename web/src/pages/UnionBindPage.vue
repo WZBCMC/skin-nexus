@@ -3,7 +3,7 @@
 // bind (get 2-min token) / bindto / unbind / UUID remap.
 // All endpoints exist only when SKIN_UNION_ENABLED; otherwise the API 404s
 // and this page shows a friendly notice (zero surface for non-alliance sites).
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api, union } from '../api.js'
 
@@ -25,6 +25,9 @@ const selectedPID = ref(null)
 
 // remap workflow
 const remapTarget = ref('')
+// combobox suggestions for the remap target (review P0-1): own local players
+// plus the union-mapped uuid and same-name candidates from the hub.
+const remapSuggestions = ref([]) // [{ value, label }]
 
 const bindTokenAlive = computed(() =>
   bindToken.value && Date.now() < bindTokenExpire.value)
@@ -46,10 +49,48 @@ async function load() {
     servers.value = []
     error.value = e.message.includes('404') ? t('union.disabled') : e.message
   }
+  loadRemapSuggestions() // the remap card is open now (review P0-1)
 }
 
 function playerUUID(p) { return p.UUID || p.uuid || '' }
 function playerName(p) { return p.Name || p.name || '' }
+
+// The backend stores the target as trimmed lowercase hex without dashes
+// (webapi handleUnionRemapUUID): normalize the same way on every path.
+function normUUID(v) { return String(v || '').trim().toLowerCase().replaceAll('-', '') }
+function isHex32(v) { return /^[0-9a-f]{32}$/.test(v) }
+
+// Lazy target suggestions: opened card / changed source profile. Any failure
+// degrades to free-text-only input (review P0-1).
+let sugSeq = 0
+async function loadRemapSuggestions() {
+  const token = ++sugSeq
+  const p = selectedPlayer.value
+  const out = new Map() // normalized uuid -> display label
+  const self = p ? normUUID(playerUUID(p)) : ''
+  if (p) {
+    for (const q of players.value) {
+      const u = normUUID(playerUUID(q))
+      if (u && u !== self) out.set(u, playerName(q))
+    }
+    const [detail, unmapped] = await Promise.allSettled([
+      union.detail(playerUUID(p)),
+      union.unmapped(playerName(p)),
+    ])
+    if (detail.status === 'fulfilled' && detail.value && detail.value.mapped_uuid) {
+      const u = normUUID(detail.value.mapped_uuid)
+      if (u && u !== self) out.set(u, detail.value.bind_mapped_name || '')
+    }
+    if (unmapped.status === 'fulfilled') {
+      for (const pr of (unmapped.value && unmapped.value.profiles) || []) {
+        const u = normUUID(pr.uuid)
+        if (u && u !== self) out.set(u, pr.name || '')
+      }
+    }
+  }
+  if (token !== sugSeq) return // a newer selection already answered
+  remapSuggestions.value = [...out].map(([value, label]) => ({ value, label }))
+}
 
 async function doBind() {
   const p = selectedPlayer.value
@@ -91,18 +132,21 @@ async function doUnbind() {
 
 async function doRemap() {
   const p = selectedPlayer.value
-  if (!p || !remapTarget.value) { error.value = t('union.remapMissing'); return }
-  if (remapTarget.value === playerUUID(p)) { error.value = t('union.remapSelf'); return }
-  if (!confirm(t('union.remapConfirm', { name: playerName(p), target: remapTarget.value.slice(0, 16) + '…' }))) return
+  const target = normUUID(remapTarget.value) // one shape on every submit path
+  if (!p || !target) { error.value = t('union.remapMissing'); return }
+  if (target === normUUID(playerUUID(p))) { error.value = t('union.remapSelf'); return }
+  if (!isHex32(target)) { error.value = t('union.remapTargetInvalid'); return }
+  if (!confirm(t('union.remapConfirm', { name: playerName(p), target: target.slice(0, 16) + '…' }))) return
   loading.value = true; error.value = ''; success.value = ''
   try {
-    const d = await union.remapuuid(playerUUID(p), remapTarget.value)
+    const d = await union.remapuuid(playerUUID(p), target)
     if (d.error) { error.value = d.error; return }
     success.value = t('union.remapDone')
     remapTarget.value = ''
   } catch (e) { error.value = e.message } finally { loading.value = false }
 }
 
+watch(selectedPID, loadRemapSuggestions) // reload suggestions per source profile
 onMounted(load)
 </script>
 
@@ -137,7 +181,7 @@ onMounted(load)
       <div v-else class="muted">{{ t('union.needProfile') }}</div>
     </div>
 
-    <div class="card" v-if="players.length >= 2">
+    <div class="card" v-if="players.length >= 1">
       <h2>{{ t('union.remapTitle') }}</h2>
       <p class="muted">{{ t('union.remapIntro') }}</p>
       <div class="row">
@@ -146,12 +190,12 @@ onMounted(load)
             {{ t('union.remapCurrent', { name: playerName(p) }) }}
           </option>
         </select>
-        <select v-model="remapTarget" style="max-width: 280px;">
-          <option value="">{{ t('union.remapTarget') }}</option>
-          <option v-for="p in players" :key="p.id" :value="playerUUID(p)" :disabled="p === selectedPlayer">
-            {{ playerName(p) }}（{{ playerUUID(p).slice(0, 16) }}…）
-          </option>
-        </select>
+        <!-- combobox: free-text 32-hex uuid + lazily loaded suggestions -->
+        <input v-model="remapTarget" list="remap-target-suggestions"
+               :placeholder="t('union.remapTarget')" style="max-width: 280px;" />
+        <datalist id="remap-target-suggestions">
+          <option v-for="s in remapSuggestions" :key="s.value" :value="s.value">{{ s.label }}</option>
+        </datalist>
         <button class="secondary" :disabled="loading || !remapTarget" @click="doRemap">{{ t('union.remapSubmit') }}</button>
       </div>
     </div>

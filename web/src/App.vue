@@ -15,8 +15,16 @@ const { t, locale } = useI18n()
 const user = ref(null)
 // login | register | dashboard | admin | device | apps | union | setup
 const view = ref('login')
-const error = ref('')
-const success = ref('')
+// Per-card messages (review P1-3): one shared ref rendered in four cards.
+const authErr = ref('') // login + register cards
+const dataErr = ref('') // top-level data-load banner (review P1-6)
+const uploadErr = ref('')
+const uploadOk = ref('')
+const closetErr = ref('')
+const closetOk = ref('')
+const playerErr = ref('')
+const playerOk = ref('')
+const pwErr = ref('')
 
 // login form
 const identifier = ref('')
@@ -29,6 +37,7 @@ const invitationCode = ref('')
 const curPw = ref('')
 const newPw = ref('')
 const pwDone = ref('')
+const pwBusy = ref(false) // in-flight flag: no double submit (review P2-9)
 
 // data
 const players = ref([])
@@ -37,39 +46,51 @@ const newPlayerName = ref('')
 const uploadType = ref('skin')
 const uploadModel = ref('default')
 const uploadFile = ref(null)
+const fileInput = ref(null) // DOM handle so we can clear the stale filename
 const uploading = ref(false)
 
 // closet (衣柜)
 const closet = ref([])
 const closetIds = computed(() => new Set(closet.value.map((c) => c.textureId)))
 
+// 401 on any authenticated call means the session is gone (review P1-6):
+// drop to the login form instead of leaving a dead screen behind.
+function guard(e) {
+  if (e && e.status === 401) {
+    user.value = null
+    view.value = 'login'
+    return true
+  }
+  return false
+}
+
 async function addToCloset(tx) {
-  error.value = ''; success.value = ''
+  closetErr.value = ''; closetOk.value = ''
   try {
     await api.closetAdd(tx.id)
     const cl = await api.closet()
     closet.value = cl.closet || []
-    success.value = t('dashboard.closetAdded')
-  } catch (e) { error.value = e.message }
+    closetOk.value = t('dashboard.closetAdded')
+  } catch (e) { if (!guard(e)) closetErr.value = e.message }
 }
 
 async function renameCloset(entry) {
   const next = prompt(t('dashboard.closetRenamePrompt'), entry.itemName || '')
   if (next === null) return
-  error.value = ''
+  closetErr.value = ''
   try {
     await api.closetRename(entry.id, next)
     const cl = await api.closet()
     closet.value = cl.closet || []
-  } catch (e) { error.value = e.message }
+  } catch (e) { if (!guard(e)) closetErr.value = e.message }
 }
 
 async function removeCloset(entry) {
-  error.value = ''
+  closetErr.value = ''
   try {
     await api.closetRemove(entry.id)
     closet.value = closet.value.filter((c) => c.id !== entry.id)
-  } catch (e) { error.value = e.message }
+  } catch (e) { if (!guard(e)) closetErr.value = e.message }
 }
 
 async function boot() {
@@ -84,11 +105,20 @@ async function boot() {
   const isDevice = location.pathname === '/device'
   try {
     user.value = await api.me()
-    await load()
   } catch {
-    view.value = 'login'
+    // me() failed = no usable session (review P1-6: NOT a data failure)
+    user.value = null
+  }
+  if (user.value) {
+    try {
+      await load()
+    } catch (e) {
+      // load() failed = data error, keep the session (review P1-6)
+      if (!guard(e)) dataErr.value = t('common.dataLoadFailed', { message: e.message })
+    }
   }
   if (isDevice) view.value = 'device'
+  else view.value = user.value ? 'dashboard' : 'login'
 }
 
 async function goApps() {
@@ -113,57 +143,73 @@ async function load() {
 }
 
 async function doLogin() {
-  error.value = ''
+  authErr.value = ''
   try {
     user.value = await api.login(identifier.value, password.value)
-    // returning from login initiated on the device page keeps the flow alive
-    view.value = location.pathname === '/device' ? 'device' : 'dashboard'
+  } catch (e) { authErr.value = e.message; return }
+  // returning from login initiated on the device page keeps the flow alive
+  view.value = location.pathname === '/device' ? 'device' : 'dashboard'
+  try {
     await load()
-  } catch (e) { error.value = e.message }
+  } catch (e) { if (!guard(e)) dataErr.value = t('common.dataLoadFailed', { message: e.message }) }
 }
 
 async function doRegister() {
-  error.value = ''
+  authErr.value = ''
   try {
     user.value = await api.register(email.value, nickname.value, password.value, invitationCode.value.trim())
-    view.value = 'dashboard'
+  } catch (e) { authErr.value = e.message; return }
+  view.value = 'dashboard'
+  try {
     await load()
-  } catch (e) { error.value = e.message }
+  } catch (e) { if (!guard(e)) dataErr.value = t('common.dataLoadFailed', { message: e.message }) }
 }
 
 async function doLogout() {
-  await api.logout()
+  try {
+    await api.logout()
+  } catch { /* session may already be gone — still sign out locally */ }
   user.value = null
   view.value = 'login'
 }
 
 async function doChangePassword() {
-  error.value = ''; pwDone.value = ''
+  if (pwBusy.value) return // in-flight: ignore repeat clicks (review P2-9)
+  pwErr.value = ''; pwDone.value = ''
+  pwBusy.value = true
   try {
     await api.changePassword(curPw.value, newPw.value)
     pwDone.value = t('auth.pwChanged')
     curPw.value = ''; newPw.value = ''
-  } catch (e) { error.value = e.message }
+  } catch (e) {
+    pwDone.value = ''
+    if (!guard(e)) pwErr.value = e.message
+  } finally {
+    pwBusy.value = false
+  }
 }
 
 async function addPlayer() {
-  error.value = ''
+  playerErr.value = ''
   try {
     await api.createPlayer(newPlayerName.value)
     newPlayerName.value = ''
     await load()
-  } catch (e) { error.value = e.message }
+  } catch (e) { if (!guard(e)) playerErr.value = e.message }
 }
 
 async function doUpload() {
-  if (!uploadFile.value) { error.value = t('dashboard.pickPng'); return }
-  error.value = ''; success.value = ''; uploading.value = true
+  if (!uploadFile.value) { uploadErr.value = t('dashboard.pickPng'); return }
+  uploadErr.value = ''; uploadOk.value = ''; uploading.value = true
   try {
     await uploadTexture(uploadType.value, uploadFile.value, uploadType.value === 'skin' ? uploadModel.value : '', '')
-    success.value = t('dashboard.uploadSuccess')
+    uploadOk.value = t('dashboard.uploadSuccess')
     uploadFile.value = null
+    // review P3-17: clear the DOM value too, or a second 上传 press shows
+    // 「请选择 PNG 文件」 next to a stale filename.
+    if (fileInput.value) fileInput.value.value = ''
     await load()
-  } catch (e) { error.value = e.message } finally { uploading.value = false }
+  } catch (e) { if (!guard(e)) uploadErr.value = e.message } finally { uploading.value = false }
 }
 
 function onPick(e) { uploadFile.value = e.target.files[0] || null }
@@ -181,25 +227,28 @@ function currentTid(p, kind) {
 
 async function setSkin(p, e) {
   const v = parseInt(e.target.value || '0', 10)
+  playerErr.value = ''; playerOk.value = ''
   try {
     await api.setSkin(p.ID ?? p.id, v)
-    success.value = t('dashboard.skinUpdated')
+    playerOk.value = t('dashboard.skinUpdated')
   } catch (err) {
-    error.value = err.message
+    if (!guard(err)) playerErr.value = err.message
   } finally {
-    await load() // authoritative state wins over the optimistic picker
+    // review P2-7: a failing reload must not escape the change handler
+    try { await load() } catch (err) { if (!guard(err)) playerErr.value = err.message }
   }
 }
 
 async function setCape(p, e) {
   const v = parseInt(e.target.value || '0', 10)
+  playerErr.value = ''; playerOk.value = ''
   try {
     await api.setCape(p.ID ?? p.id, v)
-    success.value = t('dashboard.skinUpdated')
+    playerOk.value = t('dashboard.skinUpdated')
   } catch (err) {
-    error.value = err.message
+    if (!guard(err)) playerErr.value = err.message
   } finally {
-    await load()
+    try { await load() } catch (err) { if (!guard(err)) playerErr.value = err.message }
   }
 }
 
@@ -231,6 +280,9 @@ onMounted(boot)
       </div>
     </div>
 
+    <!-- data-load failure banner: stays visible without dropping to login -->
+    <div class="error" v-if="dataErr">{{ dataErr }}</div>
+
     <!-- LOGIN -->
     <div v-if="view === 'login'" class="card" style="max-width: 420px;">
       <h2>{{ t('auth.loginTitle') }}</h2>
@@ -238,7 +290,7 @@ onMounted(boot)
       <input v-model="identifier" autocomplete="username" />
       <label>{{ t('auth.password') }}</label>
       <input v-model="password" type="password" autocomplete="current-password" @keyup.enter="doLogin" />
-      <div class="error" v-if="error">{{ error }}</div>
+      <div class="error" v-if="authErr">{{ authErr }}</div>
       <div class="row" style="margin-top: 14px;">
         <button @click="doLogin">{{ t('common.login') }}</button>
         <button class="secondary" @click="view = 'register'">{{ t('common.register') }}</button>
@@ -256,7 +308,7 @@ onMounted(boot)
       <input v-model="password" type="password" @keyup.enter="doRegister" />
       <label>{{ t('auth.invitationCode') }}</label>
       <input v-model="invitationCode" @keyup.enter="doRegister" />
-      <div class="error" v-if="error">{{ error }}</div>
+      <div class="error" v-if="authErr">{{ authErr }}</div>
       <div class="row" style="margin-top: 14px;">
         <button @click="doRegister">{{ t('common.register') }}</button>
         <button class="secondary" @click="view = 'login'">{{ t('auth.toLogin') }}</button>
@@ -311,11 +363,11 @@ onMounted(boot)
             <option value="default">{{ t('dashboard.modelDefault') }}</option>
             <option value="slim">{{ t('dashboard.modelSlim') }}</option>
           </select>
-          <input type="file" accept="image/png" @change="onPick" style="width: auto;" />
+          <input type="file" accept="image/png" ref="fileInput" @change="onPick" style="width: auto;" />
           <button :disabled="uploading" @click="doUpload">{{ uploading ? t('dashboard.uploading') : t('dashboard.upload') }}</button>
         </div>
-        <div class="error" v-if="error">{{ error }}</div>
-        <div class="success" v-if="success">{{ success }}</div>
+        <div class="error" v-if="uploadErr">{{ uploadErr }}</div>
+        <div class="success" v-if="uploadOk">{{ uploadOk }}</div>
         <div class="muted" style="margin-top: 8px;">{{ t('dashboard.uploadHint') }}</div>
       </div>
 
@@ -354,8 +406,8 @@ onMounted(boot)
           </tr>
         </table>
         <div v-else class="muted">{{ t('dashboard.closetEmpty') }}</div>
-        <div class="error" v-if="error">{{ error }}</div>
-        <div class="success" v-if="success">{{ success }}</div>
+        <div class="error" v-if="closetErr">{{ closetErr }}</div>
+        <div class="success" v-if="closetOk">{{ closetOk }}</div>
       </div>
 
       <!-- players -->
@@ -365,7 +417,8 @@ onMounted(boot)
           <input v-model="newPlayerName" :placeholder="t('dashboard.newPlayerName')" style="max-width: 200px;" />
           <button @click="addPlayer">{{ t('dashboard.createPlayer') }}</button>
         </div>
-        <div class="error" v-if="error">{{ error }}</div>
+        <div class="error" v-if="playerErr">{{ playerErr }}</div>
+        <div class="success" v-if="playerOk">{{ playerOk }}</div>
         <div v-for="p in players" :key="p.id" class="row" style="margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px;">
           <div style="width: 120px;">
             <strong>{{ p.Name || p.name }}</strong>
@@ -391,9 +444,9 @@ onMounted(boot)
         <div class="row">
           <input v-model="curPw" type="password" :placeholder="t('auth.pwCurrent')" style="max-width: 220px;" />
           <input v-model="newPw" type="password" :placeholder="t('auth.pwNew')" style="max-width: 220px;" @keyup.enter="doChangePassword" />
-          <button @click="doChangePassword">{{ t('auth.pwSubmit') }}</button>
+          <button :disabled="pwBusy" @click="doChangePassword">{{ t('auth.pwSubmit') }}</button>
         </div>
-        <div class="error" v-if="error">{{ error }}</div>
+        <div class="error" v-if="pwErr">{{ pwErr }}</div>
         <div class="success" v-if="pwDone">{{ pwDone }}</div>
         <div class="muted" style="margin-top: 8px; font-size: 12px;">{{ t('auth.pwHint') }}</div>
       </div>

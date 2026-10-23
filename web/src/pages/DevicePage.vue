@@ -23,7 +23,11 @@ async function loadInfo() {
     const d = await oidc.deviceInfo(userCode.value)
     if (d.error) { error.value = d.error; info.value = null; return }
     info.value = d
-    selectedPID.value = d.default_pid || (d.players && d.players[0] ? d.players[0].id : 0)
+    // review P2-12: the backend only sets default_pid for single-player
+    // accounts on purpose — never auto-pick players[0], that enabled
+    // one-click wrong-profile approval. 0 forces an explicit choice
+    // (the approve button stays disabled on !selectedPID).
+    selectedPID.value = d.default_pid || 0
   } catch (e) { error.value = e.message; info.value = null }
 }
 

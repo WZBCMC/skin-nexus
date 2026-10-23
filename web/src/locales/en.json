@@ -11,7 +11,8 @@
     "cancel": "Cancel",
     "save": "Save",
     "delete": "Delete",
-    "language": "Language"
+    "language": "Language",
+    "dataLoadFailed": "Failed to load data: {message}"
   },
   "nav": {
     "apps": "Authorized apps",
@@ -126,12 +127,13 @@
     "unbindConfirm": "Unbind {name} from the union?",
     "unbindDone": "Unbound",
     "remapTitle": "UUID fix",
-    "remapIntro": "On 1.19+ the premium-session UUID may differ from the external-login UUID; consistency binding happens on the alliance side. If a wrong profile was bound, request a fix here (both profiles must belong to this account).",
+    "remapIntro": "On 1.19+ the premium-session UUID may differ from the external-login UUID; consistency binding happens on the alliance side. If a wrong profile was bound, request a fix here (the target is the union-mapped UUID and may live on another member site).",
     "remapCurrent": "Current: {name}",
-    "remapTarget": "Fix to…",
+    "remapTarget": "Target UUID (32 hex chars)",
     "remapSubmit": "Submit fix",
     "remapSelf": "Target cannot be the same profile",
-    "remapMissing": "Choose the target profile",
+    "remapMissing": "Enter the target UUID to fix to",
+    "remapTargetInvalid": "Invalid target UUID: 32 hex characters required (dashes allowed)",
     "remapConfirm": "Fix {name}'s union UUID to {target}?",
     "remapDone": "UUID fix request submitted",
     "serversTitle": "Alliance servers ({count})",

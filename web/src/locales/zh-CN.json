@@ -11,7 +11,8 @@
     "cancel": "取消",
     "save": "保存",
     "delete": "删除",
-    "language": "语言"
+    "language": "语言",
+    "dataLoadFailed": "数据加载失败：{message}"
   },
   "nav": {
     "apps": "授权管理",
@@ -126,12 +127,13 @@
     "unbindConfirm": "解除 {name} 的联盟绑定？",
     "unbindDone": "已解绑",
     "remapTitle": "UUID 修正",
-    "remapIntro": "1.19+ 正版会话与外置登录的 UUID 不一致时，需要在联盟侧做一致性绑定；若绑定到了错误角色，在此发起修正（两个角色都必须属于当前账号）。",
+    "remapIntro": "1.19+ 正版会话与外置登录的 UUID 不一致时，需要在联盟侧做一致性绑定；若绑定到了错误角色，在此发起修正（目标为联盟侧映射 UUID，可来自其他成员站）。",
     "remapCurrent": "当前：{name}",
-    "remapTarget": "修正到…",
+    "remapTarget": "修正目标 UUID（32 位十六进制）",
     "remapSubmit": "提交修正",
     "remapSelf": "目标不能是当前角色自己",
-    "remapMissing": "请选择要修正到的目标角色",
+    "remapMissing": "请填写要修正到的目标 UUID",
+    "remapTargetInvalid": "目标 UUID 不合法：需为 32 位十六进制（可含连字符）",
     "remapConfirm": "将 {name} 的联盟 UUID 修正为 {target} ？",
     "remapDone": "UUID 修正请求已提交",
     "serversTitle": "联盟服务器列表（{count}）",

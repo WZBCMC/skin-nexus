@@ -14,6 +14,9 @@ const oidcError = ref('')
 const newClient = ref({ client_id: '', name: '', redirect_uris: '', public: true })
 const lastSecret = ref('') // shown once after create
 const error = ref('')
+// user management errors are their own card (review P1-4: setError used to be
+// shared between the 用户 card and the 站点设置 card)
+const userErr = ref('')
 
 // SEO + appearance (phase 3)
 const seo = ref(null)
@@ -48,6 +51,20 @@ async function loadSettings() {
   } catch (e) { setError.value = e.message }
 }
 
+async function loadAppearance() {
+  appearError.value = ''
+  try {
+    appearance.value = await fetchJSON('/api/admin/v1/appearance')
+    const th = await fetchJSON('/api/admin/v1/themes')
+    themes.value = th.themes || []
+  } catch (e) { appearError.value = e.message }
+}
+
+async function loadSEO() {
+  seoError.value = ''
+  try { seo.value = await fetchJSON('/api/admin/v1/seo') } catch (e) { seoError.value = e.message }
+}
+
 async function saveSetting(s) {
   setError.value = ''
   try {
@@ -56,30 +73,34 @@ async function saveSetting(s) {
       body: JSON.stringify({ key: s.key, value: s.value }),
     })
     await loadSettings()
-  } catch (e) { setError.value = e.message }
+  } catch (e) {
+    // review P2-10: refetch so the UI doesn't keep a toggled-but-unsaved value
+    await loadSettings()
+    setError.value = e.message
+  }
 }
 
 // admin user management
 async function adminResetPassword(u) {
   const pw = prompt(`重设 ${u.nickname}（uid ${u.id}）的密码（≥8 位）：`, '')
   if (!pw) return
-  setError.value = ''
+  userErr.value = ''
   try {
     await fetchJSON(`/api/admin/v1/users/${u.id}/password`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: pw }),
     })
     alert(`已重设：该用户全部令牌与启动器授权已失效。`)
-  } catch (e) { setError.value = e.message }
+  } catch (e) { userErr.value = e.message }
 }
 
 async function adminDeleteUser(u) {
   if (!confirm(`删除用户 ${u.nickname}（uid ${u.id}）？会话/令牌/衣柜/角色一并删除，纹理与审计保留。不可恢复！`)) return
-  setError.value = ''
+  userErr.value = ''
   try {
     await fetchJSON(`/api/admin/v1/users/${u.id}`, { method: 'DELETE' })
     users.value = users.value.filter((x) => x.id !== u.id)
-  } catch (e) { setError.value = e.message }
+  } catch (e) { userErr.value = e.message }
 }
 
 async function fetchJSON(path, opts) {
@@ -115,17 +136,9 @@ async function load() {
     oidcClients.value = c.clients || []
   } catch (e) { oidcError.value = e.message }
   // SEO
-  seoError.value = ''
-  try {
-    seo.value = await fetchJSON('/api/admin/v1/seo')
-  } catch (e) { seoError.value = e.message }
+  await loadSEO()
   // Appearance + themes
-  appearError.value = ''
-  try {
-    appearance.value = await fetchJSON('/api/admin/v1/appearance')
-    const th = await fetchJSON('/api/admin/v1/themes')
-    themes.value = th.themes || []
-  } catch (e) { appearError.value = e.message }
+  await loadAppearance()
   // Invitation codes
   invError.value = ''
   try {
@@ -179,7 +192,11 @@ async function seoSave() {
     await fetchJSON('/api/admin/v1/seo', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(seo.value),
     })
-  } catch (e) { seoError.value = e.message }
+  } catch (e) {
+    // review P2-10: refetch so the UI doesn't keep unsaved values
+    await loadSEO()
+    seoError.value = e.message
+  }
 }
 
 async function appearSave() {
@@ -188,7 +205,11 @@ async function appearSave() {
     await fetchJSON('/api/admin/v1/appearance', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(appearance.value),
     })
-  } catch (e) { appearError.value = e.message }
+  } catch (e) {
+    // review P2-10: refetch so the UI doesn't keep unsaved values
+    await loadAppearance()
+    appearError.value = e.message
+  }
 }
 
 async function createClient() {
@@ -258,7 +279,7 @@ onMounted(() => { if (token.value) load() })
 
     <div class="card" v-if="users.length">
       <h2>{{ t('admin.usersTitle') }}</h2>
-      <div class="error" v-if="setError">{{ setError }}</div>
+      <div class="error" v-if="userErr">{{ userErr }}</div>
       <table>
         <tr><th>{{ t('admin.colId') }}</th><th>{{ t('admin.colNickname') }}</th><th>{{ t('admin.colEmail') }}</th><th>{{ t('admin.colAlgo') }}</th><th>{{ t('admin.colCreated') }}</th><th></th></tr>
         <tr v-for="u in users" :key="u.id">
