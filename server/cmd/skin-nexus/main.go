@@ -302,6 +302,10 @@ func main() {
 	root.Handle("/api/yggdrasil/", yggAPI.Handler())
 	if oidcProvider != nil {
 		root.Handle("GET /api/yggdrasil/.well-known/openid-configuration", oidcProvider.DiscoveryHandler())
+		// /api/v1/oidc/* must be claimed at the root mux: the webapi
+		// "/api/v1/" subtree below would otherwise shadow the provider's
+		// device/token API (live: /device page HTTP 404, 2026-10-23).
+		root.Handle("/api/v1/oidc/", oidcProvider.DeviceAPIHandler())
 	}
 	if unionAPI != nil {
 		root.Handle("/api/union/", unionAPI.Handler())
