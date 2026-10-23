@@ -41,7 +41,7 @@ JWT access token 实测形状：`aud="2"（shared_client_id）、sub=uid、scope
 ## 4. 功能缺口优先级（blessing 1:1 复刻主干）
 
 - **P1+（首位，2026-10-23 ✅ 基础功能落地）**：邀请码模块 1:1（基准=线上魔改版）：`invitation_codes` 六列表（含 `description`「姓名+学号」约定列，旧库直迁）+ 注册流（`SKIN_INVITE_REQUIRED` 两态：默认开放选填 / `true`=线上必填，核销进注册事务封死双用竞态）+ 管理面三端点（生成/列表/改备注）+ 注册页输入框与管理面板。**插件候选（插件宿主完成后引入）**：① CSV「学号,姓名」一键发码（写 description）② 邀请码查询页（行为规格已取证存档）
-- **P1（2026-10-23 部分落地）**：~~衣柜 closet~~ ✅（`user_closet` 1:1 三列同构 0007，四端点+前端，孤儿行可见可删；**「换肤必须先入柜」规则已拍板：不启用**——老站 UI 流程而非数据结构，强加会破坏已验收的 A2 setSkin 直连；衣柜按收藏集合上线）· ~~改密端点~~ ✅（`POST /api/v1/me/password`，改密即吊销全部 ygg+OIDC 授权）· ~~管理面选项面板~~ ✅（env 迁 UI：site_name/server_name/skin_domains/invite_required/require_verification 白名单，开关类请求时即时生效）· 邮箱验证流/找回密码（**延后拍板**：站上暂无邮件需求；SMTP 等凭据未来同样走管理员 UI 自定义）· 管理面余项（用户改密/删除、角色管理）· ygg_rate_limit
+- **P1（2026-10-23 部分落地）**：~~衣柜 closet~~ ✅（`user_closet` 1:1 三列同构 0007，四端点+前端，孤儿行可见可删；**「换肤必须先入柜」规则已拍板：不启用**——老站 UI 流程而非数据结构，强加会破坏已验收的 A2 setSkin 直连；衣柜按收藏集合上线）· ~~改密端点~~ ✅（`POST /api/v1/me/password`，改密即吊销全部 ygg+OIDC 授权）· ~~管理面选项面板~~ ✅（env 迁 UI：site_name/server_name/skin_domains/invite_required/require_verification 白名单，开关类请求时即时生效）· ~~管理面用户改密/删除~~ ✅（令牌/OIDC 撤销联动、事务删凭据、纹理/审计保留、uid1 禁删）· 邮箱验证流/找回密码（**延后拍板**：站上暂无邮件需求；SMTP 等凭据未来同样走管理员 UI 自定义）· **ygg_rate_limit（P1 唯一余项，待出方案拍板：限流维度/窗口/持久化）**
 - **P2**：举报/通知/纹理广场 · OAuth 社交登录 · API PAT 面 · 插件宿主 · 正版绑定 · 纹理删除
 - **P3**：`/api` 根装饰 · 验证码 · 积分商城 · 2FA
 
