@@ -74,7 +74,13 @@ func (b *Backend) Handler() http.Handler {
 		mux.HandleFunc("POST /api/admin/v1/appearance", b.auth(b.handleAppearanceSave))
 		mux.HandleFunc("GET /api/admin/v1/themes", b.auth(b.handleThemesList))
 	}
-	return mux
+	// 1 MiB body cap (review B P2) — admin JSON endpoints included.
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		}
+		mux.ServeHTTP(w, r)
+	})
 }
 
 // auth enforces the admin token (constant-time compare; empty token = locked).

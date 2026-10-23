@@ -101,7 +101,18 @@ func (b *Backend) Handler() http.Handler {
 		mux.HandleFunc("POST /api/v1/union/unbind", b.handleUnionUnbind)
 		mux.HandleFunc("POST /api/v1/union/remapuuid", b.handleUnionRemapUUID)
 	}
-	return mux
+	return maxBody(mux)
+}
+
+// maxBody caps request bodies at 1 MiB (review B P2: unbounded JSON fed
+// argon2 over arbitrarily large inputs — cheap CPU/memory amplification).
+func maxBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // ---- helpers ----

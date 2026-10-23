@@ -1,6 +1,7 @@
 package adminapi
 
 import (
+	"errors"
 	"net/http"
 
 	"skin-nexus/server/internal/store"
@@ -13,7 +14,7 @@ import (
 func (b *Backend) handleInvitationList(w http.ResponseWriter, r *http.Request) {
 	free, used, err := b.Store.ListInvitationCodes(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"error": "internal error"})
 		return
 	}
 	if free == nil {
@@ -34,14 +35,21 @@ func (b *Backend) handleInvitationGenerate(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "invalid JSON"})
 		return
 	}
-	if req.Amount == 0 {
+	// explicit clamp (review B P3: silent in both directions)
+	if req.Amount < 1 {
 		req.Amount = 1
+	}
+	if req.Amount > 1000 {
+		req.Amount = 1000
 	}
 	codes, err := b.Store.CreateInvitationCodes(r.Context(), req.Amount, req.Description)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"error": "internal error"})
 		return
 	}
+	b.Store.InsertAudit(r.Context(), 0, "admin_invite_generate", map[string]any{
+		"amount": req.Amount, "description": req.Description,
+	})
 	writeJSON(w, http.StatusCreated, map[string]interface{}{"codes": codes})
 }
 
@@ -55,8 +63,16 @@ func (b *Backend) handleInvitationEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := b.Store.SetInvitationCodeDescription(r.Context(), req.ID, req.Description); err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]interface{}{"error": "invitation code not found"})
+		// review B P3: DB faults used to masquerade as 404 "not found"
+		if errors.Is(err, store.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]interface{}{"error": "invitation code not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"error": "internal error"})
 		return
 	}
+	b.Store.InsertAudit(r.Context(), 0, "admin_invite_edit", map[string]any{
+		"id": req.ID, "description": req.Description,
+	})
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }

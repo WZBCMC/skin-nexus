@@ -346,13 +346,14 @@ func (m *Mysql) ListUserAccessTokens(ctx context.Context, uid int64) ([]oidc.Acc
 		        OR EXISTS (SELECT 1 FROM oidc_refresh_tokens r
 		                   WHERE r.uid = a.uid AND r.client_id = a.client_id
 		                     AND r.revoked = 0 AND r.expires_at > NOW(3)))
-		 ORDER BY a.created_at DESC LIMIT 100`, uid, uid)
+		 ORDER BY a.created_at DESC, a.jti DESC LIMIT 100`, uid, uid)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := make([]oidc.AccessTokenRecord, 0)
-	for rows.Next() {
+	seen := map[string]bool{} // one row per client: same-millisecond ties from
+	for rows.Next() {         // the MAX(created_at) join collapse here (review B P2)
 		var rec oidc.AccessTokenRecord
 		var scopes string
 		var sel sql.NullInt64
@@ -360,6 +361,10 @@ func (m *Mysql) ListUserAccessTokens(ctx context.Context, uid int64) ([]oidc.Acc
 			&rec.ExpiresAt, &rec.CreatedAt); err != nil {
 			return nil, err
 		}
+		if seen[rec.ClientID] {
+			continue
+		}
+		seen[rec.ClientID] = true
 		if rec.Scopes, err = decodeStringList(scopes); err != nil {
 			return nil, err
 		}

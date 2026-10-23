@@ -34,6 +34,11 @@ type Mysql struct {
 
 // Open connects and pings MySQL. legacy may be nil (no legacy corpus yet).
 func Open(dsn, baseURL string, legacy *auth.LegacyVerifier) (*Mysql, error) {
+	// DSN foot-gun guard (review C P3): without parseTime=true every
+	// time.Time scan fails at runtime while Ping still succeeds.
+	if !strings.Contains(dsn, "parseTime=true") {
+		return nil, fmt.Errorf("store: DSN must carry parseTime=true")
+	}
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, err

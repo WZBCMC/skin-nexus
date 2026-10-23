@@ -168,16 +168,39 @@ async function doUpload() {
 
 function onPick(e) { uploadFile.value = e.target.files[0] || null }
 
+// currentTid echoes the player's mounted texture in the <select> (review B
+// P2: without a :value binding the picker always showed 无皮肤 — users then
+// "re-set" nothing or cleared a working skin by accident). Matches the
+// served URL's hash suffix against the texture list.
+function currentTid(p, kind) {
+  const url = (kind === 'skin' ? (p.SkinURL || p.skinurl) : (p.CapeURL || p.capeurl)) || ''
+  if (!url) return ''
+  const tx = textures.value.find(x => url.endsWith(x.hash))
+  return tx ? String(tx.id) : ''
+}
+
 async function setSkin(p, e) {
   const v = parseInt(e.target.value || '0', 10)
-  await api.setSkin(p.ID ?? p.id, v)
-  await load()
+  try {
+    await api.setSkin(p.ID ?? p.id, v)
+    success.value = t('dashboard.skinUpdated')
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    await load() // authoritative state wins over the optimistic picker
+  }
 }
 
 async function setCape(p, e) {
   const v = parseInt(e.target.value || '0', 10)
-  await api.setCape(p.ID ?? p.id, v)
-  await load()
+  try {
+    await api.setCape(p.ID ?? p.id, v)
+    success.value = t('dashboard.skinUpdated')
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    await load()
+  }
 }
 
 onMounted(boot)
@@ -350,13 +373,13 @@ onMounted(boot)
           </div>
           <SkinPreview :url="p.SkinURL || p.skinurl" />
           <div class="row">
-            <select style="width: 220px;" @change="setSkin(p, $event)">
+            <select style="width: 220px;" :value="currentTid(p, 'skin')" @change="setSkin(p, $event)">
               <option value="">{{ t('dashboard.noSkin') }}</option>
-              <option v-for="tx in textures.filter(x => x.type === 'skin')" :key="tx.id" :value="tx.id">{{ tx.hash.slice(0, 10) }}…</option>
+              <option v-for="tx in textures.filter(x => x.type === 'skin')" :key="tx.id" :value="String(tx.id)">{{ tx.hash.slice(0, 10) }}…</option>
             </select>
-            <select style="width: 200px;" @change="setCape(p, $event)">
+            <select style="width: 200px;" :value="currentTid(p, 'cape')" @change="setCape(p, $event)">
               <option value="">{{ t('dashboard.noCape') }}</option>
-              <option v-for="tx in textures.filter(x => x.type === 'cape')" :key="tx.id" :value="tx.id">{{ tx.hash.slice(0, 10) }}…</option>
+              <option v-for="tx in textures.filter(x => x.type === 'cape')" :key="tx.id" :value="String(tx.id)">{{ tx.hash.slice(0, 10) }}…</option>
             </select>
           </div>
         </div>

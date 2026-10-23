@@ -71,7 +71,8 @@
     "newPlayerName": "新角色名",
     "createPlayer": "创建角色",
     "noSkin": "无皮肤",
-    "noCape": "无披风"
+    "noCape": "无披风",
+    "skinUpdated": "已更新"
   },
   "device": {
     "title": "设备授权",

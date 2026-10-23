@@ -71,7 +71,8 @@
     "newPlayerName": "New profile name",
     "createPlayer": "Create profile",
     "noSkin": "No skin",
-    "noCape": "No cape"
+    "noCape": "No cape",
+    "skinUpdated": "Updated"
   },
   "device": {
     "title": "Device authorization",
