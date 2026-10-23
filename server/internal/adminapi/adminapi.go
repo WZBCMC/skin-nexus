@@ -28,6 +28,9 @@ type Backend struct {
 	// SettingsDefaults carries env-derived fallbacks for the settings panel
 	// (injected by main from config).
 	SettingsDefaults map[string]string
+	// OnUserCredentialChange fires on admin password reset (main wires OIDC
+	// grant revocation — same semantics as the self-service change).
+	OnUserCredentialChange func(uid int64)
 }
 
 func New(st *store.Mysql, yggSvc *ygg.Service) *Backend {
@@ -51,6 +54,8 @@ func (b *Backend) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/admin/v1/invitation-codes", b.auth(b.handleInvitationEdit))
 	mux.HandleFunc("GET /api/admin/v1/settings", b.auth(b.handleSettingsGet))
 	mux.HandleFunc("PUT /api/admin/v1/settings", b.auth(b.handleSettingsPut))
+	mux.HandleFunc("POST /api/admin/v1/users/{id}/password", b.auth(b.handleUserSetPassword))
+	mux.HandleFunc("DELETE /api/admin/v1/users/{id}", b.auth(b.handleUserDelete))
 	if b.union.Status != nil {
 		mux.HandleFunc("GET /api/admin/v1/union/status", b.auth(b.handleUnionStatus))
 		mux.HandleFunc("POST /api/admin/v1/union/rotation/resume", b.auth(b.handleUnionRotationResume))

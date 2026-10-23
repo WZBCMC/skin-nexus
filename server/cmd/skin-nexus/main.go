@@ -319,6 +319,12 @@ func main() {
 		"invite_required":      boolStr(cfg.RequireInvite),
 		"require_verification": boolStr(cfg.RequireVerification),
 	}
+	// Admin user management shares the credential-change revoke semantics.
+	admin.OnUserCredentialChange = func(uid int64) {
+		if oidcProvider != nil {
+			oidcProvider.RevokeUserAllTokens(context.Background(), uid)
+		}
+	}
 	admin.SetSharedClientID(cfg.SharedClientID) // guards shared launcher client deletion
 	admin.MountAppearance(adminapi.AppearanceDeps{SEO: seoEng, Appear: appearEng, Themes: themeReg})
 	if unionSigner != nil {

@@ -51,6 +51,29 @@ async function saveSetting(s) {
   } catch (e) { setError.value = e.message }
 }
 
+// admin user management
+async function adminResetPassword(u) {
+  const pw = prompt(`重设 ${u.nickname}（uid ${u.id}）的密码（≥8 位）：`, '')
+  if (!pw) return
+  setError.value = ''
+  try {
+    await fetchJSON(`/api/admin/v1/users/${u.id}/password`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw }),
+    })
+    alert(`已重设：该用户全部令牌与启动器授权已失效。`)
+  } catch (e) { setError.value = e.message }
+}
+
+async function adminDeleteUser(u) {
+  if (!confirm(`删除用户 ${u.nickname}（uid ${u.id}）？会话/令牌/衣柜/角色一并删除，纹理与审计保留。不可恢复！`)) return
+  setError.value = ''
+  try {
+    await fetchJSON(`/api/admin/v1/users/${u.id}`, { method: 'DELETE' })
+    users.value = users.value.filter((x) => x.id !== u.id)
+  } catch (e) { setError.value = e.message }
+}
+
 async function fetchJSON(path, opts) {
   const res = await fetch(path, { ...opts, headers: { 'X-Admin-Token': token.value, ...(opts && opts.headers) } })
   const data = await res.json().catch(() => ({}))
@@ -227,14 +250,19 @@ onMounted(() => { if (token.value) load() })
 
     <div class="card" v-if="users.length">
       <h2>{{ t('admin.usersTitle') }}</h2>
+      <div class="error" v-if="setError">{{ setError }}</div>
       <table>
-        <tr><th>{{ t('admin.colId') }}</th><th>{{ t('admin.colNickname') }}</th><th>{{ t('admin.colEmail') }}</th><th>{{ t('admin.colAlgo') }}</th><th>{{ t('admin.colCreated') }}</th></tr>
+        <tr><th>{{ t('admin.colId') }}</th><th>{{ t('admin.colNickname') }}</th><th>{{ t('admin.colEmail') }}</th><th>{{ t('admin.colAlgo') }}</th><th>{{ t('admin.colCreated') }}</th><th></th></tr>
         <tr v-for="u in users" :key="u.id">
           <td>{{ u.id }}</td>
           <td>{{ u.nickname }}</td>
           <td class="muted">{{ u.email || '—' }}</td>
           <td><span class="badge" :style="u.passwordAlgo.startsWith('legacy') ? 'border-color: var(--danger); color: var(--danger);' : ''">{{ u.passwordAlgo }}</span></td>
           <td class="muted">{{ (u.createdAt || '').slice(0, 10) }}</td>
+          <td>
+            <button class="secondary" @click="adminResetPassword(u)">改密</button>
+            <button class="secondary" v-if="u.id !== 1" @click="adminDeleteUser(u)" style="margin-left: 6px;">删除</button>
+          </td>
         </tr>
       </table>
     </div>
