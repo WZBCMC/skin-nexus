@@ -123,8 +123,12 @@ func (m *Mysql) SkinlibList(ctx context.Context, opt SkinlibOpts) ([]SkinlibRow,
 	}
 	// The liked flag needs the viewer uid even for anonymous (→ 0 = never
 	// matches a real uid, EXISTS is simply false).
+	// COALESCE: migrated rows may carry NULL description and capes NULL
+	// model (legacy name/type columns were nullable) — scanning NULL
+	// into string errors at runtime while a zero-row filter masks it.
 	sel := fmt.Sprintf(`
-		SELECT t.id, t.uid, t.description, t.type, t.model, t.hash, t.public,
+		SELECT t.id, t.uid, COALESCE(t.description,''), t.type,
+		       COALESCE(t.model,'default'), t.hash, t.public,
 		       t.upload_at, u.nickname,
 		       (SELECT COUNT(*) FROM user_closet c WHERE c.texture_tid = t.id) AS likes,
 		       EXISTS(SELECT 1 FROM user_closet c WHERE c.texture_tid = t.id AND c.user_uid = ?) AS liked
