@@ -1,14 +1,18 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { api, uploadTexture } from './api.js'
-import SkinPreview from './components/SkinPreview.vue'
+import { api } from './api.js'
 import AdminPanel from './components/AdminPanel.vue'
 import DevicePage from './pages/DevicePage.vue'
 import AuthorizedAppsPage from './pages/AuthorizedAppsPage.vue'
 import UnionBindPage from './pages/UnionBindPage.vue'
 import SetupPage from './pages/SetupPage.vue'
+import DashboardPage from './pages/DashboardPage.vue'
+import ClosetPage from './pages/ClosetPage.vue'
+import PlayersPage from './pages/PlayersPage.vue'
+import ProfilePage from './pages/ProfilePage.vue'
 import { setLocale } from './i18n.js'
+import { setUnauthorizedHandler } from './session.js'
 
 const { t, locale } = useI18n()
 
@@ -17,18 +21,11 @@ const user = ref(null)
 // it — normal users never do. `permission` comes from GET /api/v1/me
 // (0 = normal, >0 = admin, -1 = banned).
 const isAdmin = computed(() => Number(user.value && user.value.permission) > 0)
-// login | register | dashboard | admin | device | apps | union | setup
+// login | register | setup | device | dashboard | closet | players |
+// profile | apps | union | admin
 const view = ref('login')
-// Per-card messages (review P1-3): one shared ref rendered in four cards.
 const authErr = ref('') // login + register cards
 const dataErr = ref('') // top-level data-load banner (review P1-6)
-const uploadErr = ref('')
-const uploadOk = ref('')
-const closetErr = ref('')
-const closetOk = ref('')
-const playerErr = ref('')
-const playerOk = ref('')
-const pwErr = ref('')
 
 // login form
 const identifier = ref('')
@@ -37,75 +34,28 @@ const email = ref('')
 const nickname = ref('')
 const invitationCode = ref('')
 
-// password change (dashboard)
-const curPw = ref('')
-const newPw = ref('')
-const pwDone = ref('')
-const pwBusy = ref(false) // in-flight flag: no double submit (review P2-9)
+// Sidebar nav (blessing parity: 用户中心/管理 两组；浏览组随 skinlib B 级后置).
+// device/apps/union are user-center entries too — kept out of the sidebar to
+// preserve the launcher-OAuth flow's focused page (they stay reachable from
+// the dashboard quick-config copy and the legacy top-row buttons below).
+const navGroups = computed(() => {
+  if (!user.value) return []
+  const groups = [{
+    items: [
+      { id: 'dashboard', labelKey: 'nav.dashboard' },
+      { id: 'closet', labelKey: 'nav.closet' },
+      { id: 'players', labelKey: 'nav.players' },
+      { id: 'profile', labelKey: 'nav.profile' },
+      { id: 'apps', labelKey: 'nav.apps' },
+      { id: 'union', labelKey: 'nav.union' },
+    ],
+  }]
+  if (isAdmin.value) groups.push({ items: [{ id: 'admin', labelKey: 'nav.adminPanel' }] })
+  return groups
+})
 
-// data
-const players = ref([])
-const textures = ref([])
-const newPlayerName = ref('')
-const uploadType = ref('skin')
-const uploadModel = ref('default')
-const uploadFile = ref(null)
-const fileInput = ref(null) // DOM handle so we can clear the stale filename
-const uploading = ref(false)
-
-// closet (衣柜)
-const closet = ref([])
-const closetIds = computed(() => new Set(closet.value.map((c) => c.textureId)))
-
-// site announcement (public, plain text — no HTML/Markdown surface)
-const announcement = ref('')
-
-async function loadAnnouncement() {
-  try {
-    const d = await fetch('/api/v1/announcement').then((r) => r.json())
-    announcement.value = d.announcement || ''
-  } catch { announcement.value = '' }
-}
-
-// 401 on any authenticated call means the session is gone (review P1-6):
-// drop to the login form instead of leaving a dead screen behind.
-function guard(e) {
-  if (e && e.status === 401) {
-    user.value = null
-    view.value = 'login'
-    return true
-  }
-  return false
-}
-
-async function addToCloset(tx) {
-  closetErr.value = ''; closetOk.value = ''
-  try {
-    await api.closetAdd(tx.id)
-    const cl = await api.closet()
-    closet.value = cl.closet || []
-    closetOk.value = t('dashboard.closetAdded')
-  } catch (e) { if (!guard(e)) closetErr.value = e.message }
-}
-
-async function renameCloset(entry) {
-  const next = prompt(t('dashboard.closetRenamePrompt'), entry.itemName || '')
-  if (next === null) return
-  closetErr.value = ''
-  try {
-    await api.closetRename(entry.id, next)
-    const cl = await api.closet()
-    closet.value = cl.closet || []
-  } catch (e) { if (!guard(e)) closetErr.value = e.message }
-}
-
-async function removeCloset(entry) {
-  closetErr.value = ''
-  try {
-    await api.closetRemove(entry.id)
-    closet.value = closet.value.filter((c) => c.id !== entry.id)
-  } catch (e) { if (!guard(e)) closetErr.value = e.message }
-}
+// Session-drop handler: pages call notifyUnauthorized() on 401 → back to login.
+setUnauthorizedHandler(() => { user.value = null; view.value = 'login' })
 
 async function boot() {
   // Fresh install: the wizard takes over before anything else (empty-DB init).
@@ -114,7 +64,6 @@ async function boot() {
     const d = await r.json()
     if (d.needs_setup) { view.value = 'setup'; return }
   } catch { /* server down or old backend — fall through */ }
-  loadAnnouncement() // best-effort, never blocks the boot flow
   // Launcher verification page: /device?user_code=… is path-probed so the
   // minimal /device.html fallback and the SPA share one URL contract.
   const isDevice = location.pathname === '/device'
@@ -124,20 +73,8 @@ async function boot() {
     // me() failed = no usable session (review P1-6: NOT a data failure)
     user.value = null
   }
-  if (user.value) {
-    try {
-      await load()
-    } catch (e) {
-      // load() failed = data error, keep the session (review P1-6)
-      if (!guard(e)) dataErr.value = t('common.dataLoadFailed', { message: e.message })
-    }
-  }
   if (isDevice) view.value = 'device'
   else view.value = user.value ? 'dashboard' : 'login'
-}
-
-async function goApps() {
-  view.value = 'apps'
 }
 
 function backToDashboard() {
@@ -150,13 +87,6 @@ function onLocaleChange(e) {
   setLocale(e.target.value)
 }
 
-async function load() {
-  const [p, tx, cl] = await Promise.all([api.players(), api.textures(), api.closet()])
-  players.value = p.players || []
-  textures.value = tx.textures || []
-  closet.value = cl.closet || []
-}
-
 async function doLogin() {
   authErr.value = ''
   try {
@@ -167,9 +97,6 @@ async function doLogin() {
   } catch (e) { authErr.value = e.message; return }
   // returning from login initiated on the device page keeps the flow alive
   view.value = location.pathname === '/device' ? 'device' : 'dashboard'
-  try {
-    await load()
-  } catch (e) { if (!guard(e)) dataErr.value = t('common.dataLoadFailed', { message: e.message }) }
 }
 
 async function doRegister() {
@@ -178,9 +105,6 @@ async function doRegister() {
     user.value = await api.register(email.value, nickname.value, password.value, invitationCode.value.trim())
   } catch (e) { authErr.value = e.message; return }
   view.value = 'dashboard'
-  try {
-    await load()
-  } catch (e) { if (!guard(e)) dataErr.value = t('common.dataLoadFailed', { message: e.message }) }
 }
 
 async function doLogout() {
@@ -189,85 +113,6 @@ async function doLogout() {
   } catch { /* session may already be gone — still sign out locally */ }
   user.value = null
   view.value = 'login'
-}
-
-async function doChangePassword() {
-  if (pwBusy.value) return // in-flight: ignore repeat clicks (review P2-9)
-  pwErr.value = ''; pwDone.value = ''
-  pwBusy.value = true
-  try {
-    await api.changePassword(curPw.value, newPw.value)
-    pwDone.value = t('auth.pwChanged')
-    curPw.value = ''; newPw.value = ''
-  } catch (e) {
-    pwDone.value = ''
-    if (!guard(e)) pwErr.value = e.message
-  } finally {
-    pwBusy.value = false
-  }
-}
-
-async function addPlayer() {
-  playerErr.value = ''
-  try {
-    await api.createPlayer(newPlayerName.value)
-    newPlayerName.value = ''
-    await load()
-  } catch (e) { if (!guard(e)) playerErr.value = e.message }
-}
-
-async function doUpload() {
-  if (!uploadFile.value) { uploadErr.value = t('dashboard.pickPng'); return }
-  uploadErr.value = ''; uploadOk.value = ''; uploading.value = true
-  try {
-    await uploadTexture(uploadType.value, uploadFile.value, uploadType.value === 'skin' ? uploadModel.value : '', '')
-    uploadOk.value = t('dashboard.uploadSuccess')
-    uploadFile.value = null
-    // review P3-17: clear the DOM value too, or a second 上传 press shows
-    // 「请选择 PNG 文件」 next to a stale filename.
-    if (fileInput.value) fileInput.value.value = ''
-    await load()
-  } catch (e) { if (!guard(e)) uploadErr.value = e.message } finally { uploading.value = false }
-}
-
-function onPick(e) { uploadFile.value = e.target.files[0] || null }
-
-// currentTid echoes the player's mounted texture in the <select> (review B
-// P2: without a :value binding the picker always showed 无皮肤 — users then
-// "re-set" nothing or cleared a working skin by accident). Matches the
-// served URL's hash suffix against the texture list.
-function currentTid(p, kind) {
-  const url = (kind === 'skin' ? (p.SkinURL || p.skinurl) : (p.CapeURL || p.capeurl)) || ''
-  if (!url) return ''
-  const tx = textures.value.find(x => url.endsWith(x.hash))
-  return tx ? String(tx.id) : ''
-}
-
-async function setSkin(p, e) {
-  const v = parseInt(e.target.value || '0', 10)
-  playerErr.value = ''; playerOk.value = ''
-  try {
-    await api.setSkin(p.ID ?? p.id, v)
-    playerOk.value = t('dashboard.skinUpdated')
-  } catch (err) {
-    if (!guard(err)) playerErr.value = err.message
-  } finally {
-    // review P2-7: a failing reload must not escape the change handler
-    try { await load() } catch (err) { if (!guard(err)) playerErr.value = err.message }
-  }
-}
-
-async function setCape(p, e) {
-  const v = parseInt(e.target.value || '0', 10)
-  playerErr.value = ''; playerOk.value = ''
-  try {
-    await api.setCape(p.ID ?? p.id, v)
-    playerOk.value = t('dashboard.skinUpdated')
-  } catch (err) {
-    if (!guard(err)) playerErr.value = err.message
-  } finally {
-    try { await load() } catch (err) { if (!guard(err)) playerErr.value = err.message }
-  }
 }
 
 onMounted(boot)
@@ -287,12 +132,6 @@ onMounted(boot)
         </select>
         <template v-if="user">
           <span class="badge">{{ user.nickname }}</span>
-          <button v-if="view === 'dashboard'" class="secondary" @click="goApps">{{ t('nav.apps') }}</button>
-          <button v-if="view === 'dashboard'" class="secondary" @click="view = 'union'">{{ t('nav.union') }}</button>
-          <button v-if="view === 'apps' || view === 'union'" class="secondary" @click="view = 'dashboard'">{{ t('common.back') }}</button>
-          <button v-if="isAdmin" class="secondary" @click="view = view === 'admin' ? 'dashboard' : 'admin'">
-            {{ view === 'admin' ? t('common.back') : t('common.admin') }}
-          </button>
           <button class="secondary" @click="doLogout">{{ t('common.logout') }}</button>
         </template>
       </div>
@@ -353,127 +192,54 @@ onMounted(boot)
       </template>
     </template>
 
-    <!-- AUTHORIZED APPS -->
-    <template v-else-if="view === 'apps'">
-      <AuthorizedAppsPage />
-    </template>
-
-    <!-- UNION BINDING -->
-    <template v-else-if="view === 'union'">
-      <UnionBindPage />
-    </template>
-
-    <!-- DASHBOARD -->
-    <template v-else-if="view === 'admin'">
-      <AdminPanel />
-    </template>
-
-    <template v-else>
-      <!-- site announcement (plain text; hidden when empty) -->
-      <div class="card" v-if="announcement">
-        <h2>{{ t('dashboard.announcement') }}</h2>
-        <p style="white-space: pre-wrap; margin: 8px 0 0;">{{ announcement }}</p>
-      </div>
-
-      <!-- upload -->
-      <div class="card">
-        <h2>{{ t('dashboard.uploadTitle') }}</h2>
-        <div class="row">
-          <select v-model="uploadType" style="width: 120px;">
-            <option value="skin">{{ t('dashboard.typeSkin') }}</option>
-            <option value="cape">{{ t('dashboard.typeCape') }}</option>
-          </select>
-          <select v-model="uploadModel" style="width: 140px;" :disabled="uploadType !== 'skin'">
-            <option value="default">{{ t('dashboard.modelDefault') }}</option>
-            <option value="slim">{{ t('dashboard.modelSlim') }}</option>
-          </select>
-          <input type="file" accept="image/png" ref="fileInput" @change="onPick" style="width: auto;" />
-          <button :disabled="uploading" @click="doUpload">{{ uploading ? t('dashboard.uploading') : t('dashboard.upload') }}</button>
-        </div>
-        <div class="error" v-if="uploadErr">{{ uploadErr }}</div>
-        <div class="success" v-if="uploadOk">{{ uploadOk }}</div>
-        <div class="muted" style="margin-top: 8px;">{{ t('dashboard.uploadHint') }}</div>
-      </div>
-
-      <!-- textures -->
-      <div class="card">
-        <h2>{{ t('dashboard.texturesTitle', { count: textures.length }) }}</h2>
-        <table v-if="textures.length">
-          <tr><th>{{ t('dashboard.colType') }}</th><th>{{ t('dashboard.colModel') }}</th><th>{{ t('dashboard.colPreview') }}</th><th>{{ t('dashboard.colHash') }}</th><th></th></tr>
-          <tr v-for="tx in textures" :key="tx.id">
-            <td>{{ tx.type }}</td>
-            <td>{{ tx.model || '—' }}</td>
-            <td><img :src="tx.url" style="height: 48px; image-rendering: pixelated;" /></td>
-            <td class="muted">{{ tx.hash.slice(0, 12) }}…</td>
-            <td>
-              <button class="secondary" v-if="!closetIds.has(tx.id)" @click="addToCloset(tx)">{{ t('dashboard.closetAdd') }}</button>
-              <span class="muted" v-else style="font-size: 12px;">{{ t('dashboard.closetIn') }}</span>
-            </td>
-          </tr>
-        </table>
-        <div v-else class="muted">{{ t('dashboard.texturesEmpty') }}</div>
-      </div>
-
-      <!-- closet -->
-      <div class="card">
-        <h2>{{ t('dashboard.closetTitle', { count: closet.length }) }}</h2>
-        <table v-if="closet.length">
-          <tr><th>{{ t('dashboard.colPreview') }}</th><th>{{ t('dashboard.colType') }}</th><th>{{ t('dashboard.closetName') }}</th><th></th></tr>
-          <tr v-for="c in closet" :key="c.id">
-            <td><img v-if="c.url" :src="c.url" style="height: 48px; image-rendering: pixelated;" /><span v-else class="muted">—</span></td>
-            <td>{{ c.type || '—' }}</td>
-            <td>{{ c.itemName || '—' }}</td>
-            <td>
-              <button class="secondary" @click="renameCloset(c)">{{ t('dashboard.closetRename') }}</button>
-              <button class="secondary" @click="removeCloset(c)" style="margin-left: 6px;">{{ t('dashboard.closetRemove') }}</button>
-            </td>
-          </tr>
-        </table>
-        <div v-else class="muted">{{ t('dashboard.closetEmpty') }}</div>
-        <div class="error" v-if="closetErr">{{ closetErr }}</div>
-        <div class="success" v-if="closetOk">{{ closetOk }}</div>
-      </div>
-
-      <!-- players -->
-      <div class="card">
-        <h2>{{ t('dashboard.playersTitle', { count: players.length }) }}</h2>
-        <div class="row">
-          <input v-model="newPlayerName" :placeholder="t('dashboard.newPlayerName')" style="max-width: 200px;" />
-          <button @click="addPlayer">{{ t('dashboard.createPlayer') }}</button>
-        </div>
-        <div class="error" v-if="playerErr">{{ playerErr }}</div>
-        <div class="success" v-if="playerOk">{{ playerOk }}</div>
-        <div v-for="p in players" :key="p.id" class="row" style="margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px;">
-          <div style="width: 120px;">
-            <strong>{{ p.Name || p.name }}</strong>
-            <div class="muted" style="font-size: 11px;">{{ (p.UUID || p.uuid || '').slice(0, 16) }}…</div>
-          </div>
-          <SkinPreview :url="p.SkinURL || p.skinurl" />
-          <div class="row">
-            <select style="width: 220px;" :value="currentTid(p, 'skin')" @change="setSkin(p, $event)">
-              <option value="">{{ t('dashboard.noSkin') }}</option>
-              <option v-for="tx in textures.filter(x => x.type === 'skin')" :key="tx.id" :value="String(tx.id)">{{ tx.hash.slice(0, 10) }}…</option>
-            </select>
-            <select style="width: 200px;" :value="currentTid(p, 'cape')" @change="setCape(p, $event)">
-              <option value="">{{ t('dashboard.noCape') }}</option>
-              <option v-for="tx in textures.filter(x => x.type === 'cape')" :key="tx.id" :value="String(tx.id)">{{ tx.hash.slice(0, 10) }}…</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <!-- password change -->
-      <div class="card">
-        <h2>{{ t('auth.pwTitle') }}</h2>
-        <div class="row">
-          <input v-model="curPw" type="password" :placeholder="t('auth.pwCurrent')" style="max-width: 220px;" />
-          <input v-model="newPw" type="password" :placeholder="t('auth.pwNew')" style="max-width: 220px;" @keyup.enter="doChangePassword" />
-          <button :disabled="pwBusy" @click="doChangePassword">{{ t('auth.pwSubmit') }}</button>
-        </div>
-        <div class="error" v-if="pwErr">{{ pwErr }}</div>
-        <div class="success" v-if="pwDone">{{ pwDone }}</div>
-        <div class="muted" style="margin-top: 8px; font-size: 12px;">{{ t('auth.pwHint') }}</div>
+    <!-- logged-in shell: sidebar + page (blessing 用户中心布局) -->
+    <template v-else-if="user">
+      <div class="user-shell">
+        <aside class="card user-side">
+          <nav v-for="(g, gi) in navGroups" :key="gi" class="nav-group">
+            <div class="nav-title" v-if="g.items.length">{{ gi === 0 ? t('nav.userCenter') : t('nav.manageGroup') }}</div>
+            <button v-for="n in g.items" :key="n.id" class="nav-item"
+                    :class="{ active: view === n.id }" @click="view = n.id">
+              {{ t(n.labelKey) }}
+            </button>
+          </nav>
+        </aside>
+        <main class="user-main">
+          <DashboardPage v-if="view === 'dashboard'" />
+          <ClosetPage v-else-if="view === 'closet'" />
+          <PlayersPage v-else-if="view === 'players'" />
+          <ProfilePage v-else-if="view === 'profile'" />
+          <AuthorizedAppsPage v-else-if="view === 'apps'" />
+          <UnionBindPage v-else-if="view === 'union'" />
+          <AdminPanel v-else-if="view === 'admin'" />
+        </main>
       </div>
     </template>
   </div>
 </template>
+
+<style scoped>
+.user-shell { display: flex; gap: 16px; align-items: flex-start; }
+.user-side { position: sticky; top: 16px; min-width: 170px; padding: 14px; }
+.user-main { flex: 1; min-width: 0; }
+.nav-group + .nav-group { margin-top: 14px; }
+.nav-title {
+  font-size: 12px; color: var(--muted); font-weight: 600;
+  margin: 0 0 6px; padding-left: 10px;
+}
+.nav-item {
+  display: block; width: 100%; text-align: left;
+  background: none; border: 1px solid transparent;
+  padding: 8px 10px; border-radius: 8px; cursor: pointer;
+  font-size: 14px; color: inherit; margin-bottom: 2px;
+}
+.nav-item:hover { border-color: var(--border); }
+.nav-item.active { border-color: var(--accent); font-weight: 600; }
+@media (max-width: 720px) {
+  .user-shell { flex-direction: column; }
+  .user-side { position: static; width: 100%; }
+  .nav-group { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .nav-title { width: 100%; margin-bottom: 2px; }
+  .nav-item { width: auto; margin-bottom: 0; }
+}
+</style>

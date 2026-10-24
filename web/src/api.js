@@ -33,6 +33,14 @@ export const api = {
   textures: () => req('GET', '/api/v1/me/textures'),
   setSkin: (pid, textureId) => req('PUT', `/api/v1/me/players/${pid}/skin`, { textureId }),
   setCape: (pid, textureId) => req('PUT', `/api/v1/me/players/${pid}/cape`, { textureId }),
+  // User-center self-service (A 级批次): profile edit / account delete /
+  // avatar / own-player rename+delete.
+  updateProfile: (nickname, email) => req('PUT', '/api/v1/me/profile', { nickname, email }),
+  deleteAccount: (password) => req('DELETE', '/api/v1/me', { password }),
+  setAvatar: (textureId) => req('PUT', '/api/v1/me/avatar', { textureId }),
+  resetAvatar: () => req('DELETE', '/api/v1/me/avatar'),
+  renamePlayer: (pid, name) => req('PUT', `/api/v1/me/players/${pid}/name`, { name }),
+  deletePlayer: (pid) => req('DELETE', `/api/v1/me/players/${pid}`),
 }
 
 // OIDC device flow + authorized-apps management.
