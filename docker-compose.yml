@@ -1,4 +1,10 @@
-# SkinNexus docker compose deployment.
+# SkinNexus docker compose deployment (recommended path).
+#
+# Image source: GitHub Actions builds the production image on every push to
+# main and publishes it to GHCR — deployment hosts only pull, never build.
+#   image: ghcr.io/yimingzhanshen/skin-nexus:latest
+# Pin a version with :sha-<commit> for reproducible upgrades / easy rollback.
+# Offline / air-gapped: switch back to `build: .` and run `up -d --build`.
 #
 # Two database modes (same file):
 #   1. bundled MySQL  — keep the `db` service as-is (default below)
@@ -6,28 +12,36 @@
 #      SKIN_DATABASE_DSN at your server (legacy blessing DB / migrated DB /
 #      fresh empty DB all work; empty DB auto-initializes with
 #      SKIN_AUTO_MIGRATE=true, then the /setup wizard completes install).
+#      Reaching a MySQL on the same host (e.g. port 3306 on the host) needs
+#      `network_mode: host` (drop the `ports:` block) or the docker bridge IP
+#      (172.17.0.1) in the DSN.
 #
 # Data persists in the named volumes (skin-data + skin-db). Image upgrades
-# replace only the container — volumes survive.
+# replace only the container — volumes survive. Back up both volumes
+# (sign-key.pem inside skin-data: losing it invalidates every skin signature).
+#
+# Full handbook: docs/deploy.md
 
 services:
   skin-nexus:
-    build: .
-    image: skin-nexus:latest
+    image: ghcr.io/yimingzhanshen/skin-nexus:latest
+    # build: .                                            # source-build alternative
+    pull_policy: always
     restart: unless-stopped
     ports:
       - '8080:8080'
     environment:
       SKIN_LISTEN: ':8080'
-      SKIN_BASE_URL: https://skin.example.com      # <- your public URL
+      SKIN_BASE_URL: https://skin.example.com      # <- your public URL (must match player-facing address)
       SKIN_DATABASE_DSN: 'skin:CHANGE_ME@tcp(db:3306)/skin_nexus?parseTime=true&charset=utf8mb4'
       SKIN_SERVER_NAME: 'SkinNexus'
       SKIN_DATA_DIR: /data                          # textures/keys/themes root
       SKIN_AUTO_MIGRATE: 'true'                     # empty DB -> apply migrations/
-      SKIN_ADMIN_TOKEN: CHANGE_ME                   # admin panel token
+      SKIN_ADMIN_TOKEN: CHANGE_ME                   # openssl rand -hex 32 (machine/API fallback)
       # optional modules (default off):
-      # SKIN_OIDC_ENABLED: 'true'
-      # SKIN_UNION_ENABLED: 'false'
+      # SKIN_OIDC_ENABLED: 'true'                   # launcher passwordless login (yggc/OIDC)
+      # SKIN_UNION_ENABLED: 'false'                 # MUA Union member module (zero surface when off)
+      # SKIN_INVITE_REQUIRED: 'true'                # registration requires an invitation code
     volumes:
       - skin-data:/data
     depends_on:

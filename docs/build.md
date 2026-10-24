@@ -56,9 +56,11 @@ npm run dev       # 本地开发（Vite 热更新；API 代理按 vite.config.js
 3. `alpine:3.20` 运行时 —— 仅 ca-certificates + tzdata，`VOLUME /data`，内置 HEALTHCHECK 探 `/healthz`
 
 ```bash
-docker build -t skin-nexus:latest .            # 本地源码构建
-docker compose up -d --build                   # 连同内置 MySQL 一起起（compose 默认）
+docker build -t skin-nexus:latest .   # 本地源码构建（离线/内网场景才需要）
 ```
+
+**正常部署不需要本地构建**——compose 默认拉 GHCR 现成镜像（见 §五）；只有离线/内网
+环境才把 compose 的 `image:` 换回 `build: .` 后 `docker compose up -d --build`。
 
 `/data` 卷承载全部可变数据（textures/、sign-key.pem、oidc-key.pem、themes/、union 密钥），升级只换容器，卷不动。
 
@@ -74,12 +76,15 @@ docker compose up -d --build                   # 连同内置 MySQL 一起起（
 | web | `npm ci && npm run build` |
 | docker | 多阶段镜像推 GHCR：`ghcr.io/yimingzhanshen/skin-nexus:latest` 与 `:sha-<commit>`（GHA 缓存） |
 
-**部署机推荐只拉不编**：
+**部署机推荐只拉不编**（compose 已默认 `pull_policy: always`）：
 
 ```bash
-docker compose pull && docker compose up -d    # 升级同命令，数据卷不动
-# 需要固定版本时把 compose 的 image 改为 :sha-<commit> 标签
+docker compose pull && docker compose up -d    # 首装与升级同命令，数据卷不动
+# 固定版本/回滚：把 compose 的 image 改为 :sha-<commit> 标签再执行同命令
 ```
+
+仓库不存放任何手工打包的部署产物（二进制/前端快照/tar 包一律不入库）——
+GHCR 镜像即唯一部署产物来源，避免产物与代码版本漂移。
 
 ## 六、本地开发联调
 

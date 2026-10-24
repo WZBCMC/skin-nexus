@@ -2,7 +2,7 @@
 
 > 下一代 Minecraft 皮肤站：Yggdrasil 外置登录兼容、一键迁移 blessing-skin-server、自托管优先。
 
-**状态**（每轮开发收尾同步 · 2026-10-25）：一期 M0–M5 ✅ · 二期免密登录（yggc/OIDC 内置）+ MUA Union 可开关模块 ✅ · 三期骨架（i18n / SEO / 主题 / Docker / 空库初始化）✅ · 管理面板对齐 blessing B1–B5 ✅ · 全量迁移闭环并已生产切流（67 用户 / 61 纹理零丢行、UUID 零漂移）✅ · 高清皮肤原生分辨率渲染 ✅ · 逐轮变更见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)，路线图见下。
+**状态**（每轮开发收尾同步 · 2026-10-25）：一期 M0–M5 ✅ · 二期免密登录（yggc/OIDC 内置）+ MUA Union 可开关模块 ✅ · 三期骨架（i18n / SEO / 主题 / Docker / 空库初始化）✅ · 管理面板对齐 blessing B1–B5 ✅ · 全量迁移闭环并已生产切流（67 用户 / 61 纹理零丢行、UUID 零漂移）✅ · 高清皮肤原生分辨率渲染 ✅ · 文档体系规整 + Docker 部署文档主线化 ✅ · 逐轮变更见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)，路线图见下。
 
 **许可**：AGPL-3.0 · **发起人/著作权人**：YMZS
 
@@ -29,13 +29,15 @@ SkinNexus（肤枢）是对年久失修的 [blessing-skin-server](https://github
 三条路径任选，详见 [`docs/build.md`](docs/build.md)（构建）与 [`docs/deploy.md`](docs/deploy.md)（部署）：
 
 ```bash
-# 路径 A：Docker Compose（推荐）。CI 每轮推送生产镜像到 GHCR，部署机只拉不编：
+# 路径 A：Docker Compose（推荐）。CI 每轮 push 自动构建生产镜像推 GHCR，
+# 部署机只拉不编——复制仓库根 docker-compose.yml、改好环境变量后：
 git clone https://github.com/YimingZhanshen/skin-nexus.git && cd skin-nexus
-docker compose pull && docker compose up -d     # 首次没有镜像时用 docker compose up -d --build
+docker compose up -d                  # 首装；升级 pull && up -d，数据卷零丢失
 # → 打开站点自动进 /setup 安装向导（建管理员/站点名/皮肤域）
+# 详细说明（数据库双模式/环境变量表/备份恢复/排错）见 docs/deploy.md §二
 
-# 路径 B：源码构建 + systemd/nginx（单二进制，适合面板机）
-# 见 docs/build.md §二、docs/deploy.md §二
+# 路径 B：源码构建 + systemd（无 Docker 的内网/面板机）
+# 见 docs/build.md §二、docs/deploy.md §五
 
 # 路径 C：从老皮肤站（blessing-skin-server）迁移数据
 # 见 docs/migration.md——preflight → dry-run → import 三步，全程可回滚

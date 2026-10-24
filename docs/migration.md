@@ -4,7 +4,8 @@
 > 全量迁过来的运营者。全流程实测于 2026-10-24（生产库 67 用户 / 67 角色 /
 > 61 纹理 / 394 邀请码，零丢行、UUID 零漂移）。
 >
-> 部署新站本体见 [`deploy.md`](deploy.md)；构建见 [`build.md`](build.md)。
+> 部署新站本体见 [`deploy.md`](deploy.md)（Docker 优先）；构建见 [`build.md`](build.md)。
+> Docker 部署时迁移 CLI 不需要装 Go——`docker compose exec skin-nexus /app/skin-nexus migrate ...`，详见 deploy.md §四。
 
 ## 〇、开始前 checklist
 

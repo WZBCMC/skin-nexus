@@ -2,6 +2,13 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
+## 2026-10-25（文档规整）
+
+- **文档体系规整**：README 瘦身重构（一句话状态 + 站长快速开始三路径 + 兼容契约红线）、新增构建指南 `docs/build.md` 与逐轮变更 `docs/CHANGELOG.md`、迁移手册 `docs/migration.md` 扩充（checklist / 命令落地 / 迁移后运营检查）。
+- **Docker 部署文档成为主线**：`docs/deploy.md` 重写为 Docker 优先手册（数据库双模式、环境变量表、启动验收、升级回滚、卷备份恢复、排错表）；`docker-compose.yml` 默认改拉 GHCR 现成镜像（`pull_policy: always`，源码构建降为离线备选）；systemd 降为 §五备选。
+- **仓库清理**：移除手工打包的部署产物 `dist-deploy/`（12MB 二进制 + web-dist 快照）与 `dist-deploy.tar.gz`（5MB）——GHCR 镜像为唯一部署产物来源，避免产物与代码漂移；`.gitignore` 补 `dist-deploy*`。
+- 公开文档去部署环境/站点身份信息：示例统一 `skin.example.com`，示例库名 `legacy`，清除测试夹具与注释中的站点痕迹（Go 测试全绿）。
+
 ## 2026-10-25
 
 - **正式域名切流完成**：生产实例运行中；签名钥连续性实测——union 模式对外 `signaturePublickey` 与老站 `ygg_private_key` 同指纹，客户端零改配置、缓存公钥不失效。
