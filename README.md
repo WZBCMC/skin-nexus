@@ -2,7 +2,7 @@
 
 > 下一代 Minecraft 皮肤站：Yggdrasil 外置登录兼容、一键迁移 blessing-skin-server、自托管优先。
 
-**状态**（每轮开发收尾同步 · 2026-10-24）：一期开发完成（M0–M5）· 二期开发完成（免密登录 + Union 可开关模块 + 前端/管理/集成全量）· 三期骨架完成（i18n / SEO / 主题 / Docker / 空库初始化）· 管理面板账号会话化（2026-10-24：管理员账号登录即用管理面板、普通用户不见入口，X-Admin-Token 降为机器/API 回退；设置面板中文标签优先）· 管理面板对齐 blessing B1–B4（2026-10-24：侧边栏布局 / 仪表盘统计卡 / 运行状态页 / 邀请码布局对齐 / 用户管理表三护栏 / 角色管理表 UUID 零漂移 / 站点配置扩白名单 8 键 blessing 原名 + 消费点接线含 regs_per_ip·玩家名规则组·上传大小·公告，测试站冒烟通过）· 真机验收（A2）待执行 · 迁移切流窗口待排期
+**状态**（每轮开发收尾同步 · 2026-10-24）：一期开发完成（M0–M5）· 二期开发完成（免密登录 + Union 可开关模块 + 前端/管理/集成全量）· 三期骨架完成（i18n / SEO / 主题 / Docker / 空库初始化）· 管理面板账号会话化（2026-10-24：管理员账号登录即用管理面板、普通用户不见入口，X-Admin-Token 降为机器/API 回退；设置面板中文标签优先）· 管理面板对齐 blessing B1–B5 全批完成（2026-10-24：B1-B4 侧边栏/统计卡/状态页/用户表三护栏/角色表 UUID 零漂移/白名单 8 键+消费点；B5 ygg 双档令牌 TTL（3d 软窗 7d 硬窗+改名失效）+ ygg 三键接线 + Union 运维按钮 + 联合黑名单四动作（审计+双确认），CI 全绿）· 真机验收（A2）待执行 · 迁移切流窗口待排期（全收尾后一次切流）
 **许可**：AGPL-3.0 · **发起人/著作权人**：YMZS
 
 ## 这是什么
@@ -37,7 +37,7 @@ SkinNexus（肤枢）是对年久失修的 [blessing-skin-server](https://github
 | 部署管线 | CI 构建生产镜像→GHCR，部署机只拉不编 | ✅ 完成（2026-10-23）：CI docker job（多阶段 Dockerfile 每轮实证，`:latest`+`:sha-*`），升级=`compose pull && up -d`，数据卷持久化 |
 | 管理面板对齐 B1+B2 | 侧边栏布局 / 仪表盘统计卡 / 运行状态页 / 邀请码布局 / 用户管理表 | ✅ 完成（2026-10-24）：侧边栏七视图（`components/admin/*`）、四统计卡（存储=纹理目录实测字节）、`GET /api/admin/v1/status`（版本/Go/MySQL/迁移水位/模块开关）、用户表搜索+分页+行内编辑（邮箱/昵称/验证/权限）+ blessing 权限三护栏（禁改自己/目标须更低/授 ADMIN 需 SUPER_ADMIN，Token 路径禁改权限） |
 | 管理面板对齐 B3/B4 | 角色管理表 / 站点配置扩白名单 | ✅ 完成（2026-10-24）：B3 角色表搜索+改名（UUID 零漂移防护）+转手+换材质+删除（连带清理 uuid_map/selected_pid）；B4 白名单 +8 键（announcement / regs_per_ip / max_upload_file_size / player_name_rule 组 / texture_name_regexp，全 blessing 原名对齐迁移数据）+ 消费点接线（注册按 IP 计数+记录、玩家名规则组替换硬编码、上传大小钳制、公告卡纯文本渲染）+ 反代 XFF 实测核验与 clientIP 语义测试锁 |
-| 管理面板对齐 B5 | ygg 双档令牌 + Union 运维 + 联合黑名单 | ⬜ 需 Pro 陪跑（语义敏感，见开发计划 dev-plan-admin-panel-batch1.md §7） |
+| 管理面板对齐 B5 | ygg 双档令牌 + Union 运维 + 联合黑名单 | ✅ 完成（2026-10-24，Pro 段）：令牌双档 TTL（expire_1 软窗签发固化/expire_2 硬窗 refresh 门+改名软过期挤压，零 schema）；ygg_rate_limit 同名间隔闸 / ygg_tokens_limit LRU+审计 / ygg_search_profile_max 去重超限拒；Union 运维四按钮（服务器列表/密钥对/花名册同步/诊断）；黑名单四动作代理（查询/添加/释放/删除，响应原样透传+审计+双确认，本地进服拦截对齐上游不做） |
 | 正版绑定 / 插件宿主 | Auth Source 第二实现 / goja 宿主运行时 | ⬜ 后置规划 |
 
 ## 文档
