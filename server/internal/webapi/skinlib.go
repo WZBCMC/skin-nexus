@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"skin-nexus/server/internal/avatargen"
 	"skin-nexus/server/internal/store"
 )
 
@@ -48,7 +49,7 @@ func (b *Backend) handleSkinlibList(w http.ResponseWriter, r *http.Request) {
 		if row.UploadAt.Valid {
 			uploadAt = row.UploadAt.Time.UTC().Format("2006-01-02T15:04:05Z")
 		}
-		items = append(items, map[string]any{
+		item := map[string]any{
 			"tid":        row.TID,
 			"name":       row.Name,
 			"type":       row.Type,
@@ -61,7 +62,14 @@ func (b *Backend) handleSkinlibList(w http.ResponseWriter, r *http.Request) {
 			"liked":      row.Liked,
 			"uploadAt":   uploadAt,
 			"textureURL": b.Store.TextureURL(row.Hash),
-		})
+		}
+		// Renderer version in the URL: previews are immutable-cached for a
+		// year, so a rasterizer fix (e.g. HD-sheet sampling, v2) must change
+		// the URL or browsers keep serving the old render.
+		if row.Type == "skin" {
+			item["previewURL"] = "/preview/" + strconv.FormatInt(row.TID, 10) + "?v=" + avatargen.RenderVersion
+		}
+		items = append(items, item)
 	}
 	perPage := 20
 	writeJSON(w, http.StatusOK, map[string]any{

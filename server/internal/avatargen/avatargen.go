@@ -34,6 +34,12 @@ import (
 	"os"
 )
 
+// RenderVersion is bumped whenever rasterizer output changes (UV fixes,
+// sampling or scaling changes). Callers embed it in preview/avatar URLs
+// (`/preview/{tid}?v=N`) so month-long immutable caches re-fetch instead of
+// serving stale renders — 2026-10-25: v2 fixed HD-sheet sampling.
+const RenderVersion = "2"
+
 //go:embed av_default2d.png av_default3d.png
 var defaultFS embed.FS
 

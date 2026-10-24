@@ -98,9 +98,11 @@ async function renameItem(it) {
 // One <img> per card — a skinview3d canvas per card burns a WebGL context
 // each and the grid exceeds the browser's ~16-context budget: oldest
 // contexts get dropped (white cards + "Context Lost" + renderer crashes).
+// The API hands back a versioned previewURL (?v=rendererVersion) so the
+// year-long immutable cache re-fetches after a rasterizer fix.
 // Capes have no body render; serve the flat texture instead.
 function previewURL(it) {
-  return it.type === 'skin' ? `/preview/${it.tid}` : it.textureURL
+  return it.type === 'skin' ? (it.previewURL || `/preview/${it.tid}`) : it.textureURL
 }
 
 onMounted(async () => {
