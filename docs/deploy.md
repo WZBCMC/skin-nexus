@@ -1,16 +1,18 @@
 # SkinNexus 部署（腾讯云 / 宝塔）与切流预案
 
-> 目标环境：腾讯云 2C/3.5G（150.158.12.29，Debian + 宝塔，2026-10-22 确认；早期 N100 假设作废）；MySQL 8 已有；反代域名 skin.wzbcmc.cn。
+> 目标环境：腾讯云 2C/3.5G（150.158.12.29，Debian + 宝塔，2026-10-22 确认；早期 N100 假设作废）；MySQL 8 已有；反代域名 skin.wzbcmc.cn（2026-10-25 生产切流完成）。
 > 回滚原则：旧站只读保全量备份，任何 P0 触发即切回（docs/phase1-dev-plan.md §5）。
+> **本文是部署/运维手册**；从源码或 Docker 构建产物见 [build.md](build.md)，从老站迁数据见 [migration.md](migration.md)。
 
-## 一、构建
+## 一、构建（摘要）
+
+构建步骤、环境要求、CI 产物详解已移交 [build.md](build.md)。最短路径：
 
 ```bash
-# 后端（在仓库根）
+# 单二进制
 cd server && CGO_ENABLED=0 go build -ldflags "-s -w" -o skin-nexus ./cmd/skin-nexus
-
 # 前端
-cd web && npm ci && npm run build   # 产物 web/dist
+cd web && npm ci && npm run build   # 产物 web/dist（后端工作目录须能读到）
 ```
 
 ## 一之二、Docker Compose 部署（三期）
@@ -82,11 +84,11 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-# 3. 建库 + 迁移表（宝塔 phpMyAdmin 或 mysql 客户端逐个执行）
-mysql -u skin -p skin-nexus < migrations/0001_init.sql
-mysql -u skin -p skin-nexus < migrations/0002_web_sessions.sql
-mysql -u skin -p skin-nexus < migrations/0003_oidc.sql
-mysql -u skin -p skin-nexus < migrations/0004_union.sql
+# 3. 建库 + 迁移表（Docker 路径无需此步：SKIN_AUTO_MIGRATE=true 启动时自动按序应用）
+#    手动建表时逐个执行 migrations/0001…0009（0005 用户标志 / 0006 邀请码 /
+#    0007 衣柜 / 0008 旧数据保全 / 0009 结构对齐；追踪式 schema_migrations 记标，
+#    重复对象容忍、其它错误启动失败）
+for f in server/migrations/000*.sql; do mysql -u skin -p skin-nexus < "$f"; done
 
 # 4. legacy.env（旧站 .env 的拷贝，只留 PASSWORD_METHODS/SALT/TEXTURES_DIR）
 #    → 密码兼容链按序试算 + 首登惰性重哈希
@@ -124,11 +126,11 @@ location / {
 
 1. `preflight`：`./skin-nexus migrate preflight --env legacy.env --textures <TEXTURES_DIR> --dump <哈希抽样文件>` → 方法/盐对齐表（盐打码）、哈希分布、情景甲/乙判定、纹理树审计
 2. 全量备份（mysqldump + 纹理目录 tar）
-3. 执行数据导入（SQL 脚本）
-4. **签名钥对齐**：老站 `ygg_private_key` option（PEM 文本）写入 `data/sign-key.pem` 后再启新站——否则 authlib-injector 侧缓存的 `signaturePublickey` 失配、全网皮肤签名校验失败（union hub 键连续性同理由 options 导入自动保持，无需手工）
-5. uuid 清洗 dry-run：`./skin-nexus migrate uuid --rows uuid.tsv --players players.tsv`（五步报告，apply 走导入脚本）
+3. 执行数据导入：`migrate import` 先 `--dry-run` 对账、再去掉实跑（幂等可重跑；参数与断言见 migration.md §二/§三）
+4. **签名钥对齐**：老站 `ygg_private_key` option（PEM 文本）写入 `data/sign-key.pem` 后再启新站——否则 authlib-injector 侧缓存的 `signaturePublickey` 失配、全网皮肤签名校验失败（union 模式例外与导出命令见 migration.md §六）
+5. uuid 清洗 dry-run：`./skin-nexus migrate uuid --rows uuid.tsv --players players.tsv`（五步报告，apply 已由 `migrate import` 内联完成）
 6. re-hash + IHDR 扫描报告（preflight --textures 已含）
-7. 抽验：原密码登录、UUID 逐位比对、hasJoined 验签
+7. 抽验：原密码登录、UUID 逐位比对、hasJoined 验签（断言清单见 migration.md §三）
 8. 双跑观察 → 切流（改反代指向新站端口）
 9. 观察期后旧站下线（只读保留 30 天）
 

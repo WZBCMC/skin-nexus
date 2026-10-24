@@ -1,0 +1,42 @@
+# 变更日志
+
+> 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
+
+## 2026-10-25
+
+- **正式域名切流完成**：`skin.wzbcmc.cn` 生产在跑；签名钥连续性实测——union 模式对外 `signaturePublickey` 与老站 `ygg_private_key` 同指纹（`6000acb241f046c1…`），客户端零改配置、缓存公钥不失效。
+- union 热切换「关→开」误报修复：路由注册期判 `Enabled()` 导致后开的开关拿不到路由 → 常驻注册 + 请求级门禁（关仍是 404 零暴露）。
+- 皮肤库预览纯白修复：逐卡 skinview3d 爆浏览器 ~16 WebGL context 上限 → 卡片改服务端 `/preview/{tid}` PNG lazy 加载。
+- 管理面板「自助诊断」1:1 对标 yggdrasil-connect：三态模态 + 9 行结果表 + 导出 HTML 报告（`{status,data}` 形态含非 2xx 的 status_code/headers/body 证据）。
+- **高清皮肤渲染 v3**：保留原生分辨率，64 空间 UV 按倍数映射到高清网格并逐像素亚纹素采样（v2 降采样方案丢细节，撤销）；2:1 旧版高清皮无叠加层（`HasLayer2` 修正）；单测覆盖 128×128 / 128×64 / 细节保留。
+- 预览 URL 版本化（`?v=RenderVersion`）：规避一年 immutable 缓存吃旧图。
+- 皮肤库「只看我上传的」失效修复：`/api/v1/me` 返回 `id` 而前端取 `uid` → uploader 参数被跳过、canEdit 同步修正。
+- `common.rename` i18n 补键（zh-CN / en）。
+- 公开迁移手册 [`docs/migration.md`](migration.md) 上线；补充切流签名钥 union 模式例外实测说明。
+
+## 2026-10-24
+
+- **全量迁移闭环**：清测试库 → `migrate preflight/dry-run/import` 实跑 → 对账 `users.skipped==0`、7 表 67/67/61/67/87/84/394 逐一对齐、纹理 61 文件字节级一致、UUID 零漂移三处逐字节一致；惰性重哈希待登录实证。
+- 管理面板对齐 blessing **B1–B5 全批**：侧边栏七视图 / 四统计卡 / 运行状态页 / 用户表三护栏 / 角色表 UUID 零漂移防护 / 站点白名单 8 键 + 消费点 / ygg 双档令牌 TTL（3d 软窗 7d 硬窗 + 改名失效）/ Union 运维四按钮 / 联合黑名单四动作（审计 + 双确认）。
+- **Union 配置 options 化 + 热切换**：配置对齐 blessing options 存储面（UI 可配、迁移零搬运）；`union_enabled` 热开关（关 = 全路由 404 + 签名回本地）；hub 验签公钥现取带缓存；OAuth2 密钥对自动生成入库。
+- 管理面板账号会话化：管理员账号登录即用管理面板，普通用户不见入口，X-Admin-Token 降为机器/API 回退。
+- 纹理展示与皮肤库批次：服务端头像/预览渲染（`internal/avatargen` Go 立方体光栅化器，`/avatar/{player|user|hash|tid}` + `/preview/...`）；皮肤库全栈（可见性三档 / 筛选 / 搜索 / 排序 / 分页 + 点赞=入柜）。
+- 用户中心 A 级批次：侧边栏多页 + 仪表盘 + 衣柜 tab / 即输即搜 / 设为头像 + 角色管理 + 个人资料 + 自助删号。
+- 公告 Markdown 双层消毒（服务端 goldmark+bluemonday、前端 marked+DOMPurify）；`site_url` 接线（option 优先 env 兜底、http(s) 白名单）。
+- 修复批次：PlayerByName COLLATE 列侧（MySQL 5.7 prepared 协议 1267 潜伏故障）、skinlib NULL description/model COALESCE、api.js skinlib 方法误挂 union 对象。
+
+## 2026-10-23
+
+- 二期 L1–L4 收官：device 验证页 / 授权管理页、Union 绑定页 + admin 面板、OIDC client CRUD、审计落库、CI（含 MySQL 集成 job）、验收脚本 `scripts/acceptance-yggc.ps1`。
+- 兼容矩阵 36 端点全量只读实测完成，P1 主干全清（邀请码 + 改密 + 衣柜 + 管理面 + 认证限流）；`migrate import` 落地（ID 1:1、`$2y$` 直迁直验、生产 dry-run 对账全一致）。
+- 三期骨架：i18n 双语言包、SEO 注入 + sitemap/robots、theme.json 主题包（`docs/theme-spec.md`）、Dockerfile + compose 双 DB 模式、追踪式自动迁移 + `/setup` 安装向导。
+- 部署管线：CI docker job（多阶段 Dockerfile 每轮实证，推 GHCR `:latest` + `:sha-*`），部署机只拉不编。
+- 邀请码模块（`invitation_codes` 实表 + `SKIN_INVITE_REQUIRED` 开关）。
+- **数据兼容铁律（AGENTS.md 铁律 7）拍板**：持久化数据必须同构可直迁或有无损导入适配。
+
+## 2026-10-22
+
+- **一期 M0–M5 全部完成**：M0 插件运行时 PoC 裁决（goja 冻结为 v1 运行时）、S1+S2 骨架、S3 密码 12 算式移植、S5 Yggdrasil 全端点契约测试、S4 纹理管线、S7 migrate 引擎、M1 接线、S8 公开 API、S6 Vue 前端、管理面板、S9 + CI + 文档、migrate CLI（preflight/uuid）。
+- 立项完成：三仓库（blessing-skin-server / yggdrasil-connect / authlib-injector）源码级分析、两轮多 AI 评审、技术栈冻结 **Go + Vue 3**、插件 v1 = goja。
+- 建仓与开源边界拍板：主仓 `YimingZhanshen/skin-nexus`（BDFL）、AGPL-3.0、署名 `YMZS (YimingZhanshen)`、开发过程文档不入库。
+- 线上侦察：部署目标确认腾讯云 2C/3.5G（宝塔）、迁移规模实测（66 用户级小库）、老站基线 = yggdrasil-connect 6.1.0-0.3.2。
