@@ -40,7 +40,7 @@ button {
 button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
 button.danger { background: var(--danger); }
 button:disabled { opacity: .5; cursor: not-allowed; }
-input, select {
+input, select, textarea {
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
@@ -48,6 +48,18 @@ input, select {
   padding: 8px 10px;
   font-size: 14px;
   width: 100%;
+}
+/* textareas are content boxes: taller, resizable, inherit the dark theme
+   (previously the UA default white background clashed with the site) */
+textarea {
+  min-height: 88px;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.5;
+}
+textarea:focus, input:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 label { display: block; margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
 .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
