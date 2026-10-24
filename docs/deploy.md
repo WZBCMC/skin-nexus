@@ -120,7 +120,7 @@ location / {
 > 反代必须用 `$proxy_add_x_forwarded_for` 或 `$remote_addr` 追加真实地址，
 > 不要改成透传客户端原样头。
 
-## 四、数据迁移执行序（见 phase1-dev-plan §5）
+## 四、数据迁移执行序（完整手册见 [docs/migration.md](migration.md)，2026-10-24 生产库实测）
 
 1. `preflight`：`./skin-nexus migrate preflight --env legacy.env --textures <TEXTURES_DIR> --dump <哈希抽样文件>` → 方法/盐对齐表（盐打码）、哈希分布、情景甲/乙判定、纹理树审计
 2. 全量备份（mysqldump + 纹理目录 tar）
