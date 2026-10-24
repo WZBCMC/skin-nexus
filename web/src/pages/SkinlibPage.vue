@@ -21,7 +21,7 @@ const err = ref('')
 const me = ref(null)
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / perPage)))
-const canEdit = (it) => me.value && (me.value.uid === it.uploader || me.value.permission > 0)
+const canEdit = (it) => me.value && (me.value.id === it.uploader || me.value.permission > 0)
 
 async function load() {
   loading.value = true
@@ -32,7 +32,7 @@ async function load() {
       sort: sort.value,
       keyword: keyword.value.trim(),
       page: page.value,
-      uploader: mine.value && me.value ? me.value.uid : '',
+      uploader: mine.value && me.value ? me.value.id : '',
     })
     items.value = data.items || []
     total.value = data.total || 0

@@ -403,7 +403,11 @@ func LoadSkin(path string) (*image.NRGBA, error) {
 	return LoadSkinReader(f)
 }
 
-// LoadSkinReader decodes a texture PNG stream into NRGBA.
+// LoadSkinReader decodes a texture PNG stream into NRGBA. HD skins (128×128,
+// 256×256, …) are integer upscales of the standard 64-wide sheet; the UV
+// tables are 64-space, so such sheets are nearest-neighbour downscaled to the
+// canonical 64-wide layout before rendering (legacy skinview3d does the same
+// conceptually via UV scaling; nearest keeps pixel art crisp).
 func LoadSkinReader(r io.Reader) (*image.NRGBA, error) {
 	img, err := png.Decode(r)
 	if err != nil {
@@ -411,5 +415,9 @@ func LoadSkinReader(r io.Reader) (*image.NRGBA, error) {
 	}
 	dst := image.NewNRGBA(img.Bounds())
 	draw.Draw(dst, dst.Bounds(), img, img.Bounds().Min, draw.Src)
+	if b := dst.Bounds(); b.Dx() > 64 || b.Dy() > 64 {
+		// Keep the sheet's aspect ratio: 64×64 modern, 64×32 legacy HD.
+		return resizeNearest(dst, b, 64, b.Dy()*64/b.Dx()), nil
+	}
 	return dst, nil
 }

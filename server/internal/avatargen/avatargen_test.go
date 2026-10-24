@@ -1,8 +1,10 @@
 package avatargen
 
 import (
+	"bytes"
 	"image"
 	"image/color"
+	"image/png"
 	"testing"
 )
 
@@ -166,4 +168,68 @@ func TestRenderAvatarEmptySkinNoPanic(t *testing.T) {
 	if out.Bounds().Dx() != 32 {
 		t.Fatalf("empty-skin avatar width = %d", out.Bounds().Dx())
 	}
+}
+
+// TestLoadSkinReaderHD: HD sheets (128×128, 128×64) are integer upscales of
+// the standard 64-wide layout; the UV tables are 64-space, so decoding must
+// downsample to the canonical sheet — otherwise every face samples the wrong
+// texel and HD skins render garbled (reported 2026-10-25).
+func TestLoadSkinReaderHD(t *testing.T) {
+	up := func(src *image.NRGBA, scale int) *image.NRGBA {
+		b := src.Bounds()
+		dst := image.NewNRGBA(image.Rect(0, 0, b.Dx()*scale, b.Dy()*scale))
+		for y := 0; y < dst.Bounds().Dy(); y++ {
+			for x := 0; x < dst.Bounds().Dx(); x++ {
+				dst.SetNRGBA(x, y, src.NRGBAAt(x/scale, y/scale))
+			}
+		}
+		return dst
+	}
+	decode := func(src *image.NRGBA) *image.NRGBA {
+		var buf bytes.Buffer
+		if err := png.Encode(&buf, src); err != nil {
+			t.Fatalf("encode: %v", err)
+		}
+		got, err := LoadSkinReader(&buf)
+		if err != nil {
+			t.Fatalf("LoadSkinReader: %v", err)
+		}
+		return got
+	}
+
+	t.Run("128x128", func(t *testing.T) {
+		got := decode(up(makeSkin(), 2))
+		if b := got.Bounds(); b.Dx() != 64 || b.Dy() != 64 {
+			t.Fatalf("hd sheet = %v, want 64×64", b)
+		}
+		// Face texel (64-space 8,8) must be the magenta front face, not a
+		// side/back texel from the un-scaled 128-space sheet.
+		if c := got.NRGBAAt(8, 8); c.R < 200 || c.B < 200 || c.G > 50 {
+			t.Fatalf("face texel = %v, want magenta", c)
+		}
+		if c := RenderAvatar(got, 64, false).NRGBAAt(32, 32); c.R < 200 || c.B < 200 || c.G > 50 {
+			t.Fatalf("hd avatar center = %v, want magenta front face", c)
+		}
+	})
+
+	t.Run("128x64_legacy_ratio", func(t *testing.T) {
+		legacy := image.NewNRGBA(image.Rect(0, 0, 64, 32))
+		for y := 0; y < 32; y++ {
+			for x := 0; x < 64; x++ {
+				legacy.SetNRGBA(x, y, color.NRGBA{200, 100, 50, 255})
+			}
+		}
+		for y := 8; y < 16; y++ {
+			for x := 8; x < 16; x++ {
+				legacy.SetNRGBA(x, y, color.NRGBA{255, 0, 255, 255})
+			}
+		}
+		got := decode(up(legacy, 2))
+		if b := got.Bounds(); b.Dx() != 64 || b.Dy() != 32 {
+			t.Fatalf("legacy hd sheet = %v, want 64×32", b)
+		}
+		if c := got.NRGBAAt(8, 8); c.R < 200 || c.B < 200 || c.G > 50 {
+			t.Fatalf("legacy face texel = %v, want magenta", c)
+		}
+	})
 }
