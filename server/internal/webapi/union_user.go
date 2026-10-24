@@ -89,6 +89,12 @@ func unionUpstreamStatus(err error) (int, string) {
 }
 
 func (b *Backend) unionUser(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	// Hot gate FIRST (2026-10-24 拍板「关闭即全 404」): a disabled module must
+	// be indistinguishable from an absent one even before authentication.
+	if b.union == nil || !b.union.Enabled() {
+		http.NotFound(w, r)
+		return 0, false
+	}
 	uid, err := b.currentUser(r)
 	if err != nil {
 		writeErr(w, http.StatusUnauthorized, "请先登录")

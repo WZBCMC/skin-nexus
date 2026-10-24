@@ -28,7 +28,7 @@ docker compose pull && docker compose up -d      # 升级同命令，数据卷�
 
 - **持久化**：`skin-data` 卷挂 `/data`（textures/sign-key.pem/oidc-key.pem/themes/），`skin-db` 卷存 MySQL——**升级只换容器，卷不动，数据零丢失**。
 - **统一数据根**：`SKIN_DATA_DIR`（默认 `./data`）；`SKIN_TEXTURES_DIR`/`SKIN_SIGN_KEY` 等旧变量显式设置时优先。
-- **新环境变量**：`SKIN_DATA_DIR`、`SKIN_THEMES_DIR`（默认 `<data>/themes`）、`SKIN_AUTO_MIGRATE`（**追踪式迁移**：`schema_migrations` 逐文件记标，空库全量、既有库自动补新文件；重复对象冲突容忍、其它错误启动失败）、`SKIN_MIGRATIONS_DIR`（默认 `./migrations`）、`SKIN_REQUIRE_VERIFICATION`（join 邮箱验证门，`true` 开启；默认 `false`，待 P1 验证邮件流落地后再开）、`SKIN_INVITE_REQUIRED`（注册强制邀请码，`true` 时=线上必填语义；默认 `false` 注册开放、邀请码选填）。**站点类默认值已迁管理 UI**（「管理 → 站点设置」白名单：site_name/server_name/skin_domains/invite_required/require_verification，`options` 表值优先于 env，开关类立即生效、其余重启生效）；凭据类（DSN/密钥/admin token）仍只走环境变量。
+- **新环境变量**：`SKIN_DATA_DIR`、`SKIN_THEMES_DIR`（默认 `<data>/themes`）、`SKIN_AUTO_MIGRATE`（**追踪式迁移**：`schema_migrations` 逐文件记标，空库全量、既有库自动补新文件；重复对象冲突容忍、其它错误启动失败）、`SKIN_MIGRATIONS_DIR`（默认 `./migrations`）、`SKIN_REQUIRE_VERIFICATION`（join 邮箱验证门，`true` 开启；默认 `false`，待 P1 验证邮件流落地后再开）、`SKIN_INVITE_REQUIRED`（注册强制邀请码，`true` 时=线上必填语义；默认 `false` 注册开放、邀请码选填）。**站点类默认值已迁管理 UI**（「管理 → 站点设置」白名单：site_name/server_name/skin_domains/invite_required/require_verification + ygg 五键 + **Union 八键**（2026-10-24），`options` 表值优先于 env；union_enabled/union_api_root/union_member_key 热切换立即生效、其余重启生效）；凭据类（DSN/admin token）仍只走环境变量，**union 凭据（member_key/OAuth2 密钥对）已 options 化**（blessing 原名同构、迁移零搬运，密钥文件/env 仅作迁移桥与兜底）。
 - **健康检查**：`GET /healthz`（DB 探活，compose HEALTHCHECK 已用）。
 - **主题包**：放入 `data/themes/<id>/`（含 theme.json，规范见 docs/theme-spec.md），admin 面板「外观」选择启用；自定义 CSS/JS 亦在「外观」区块（JS 原样注入，仅用可信代码）。
 - **SEO**：admin 面板「SEO」区块一键配置 meta/OG/sitemap/robots；预发可勾整站 noindex。
@@ -125,11 +125,12 @@ location / {
 1. `preflight`：`./skin-nexus migrate preflight --env legacy.env --textures <TEXTURES_DIR> --dump <哈希抽样文件>` → 方法/盐对齐表（盐打码）、哈希分布、情景甲/乙判定、纹理树审计
 2. 全量备份（mysqldump + 纹理目录 tar）
 3. 执行数据导入（SQL 脚本）
-4. uuid 清洗 dry-run：`./skin-nexus migrate uuid --rows uuid.tsv --players players.tsv`（五步报告，apply 走导入脚本）
-5. re-hash + IHDR 扫描报告（preflight --textures 已含）
-6. 抽验：原密码登录、UUID 逐位比对、hasJoined 验签
-7. 双跑观察 → 切流（改反代指向新站端口）
-8. 观察期后旧站下线（只读保留 30 天）
+4. **签名钥对齐**：老站 `ygg_private_key` option（PEM 文本）写入 `data/sign-key.pem` 后再启新站——否则 authlib-injector 侧缓存的 `signaturePublickey` 失配、全网皮肤签名校验失败（union hub 键连续性同理由 options 导入自动保持，无需手工）
+5. uuid 清洗 dry-run：`./skin-nexus migrate uuid --rows uuid.tsv --players players.tsv`（五步报告，apply 走导入脚本）
+6. re-hash + IHDR 扫描报告（preflight --textures 已含）
+7. 抽验：原密码登录、UUID 逐位比对、hasJoined 验签
+8. 双跑观察 → 切流（改反代指向新站端口）
+9. 观察期后旧站下线（只读保留 30 天）
 
 **回滚触发**：登录失败率 >1% / UUID 不一致 >0 / 验签失败 >0 → 立即切回旧站。
 
@@ -137,7 +138,7 @@ location / {
 
 - **密钥备份**：`sign-key.pem` 是纹理签名私钥，丢失=全网皮肤失效，纳入备份清单
 - **OIDC 签名钥**：`oidc-key.pem` 与纹理签名钥**分离**（免密登录 token 专用），首启自动生成，同样纳入备份；两钥互不代替
-- **Union 开关**：`SKIN_UNION_ENABLED=false`（默认）时不挂载任何 `/api/union/*`、签名钥保持本地；开启前须具备成员密钥与 hub 验签公钥，并在管理面板展示**信任声明**（Union 模式下纹理签名私钥为全网共享）
+- **Union 开关**：`union_enabled` 热切换（管理面板「站点设置」；env `SKIN_UNION_ENABLED` 仅兜底）——关=全 `/api/union|v1/union|admin/union` 路由 404、纹理签名回本地密钥；开=即时恢复。Union 配置八键全在面板（blessing 原名：union_api_root/union_member_key/union_enable_update/union_enable_oauth2/union_oauth2_sig_* 等），**hub 验签公钥每次现取带缓存**（pinned 文件仅兜底），OAuth2 密钥对留空首启自动生成入库。开启前须具备成员密钥；管理面板展示**信任声明**（Union 模式下纹理签名私钥为全网共享）
 - **弱哈希看板**：`GET /api/admin/v1/overview` 的 `weakHashUsers` 归零前保持关注
 - **备份**：每日 mysqldump + 纹理目录增量；sign-key.pem 单独加密备份
 - 日志：`journalctl -u skin-nexus -f`
