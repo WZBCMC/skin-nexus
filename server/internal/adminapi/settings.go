@@ -192,8 +192,16 @@ func (b *Backend) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	if b.OnSettingChanged != nil {
 		b.OnSettingChanged(req.Key, val) // hot-apply (union keys)
 	}
+	// Credential discipline: never persist secret values to the audit log —
+	// record shape only. (union_member_key is a shared hub credential and the
+	// sig private key signs user-info; their VALUES stay in the options row.)
+	auditVal := val
+	switch req.Key {
+	case "union_member_key", "union_oauth2_sig_private_key":
+		auditVal = "<redacted>"
+	}
 	b.Store.InsertAudit(r.Context(), actorUID(r), "settings_update", map[string]any{
-		"key": req.Key, "value": val,
+		"key": req.Key, "value": auditVal,
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "key": req.Key, "value": val})
 }
