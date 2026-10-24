@@ -126,6 +126,12 @@ func (a *API) handleMetadata(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	// Authlib-injector discovery: relative or absolute location of this API.
 	w.Header().Set("X-Authlib-Injector-API-Location", apiLocation(r))
+	// Cross-origin metadata reads (2026-10-24 UI 名称回填): the union server
+	// list fills each member's display name by fetching its
+	// /api/yggdrasil meta.serverName from the browser (old plugin
+	// servers.twig:20-31 + HandleCors.php:18-20). Mirror that CORS surface.
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD")
 	_, _ = w.Write([]byte(b.String()))
 }
 

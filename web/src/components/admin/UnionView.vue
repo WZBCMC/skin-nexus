@@ -11,7 +11,7 @@ const { t } = useI18n()
 const unionStatus = ref(null)
 const error = ref('')
 const opResult = ref('')
-const opBusy = ref('')
+const opBusy = ref(false)
 
 // blacklist
 const blRows = ref([])
@@ -42,7 +42,7 @@ async function resumeRotation() {
 
 async function runOp(name, path, confirmMsg) {
   if (confirmMsg && !confirm(confirmMsg)) return
-  opBusy.value = name
+  opBusy.value = true
   opResult.value = ''
   error.value = ''
   try {
@@ -52,7 +52,7 @@ async function runOp(name, path, confirmMsg) {
   } catch (e) {
     error.value = e.message
   } finally {
-    opBusy.value = ''
+    opBusy.value = false
   }
 }
 
@@ -160,7 +160,7 @@ onMounted(async () => {
         <input v-model="blQ" :placeholder="t('admin.unionBlSearch')" style="max-width: 220px;" @keyup.enter="blPage = 1; loadBlacklist()" />
         <button class="secondary" @click="blPage = 1; loadBlacklist()">{{ t('admin.unionBlSearchBtn') }}</button>
       </div>
-      <table v-if="blRows.length" style="margin-top: 10px;">
+      <table v-if="blRows.length" class="bl-table" style="margin-top: 10px;">
         <tr>
           <th>ID</th><th>{{ t('admin.unionBlEmail') }}</th><th>{{ t('admin.unionBlSource') }}</th>
           <th>{{ t('admin.unionBlReason') }}</th><th>{{ t('admin.unionBlCreated') }}</th><th></th>
@@ -188,3 +188,21 @@ onMounted(async () => {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* Blacklist table: fixed layout so the long free-text reason column cannot
+   push created_at/actions off the card edge (2026-10-24 UI fix). */
+.bl-table {
+  table-layout: fixed;
+  width: 100%;
+}
+.bl-table th:nth-child(1), .bl-table td:nth-child(1) { width: 44px; }
+.bl-table th:nth-child(2), .bl-table td:nth-child(2) { width: 170px; }
+.bl-table th:nth-child(3), .bl-table td:nth-child(3) { width: 64px; }
+.bl-table th:nth-child(5), .bl-table td:nth-child(5) { width: 150px; }
+.bl-table th:nth-child(6), .bl-table td:nth-child(6) { width: 130px; }
+.bl-table td {
+  word-break: break-all;
+  vertical-align: top;
+}
+</style>

@@ -44,12 +44,34 @@ async function load() {
     const d = await union.servers()
     servers.value = d.servers || []
     serverVersion.value = d.version || ''
+    fillServerNames(servers.value) // async, best-effort (old plugin servers.twig:20-31)
   } catch (e) {
     // disabled module -> friendly notice, not an error storm
     servers.value = []
     error.value = e.message.includes('404') ? t('union.disabled') : e.message
   }
   loadRemapSuggestions() // the remap card is open now (review P0-1)
+}
+
+// The hub ships `name` empty on member entries; the old plugin fills each
+// row's display name client-side by fetching that member's
+// {bs_root}/api/yggdrasil and reading meta.serverName (servers.twig:20-31).
+// Mirrored here — failures just leave the fallback chain in place.
+const serverNames = ref({})
+function fillServerNames(list) {
+  list.forEach(async (s) => {
+    const root = String(s.bs_root || '').replace(/\/+$/, '')
+    if (!root) return
+    try {
+      const r = await fetch(root + '/api/yggdrasil')
+      const d = await r.json()
+      const n = d && d.meta && d.meta.serverName
+      if (n) serverNames.value = { ...serverNames.value, [s.code]: n }
+    } catch { /* keep fallback */ }
+  })
+}
+function serverDisplayName(s) {
+  return serverNames.value[s.code] || s.name || String(s.bs_root || '').replace(/^https?:\/\//, '') || '—'
 }
 
 function playerUUID(p) { return p.UUID || p.uuid || '' }
@@ -206,7 +228,7 @@ onMounted(load)
         <tr><th>{{ t('union.colCode') }}</th><th>{{ t('union.colName') }}</th></tr>
         <tr v-for="s in servers" :key="s.code">
           <td><code>{{ s.code }}</code></td>
-          <td>{{ s.name }}</td>
+          <td>{{ serverDisplayName(s) }}</td>
         </tr>
       </table>
     </div>
