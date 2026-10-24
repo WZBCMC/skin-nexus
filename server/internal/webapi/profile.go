@@ -160,6 +160,12 @@ func (b *Backend) handleAvatarSet(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusForbidden, "not yours")
 		return
 	}
+	// Type gate (legacy TextureController.php:141 parity: 422 unless the
+	// texture is a skin) — a cape must never become an avatar.
+	if typ, err := b.Store.TextureType(r.Context(), req.TextureID); err != nil || typ != "skin" {
+		writeErr(w, http.StatusUnprocessableEntity, "只有皮肤可以设为头像")
+		return
+	}
 	if err := b.Store.SetUserAvatar(r.Context(), uid, req.TextureID); err != nil {
 		writeErr(w, http.StatusInternalServerError, "update failed")
 		return

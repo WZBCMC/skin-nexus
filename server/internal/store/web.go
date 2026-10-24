@@ -249,6 +249,18 @@ func (m *Mysql) TextureOwner(ctx context.Context, tid int64) (int64, error) {
 	return uid, err
 }
 
+// TextureType returns a texture's kind ("skin"/"cape"). Avatar needs the
+// type gate: legacy TextureController.php:141 aborts 422 unless steve/alex
+// (i.e. a skin) — a cape must never become an avatar.
+func (m *Mysql) TextureType(ctx context.Context, tid int64) (string, error) {
+	var typ string
+	err := m.db.QueryRowContext(ctx, `SELECT type FROM textures WHERE id = ?`, tid).Scan(&typ)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = ErrNotFound
+	}
+	return typ, err
+}
+
 // PlayerTextureIDs returns current skin/cape texture ids (0 = unset).
 func (m *Mysql) PlayerTextureIDs(ctx context.Context, pid int64) (skin, cape int64, err error) {
 	var s, c sql.NullInt64

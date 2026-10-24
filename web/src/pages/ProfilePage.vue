@@ -163,12 +163,15 @@ onMounted(load)
 h3 { font-size: 14px; margin: 18px 0 8px; color: var(--muted); font-weight: 600; }
 .avatar-row { gap: 16px; }
 .avatar-box { width: 64px; height: 64px; border: 1px solid var(--border); border-radius: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-/* face crop: 64px skin × 8 = 512px sheet; front-head tile at (8,8) → -64px */
+/* face crop (legacy parity: TextureController render2dAvatar = front-head
+   render): face tile at (8,8)-(16,16); 6× scale puts the 8px face exactly
+   into the 48px box; `auto` height keeps 64×32 legacy skins undistorted
+   (top half shares the layout). */
 .avatar-face {
   width: 48px; height: 48px;
   background-repeat: no-repeat;
-  background-size: 512px 512px;
-  background-position: -64px -64px;
+  background-size: 384px auto;
+  background-position: -48px -48px;
   image-rendering: pixelated;
   border-radius: 2px;
 }
