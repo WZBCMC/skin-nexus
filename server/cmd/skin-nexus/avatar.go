@@ -92,12 +92,14 @@ func (d *avatarDeps) serveAvatar(w http.ResponseWriter, r *http.Request, hash, t
 }
 
 func (d *avatarDeps) handleAvatarPlayer(w http.ResponseWriter, r *http.Request) {
-	p, err := d.st.PlayerByName(r.Context(), r.PathValue("name"))
+	name := r.PathValue("name")
+	p, err := d.st.PlayerByName(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			http.NotFound(w, r)
 			return
 		}
+		log.Printf("avatar/player %q: %v", name, err)
 		http.Error(w, "db error", http.StatusInternalServerError)
 		return
 	}

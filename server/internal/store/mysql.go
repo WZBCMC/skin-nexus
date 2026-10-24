@@ -144,7 +144,15 @@ func (m *Mysql) PlayerByUUID(ctx context.Context, uuid string) (ygg.Player, erro
 }
 
 func (m *Mysql) PlayerByName(ctx context.Context, name string) (ygg.Player, error) {
-	return m.scanPlayer(ctx, "p.name = ? COLLATE utf8mb4_general_ci", name)
+	// COLLATE sits on the COLUMN side on purpose: go-sql-driver uses
+	// server-side prepared statements (binary protocol), where the
+	// parameter charset is not yet known — `? COLLATE utf8mb4_general_ci`
+	// (collate-on-placeholder) made MySQL 5.7 fail every lookup with
+	// 1267 Illegal mix of collations (observed on the panel 5.7.44 test
+	// DB; literal-text queries still worked, masking it in ad-hoc SQL).
+	// Collating the column (whose charset is fixed by DDL) keeps the
+	// case-insensitive legacy name match in both protocols.
+	return m.scanPlayer(ctx, "p.name COLLATE utf8mb4_general_ci = ?", name)
 }
 
 func (m *Mysql) PlayersByUID(ctx context.Context, uid int64) ([]ygg.Player, error) {
