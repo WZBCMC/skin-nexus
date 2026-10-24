@@ -1,0 +1,221 @@
+package store
+
+// Skinlib (public texture library) queries — blessing SkinlibController
+// parity. Legacy semantics (refs SkinlibController.php:60-95):
+//   - visibility: anonymous → public only; user → public OR own;
+//     admin (permission>0) → all
+//   - filter: skin (type=skin) | cape | steve (default model) | alex (slim)
+//   - keyword: LIKE on the texture name (our `description` column)
+//   - sort: time (upload_at) | likes
+//   - paginate 20/page
+// Likes are NOT a denormalized column here: legacy `textures.likes` was a
+// counter maintained on closet add/remove, but its source of truth is the
+// user_closet pivot (Texture.php:65 likers() = belongsToMany via
+// user_closet). We count the pivot directly — zero schema change, no
+// drift, and the imported closet rows carry the legacy counts.
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
+)
+
+// SkinlibRow is one library entry with uploader + like state.
+type SkinlibRow struct {
+	TID       int64
+	UID       int64
+	Name      string
+	Type      string
+	Model     string
+	Hash      string
+	Public    bool
+	Nickname  string
+	Likes     int64
+	Liked     bool
+	UploadAt  sql.NullTime
+}
+
+// SkinlibOpts filters one library page.
+type SkinlibOpts struct {
+	ViewerUID  int64  // 0 = anonymous
+	ViewerAdmin bool
+	Type       string // "", "skin", "cape", "steve", "alex"
+	Keyword    string
+	Uploader   int64  // 0 = any
+	Sort       string // "time" (default) | "likes"
+	Page       int    // 1-based
+	PerPage    int    // default 20, capped 50
+}
+
+func (o *SkinlibOpts) normalize() {
+	switch o.Type {
+	case "skin", "cape":
+	case "steve":
+		o.Type = "skin:default"
+	case "alex":
+		o.Type = "skin:slim"
+	default:
+		o.Type = ""
+	}
+	o.Keyword = strings.TrimSpace(o.Keyword)
+	if o.Sort != "likes" {
+		o.Sort = "time"
+	}
+	if o.Page < 1 {
+		o.Page = 1
+	}
+	if o.PerPage <= 0 || o.PerPage > 50 {
+		o.PerPage = 20
+	}
+}
+
+// where builds the shared WHERE clause. Visibility is applied first so a
+// private texture never leaks through keyword/sort side channels.
+func (o *SkinlibOpts) where() (clause string, args []any) {
+	var conds []string
+	switch {
+	case o.ViewerUID == 0:
+		conds = append(conds, "t.public = 1")
+	case o.ViewerAdmin:
+		// sees everything
+	default:
+		conds = append(conds, "(t.public = 1 OR t.uid = ?)")
+		args = append(args, o.ViewerUID)
+	}
+	switch o.Type {
+	case "skin":
+		conds = append(conds, "t.type = 'skin'")
+	case "cape":
+		conds = append(conds, "t.type = 'cape'")
+	case "skin:default":
+		conds = append(conds, "t.type = 'skin' AND t.model = 'default'")
+	case "skin:slim":
+		conds = append(conds, "t.type = 'skin' AND t.model = 'slim'")
+	}
+	if o.Keyword != "" {
+		conds = append(conds, "t.description LIKE ?")
+		args = append(args, "%"+o.Keyword+"%")
+	}
+	if o.Uploader != 0 {
+		conds = append(conds, "t.uid = ?")
+		args = append(args, o.Uploader)
+	}
+	return strings.Join(conds, " AND "), args
+}
+
+// SkinlibList returns one page of library entries plus the total match
+// count (for pagination). Likes/liked come from the user_closet pivot.
+func (m *Mysql) SkinlibList(ctx context.Context, opt SkinlibOpts) ([]SkinlibRow, int, error) {
+	opt.normalize()
+	where, args := opt.where()
+
+	var total int
+	if err := m.db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM textures t WHERE "+where, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("skinlib count: %w", err)
+	}
+
+	orderBy := "t.upload_at DESC, t.id DESC"
+	if opt.Sort == "likes" {
+		orderBy = "likes DESC, t.upload_at DESC, t.id DESC"
+	}
+	// The liked flag needs the viewer uid even for anonymous (→ 0 = never
+	// matches a real uid, EXISTS is simply false).
+	sel := fmt.Sprintf(`
+		SELECT t.id, t.uid, t.description, t.type, t.model, t.hash, t.public,
+		       t.upload_at, u.nickname,
+		       (SELECT COUNT(*) FROM user_closet c WHERE c.texture_tid = t.id) AS likes,
+		       EXISTS(SELECT 1 FROM user_closet c WHERE c.texture_tid = t.id AND c.user_uid = ?) AS liked
+		FROM textures t
+		JOIN users u ON u.id = t.uid
+		WHERE %s
+		ORDER BY %s
+		LIMIT ? OFFSET ?`, where, orderBy)
+	qargs := append([]any{opt.ViewerUID}, args...)
+	qargs = append(qargs, opt.PerPage, (opt.Page-1)*opt.PerPage)
+
+	rows, err := m.db.QueryContext(ctx, sel, qargs...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("skinlib list: %w", err)
+	}
+	defer rows.Close()
+	var out []SkinlibRow
+	for rows.Next() {
+		var r SkinlibRow
+		if err := rows.Scan(&r.TID, &r.UID, &r.Name, &r.Type, &r.Model, &r.Hash,
+			&r.Public, &r.UploadAt, &r.Nickname, &r.Likes, &r.Liked); err != nil {
+			return nil, 0, fmt.Errorf("skinlib scan: %w", err)
+		}
+		out = append(out, r)
+	}
+	return out, total, rows.Err()
+}
+
+// ClosetLikes returns the like count of one texture (pivot count).
+func (m *Mysql) ClosetLikes(ctx context.Context, tid int64) (int64, error) {
+	var n int64
+	err := m.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM user_closet WHERE texture_tid = ?`, tid).Scan(&n)
+	return n, err
+}
+
+// RemoveClosetEntryByTID unlikes (removes the viewer's closet row for the
+// texture). Unlike the row-id variant this is keyed by texture so the
+// skinlib heart toggle needs no prior closet lookup.
+func (m *Mysql) RemoveClosetEntryByTID(ctx context.Context, uid, tid int64) error {
+	res, err := m.db.ExecContext(ctx,
+		`DELETE FROM user_closet WHERE user_uid = ? AND texture_tid = ? LIMIT 1`,
+		uid, tid)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// UpdateTextureMeta renames (description) and/or flips visibility of one
+// texture. ownerUID scopes the UPDATE to the owner; pass 0 for admin
+// (blessing SkinlibController rename/privacy are owner-or-admin).
+func (m *Mysql) UpdateTextureMeta(ctx context.Context, tid, ownerUID int64, name *string, public *bool) error {
+	sets := make([]string, 0, 2)
+	args := make([]any, 0, 4)
+	if name != nil {
+		sets = append(sets, "description = ?")
+		args = append(args, *name)
+	}
+	if public != nil {
+		v := 0
+		if *public {
+			v = 1
+		}
+		sets = append(sets, "public = ?")
+		args = append(args, v)
+	}
+	if len(sets) == 0 {
+		return nil
+	}
+	q := "UPDATE textures SET " + strings.Join(sets, ", ") + " WHERE id = ?"
+	args = append(args, tid)
+	if ownerUID != 0 {
+		q += " AND uid = ?"
+		args = append(args, ownerUID)
+	}
+	res, err := m.db.ExecContext(ctx, q, args...)
+	if err != nil {
+		return fmt.Errorf("texture meta update: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		// Distinguish "no such texture" from "not yours".
+		var one int
+		if err := m.db.QueryRowContext(ctx,
+			`SELECT id FROM textures WHERE id = ?`, tid).Scan(&one); errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return ErrForbidden
+	}
+	return nil
+}

@@ -18,6 +18,7 @@
     "userCenter": "User center",
     "manageGroup": "Manage",
     "dashboard": "Dashboard",
+    "skinlib": "Skin library",
     "closet": "Closet",
     "players": "Profiles",
     "profile": "Profile",
@@ -25,6 +26,23 @@
     "apps": "Authorized apps",
     "union": "Union binding",
     "backToDashboard": "Back to dashboard"
+  },
+  "skinlib": {
+    "title": "Skin library",
+    "subtitle": "Browse community skins and capes — hit ♥ to save to your closet",
+    "tabSkin": "Skins",
+    "tabCape": "Capes",
+    "tabSteve": "Steve",
+    "tabAlex": "Alex",
+    "searchPlaceholder": "Search by name…",
+    "sortTime": "Newest",
+    "sortLikes": "Most liked",
+    "mineOnly": "Only mine",
+    "empty": "No textures match",
+    "total": "{n} total",
+    "makePrivate": "Make private",
+    "makePublic": "Make public",
+    "renamePrompt": "New name:"
   },
   "site": {
     "name": "SkinNexus",

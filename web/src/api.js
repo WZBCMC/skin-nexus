@@ -60,6 +60,18 @@ export const union = {
   bindto: (uuid, token) => req('POST', '/api/v1/union/bindto', { uuid, token }),
   unbind: (uuid) => req('POST', '/api/v1/union/unbind', { uuid }),
   remapuuid: (me, target) => req('POST', '/api/v1/union/remapuuid', { me, target }),
+  // Skinlib (public library). Like = closet add (blessing semantics).
+  skinlib: (params = {}) => {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== '' && v !== undefined && v !== null) qs.set(k, v)
+    }
+    const s = qs.toString()
+    return req('GET', `/api/v1/skinlib${s ? `?${s}` : ''}`)
+  },
+  skinlibLike: (tid) => req('POST', `/api/v1/skinlib/${tid}/like`),
+  skinlibUnlike: (tid) => req('DELETE', `/api/v1/skinlib/${tid}/like`),
+  skinlibPatch: (tid, body) => req('PATCH', `/api/v1/skinlib/${tid}`, body),
 }
 
 export async function uploadTexture(type, file, model, description) {

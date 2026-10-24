@@ -97,6 +97,12 @@ func (b *Backend) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/me/closet", b.handleClosetAdd)
 	mux.HandleFunc("PUT /api/v1/me/closet/{id}", b.handleClosetRename)
 	mux.HandleFunc("DELETE /api/v1/me/closet/{id}", b.handleClosetRemove)
+	// Skinlib (public texture library). Like = closet add per blessing
+	// semantics (user_closet is the likers pivot, Texture.php:65).
+	mux.HandleFunc("GET /api/v1/skinlib", b.handleSkinlibList)
+	mux.HandleFunc("POST /api/v1/skinlib/{tid}/like", b.handleSkinlibLike)
+	mux.HandleFunc("DELETE /api/v1/skinlib/{tid}/like", b.handleSkinlibUnlike)
+	mux.HandleFunc("PATCH /api/v1/skinlib/{tid}", b.handleSkinlibPatch)
 	mux.HandleFunc("GET /api/v1/stats", b.handleStats)
 	// Site announcement (blessing parity): public read, admin-edited via
 	// the settings panel (option `announcement`). Markdown source; the

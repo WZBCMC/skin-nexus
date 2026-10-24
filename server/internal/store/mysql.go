@@ -25,6 +25,11 @@ import (
 // ErrNotFound is the canonical "no such row" signal.
 var ErrNotFound = errors.New("store: not found")
 
+// ErrForbidden: the row exists but the caller may not touch it (e.g.
+// editing another user's texture). Kept distinct from ErrNotFound so the
+// API layer can answer 403 vs 404 correctly.
+var ErrForbidden = errors.New("store: forbidden")
+
 type Mysql struct {
 	db       *sql.DB
 	baseURL  string // for texture URLs: <base>/textures/<hash>

@@ -9,6 +9,7 @@ import UnionBindPage from './pages/UnionBindPage.vue'
 import SetupPage from './pages/SetupPage.vue'
 import DashboardPage from './pages/DashboardPage.vue'
 import ClosetPage from './pages/ClosetPage.vue'
+import SkinlibPage from './pages/SkinlibPage.vue'
 import PlayersPage from './pages/PlayersPage.vue'
 import ProfilePage from './pages/ProfilePage.vue'
 import { setLocale } from './i18n.js'
@@ -43,6 +44,7 @@ const navGroups = computed(() => {
   const groups = [{
     items: [
       { id: 'dashboard', labelKey: 'nav.dashboard' },
+      { id: 'skinlib', labelKey: 'nav.skinlib' },
       { id: 'closet', labelKey: 'nav.closet' },
       { id: 'players', labelKey: 'nav.players' },
       { id: 'profile', labelKey: 'nav.profile' },
@@ -206,6 +208,7 @@ onMounted(boot)
         </aside>
         <main class="user-main">
           <DashboardPage v-if="view === 'dashboard'" />
+          <SkinlibPage v-else-if="view === 'skinlib'" />
           <ClosetPage v-else-if="view === 'closet'" />
           <PlayersPage v-else-if="view === 'players'" />
           <ProfilePage v-else-if="view === 'profile'" />
