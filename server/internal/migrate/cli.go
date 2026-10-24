@@ -138,7 +138,7 @@ func runImport(args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("import", flag.ContinueOnError)
 	sourceDSN := fs.String("source-dsn", "", "legacy database DSN (required)")
 	targetDSN := fs.String("target-dsn", "", "skin_nexus database DSN (required)")
-	prefix := fs.String("source-prefix", "", "source table prefix/schema, e.g. 'wzbcmc.' or 'legacy_' (required)")
+	prefix := fs.String("source-prefix", "", "source table prefix/schema, e.g. 'legacy.' or 'legacy_' (required)")
 	texSrc := fs.String("textures-src", "", "legacy textures dir (optional)")
 	texDst := fs.String("textures-dst", "", "target textures dir (optional; byte-exact copy)")
 	dry := fs.Bool("dry-run", false, "read-only report, no writes")

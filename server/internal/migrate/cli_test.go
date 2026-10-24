@@ -13,7 +13,7 @@ func TestRunCLIPreflight(t *testing.T) {
 	dir := t.TempDir()
 	envPath := filepath.Join(dir, ".env")
 	_ = os.WriteFile(envPath, []byte(
-		"APP_URL=https://skin.wzbcmc.cn\nPASSWORD_METHODS=SALTED2MD5,BCRYPT\nSALT=ab12cd,unused\n"), 0o644)
+		"APP_URL=https://skin.example.com\nPASSWORD_METHODS=SALTED2MD5,BCRYPT\nSALT=ab12cd,unused\n"), 0o644)
 	dump := filepath.Join(dir, "hashes.txt")
 	// 2 weak (hex32) + 1 bcrypt
 	_ = os.WriteFile(dump, []byte(

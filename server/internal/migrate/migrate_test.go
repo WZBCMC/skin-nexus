@@ -17,7 +17,7 @@ import (
 func TestParseLegacyEnvPositionalSalts(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, ".env")
-	content := `APP_URL=https://skin.wzbcmc.cn
+	content := `APP_URL=https://skin.example.com
 PASSWORD_METHODS=SALTED2MD5,BCRYPT
 SALT=ab12cd,unused
 TEXTURES_DIR=/var/www/storage/textures
@@ -29,7 +29,7 @@ TEXTURES_DIR=/var/www/storage/textures
 	if err != nil {
 		t.Fatal(err)
 	}
-	if env.AppURL != "https://skin.wzbcmc.cn" {
+	if env.AppURL != "https://skin.example.com" {
 		t.Fatalf("AppURL = %q", env.AppURL)
 	}
 	ms := env.MethodSalts()
@@ -45,15 +45,15 @@ TEXTURES_DIR=/var/www/storage/textures
 	}
 }
 
-// TestParseRealLegacyEnv pins the REAL wzbcmc legacy .env shape (2026-10-22
+// TestParseRealLegacyEnv pins the REAL legacy-site .env shape (2026-10-22
 // provided by YMZS): PWD_METHOD single value, no SALT key at all.
 func TestParseRealLegacyEnv(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, ".env")
 	content := `APP_ENV=production
 DB_HOST=localhost
-DB_DATABASE=wzbcmc
-DB_USERNAME=wzbcmc
+DB_DATABASE=legacy
+DB_USERNAME=legacy
 DB_PASSWORD=redacted
 
 # Hash Algorithm for Passwords
@@ -78,7 +78,7 @@ APP_KEY=base64:xxxx
 	if ms[0].Method != auth.MethodBCRYPT {
 		t.Fatalf("MethodSalts = %+v", ms)
 	}
-	if env.DBDSN == "" || !strings.Contains(env.DBDSN, "DB_DATABASE=wzbcmc") {
+	if env.DBDSN == "" || !strings.Contains(env.DBDSN, "DB_DATABASE=legacy") {
 		t.Fatalf("DBDSN = %q", env.DBDSN)
 	}
 }

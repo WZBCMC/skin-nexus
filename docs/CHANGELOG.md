@@ -4,7 +4,7 @@
 
 ## 2026-10-25
 
-- **正式域名切流完成**：`skin.wzbcmc.cn` 生产在跑；签名钥连续性实测——union 模式对外 `signaturePublickey` 与老站 `ygg_private_key` 同指纹（`6000acb241f046c1…`），客户端零改配置、缓存公钥不失效。
+- **正式域名切流完成**：生产实例运行中；签名钥连续性实测——union 模式对外 `signaturePublickey` 与老站 `ygg_private_key` 同指纹，客户端零改配置、缓存公钥不失效。
 - union 热切换「关→开」误报修复：路由注册期判 `Enabled()` 导致后开的开关拿不到路由 → 常驻注册 + 请求级门禁（关仍是 404 零暴露）。
 - 皮肤库预览纯白修复：逐卡 skinview3d 爆浏览器 ~16 WebGL context 上限 → 卡片改服务端 `/preview/{tid}` PNG lazy 加载。
 - 管理面板「自助诊断」1:1 对标 yggdrasil-connect：三态模态 + 9 行结果表 + 导出 HTML 报告（`{status,data}` 形态含非 2xx 的 status_code/headers/body 证据）。
@@ -39,4 +39,4 @@
 - **一期 M0–M5 全部完成**：M0 插件运行时 PoC 裁决（goja 冻结为 v1 运行时）、S1+S2 骨架、S3 密码 12 算式移植、S5 Yggdrasil 全端点契约测试、S4 纹理管线、S7 migrate 引擎、M1 接线、S8 公开 API、S6 Vue 前端、管理面板、S9 + CI + 文档、migrate CLI（preflight/uuid）。
 - 立项完成：三仓库（blessing-skin-server / yggdrasil-connect / authlib-injector）源码级分析、两轮多 AI 评审、技术栈冻结 **Go + Vue 3**、插件 v1 = goja。
 - 建仓与开源边界拍板：主仓 `YimingZhanshen/skin-nexus`（BDFL）、AGPL-3.0、署名 `YMZS (YimingZhanshen)`、开发过程文档不入库。
-- 线上侦察：部署目标确认腾讯云 2C/3.5G（宝塔）、迁移规模实测（66 用户级小库）、老站基线 = yggdrasil-connect 6.1.0-0.3.2。
+- 线上侦察：部署环境实测确认（小规格云主机 + 面板机、MySQL 已有）、迁移规模实测（66 用户级小库）、老站基线 = yggdrasil-connect 6.1.0-0.3.2。

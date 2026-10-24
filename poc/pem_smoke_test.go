@@ -32,7 +32,7 @@ func TestPEMMetadataSmoke(t *testing.T) {
 		"profileName": "Steve",
 		"textures": map[string]interface{}{
 			"SKIN": map[string]interface{}{
-				"url":      "https://skin.wzbcmc.cn/textures/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+				"url":      "https://skin.example.com/textures/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 				"metadata": map[string]interface{}{"model": "default"},
 			},
 		},

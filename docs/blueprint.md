@@ -247,6 +247,6 @@
 | 纹理签名链路 | 已明确：仅 hasJoined 与 unsigned=false 必须签，SHA1withRSA，密钥=元数据 signaturePublickey（§2.2/§2.3 互证） | ✅ 已闭合 |
 | 技术栈终选 | 多 AI 评析后拍板 | ✅ 已冻结：Go + Vue 3 + goja（2026-10-22，M0 PoC 裁决） |
 | 插件形态终选 | 多 AI 评析后拍板 | ✅ 已冻结：goja 内嵌 + hook 合约（P0 15–20 个），宿主运行时后置 |
-| 域名/部署目标 | 腾讯云 2C/3.5G + 宝塔（150.158.12.29） | ✅ 已确认（2026-10-22，见 docs/deploy.md） |
+| 域名/部署目标 | 自有 Linux 服务器 + MySQL + 反代域名 | ✅ 已确认（2026-10-22，见 docs/deploy.md） |
 | 旧站下线与回滚 | 双跑期时长与回滚触发条件 | ✅ 触发条件已定（docs/deploy.md §四），切流窗口待排期 |
 | authlib-injector 版本覆盖 | 推断 1.7.10～最新，待验证；「恒等名」语义（non_email_login 或 meta.serverName）待确认 | 待 YMZS 确认 |

@@ -1,4 +1,4 @@
-# SkinNexus test deployment (test-skin.wzbcmc.cn) — deploy variant:
+# SkinNexus test deployment (test-skin.example.com) — deploy variant:
 # host networking so the app reaches the panel MySQL (127.0.0.1:3306) and
 # nginx proxies to 127.0.0.1:8080; external MySQL (panel), no bundled db.
 # Secrets live in .env (chmod 600, never committed).
@@ -10,7 +10,7 @@ services:
     network_mode: host
     environment:
       SKIN_LISTEN: 127.0.0.1:8080
-      SKIN_BASE_URL: https://test-skin.wzbcmc.cn
+      SKIN_BASE_URL: https://test-skin.example.com
       SKIN_DATABASE_DSN: ${SKIN_DATABASE_DSN}
       SKIN_SERVER_NAME: ${SKIN_SERVER_NAME}
       SKIN_DATA_DIR: /data

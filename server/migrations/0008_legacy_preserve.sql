@@ -1,5 +1,5 @@
 -- Legacy-preserving columns (data-compat rule 7). Importer mapping from the
--- 2026-10-23 production recon (wzbcmc DB): users score/locale/is_dark_mode/
+-- 2026-10-23 production recon (legacy DB): users score/locale/is_dark_mode/
 -- permission/last_sign_at/verification_token + textures.public (21 of 59
 -- legacy textures are private — live privacy state, must not be lost).
 -- Serving-side enforcement of `public` is a separate P2 feature (needs live

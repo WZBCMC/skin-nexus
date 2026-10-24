@@ -5,7 +5,7 @@
 //   - IDs preserved 1:1 (uid/pid/tid copied verbatim) — zero mapping tables,
 //     zero drift, per-row reconcilable;
 //   - source tables are addressed via a schema/table prefix
-//     (`wzbcmc.` on the same MySQL instance, `legacy_` in tests);
+//     (`legacy.` on the same MySQL instance, `legacy_` in tests);
 //   - idempotent: INSERT IGNORE on preserved PKs, NOT EXISTS for the
 //     keyless user_closet, ON DUPLICATE KEY for options;
 //   - password rows carry as-is with password_algo='legacy:bcrypt'
@@ -30,7 +30,7 @@ import (
 type ImportOptions struct {
 	Source      *sql.DB        // legacy database connection
 	Target      *sql.DB        // skin_nexus database connection
-	SourcePrefix string        // e.g. "wzbcmc." or "legacy_"
+	SourcePrefix string        // e.g. "legacy." or "legacy_"
 	TexturesSrc string         // legacy storage/textures dir ("" = skip files)
 	TexturesDst *texture.Store // where files land (nil = skip files)
 	DryRun      bool           // read-only report, no writes

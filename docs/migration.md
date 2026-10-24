@@ -83,9 +83,9 @@ done
 
 ```bash
 skin-nexus migrate import \
-  --source-dsn 'USER:PASS@tcp(127.0.0.1:3306)/wzbcmc?parseTime=true' \
+  --source-dsn 'USER:PASS@tcp(127.0.0.1:3306)/legacy?parseTime=true' \
   --target-dsn 'USER:PASS@tcp(127.0.0.1:3306)/skin_nexus?parseTime=true' \
-  --source-prefix 'wzbcmc.' \
+  --source-prefix 'legacy.' \
   --textures-src /path/to/legacy/storage/textures --textures-dst /data/textures \
   --dry-run
 ```
@@ -99,7 +99,7 @@ skin-nexus migrate import \
 参数要点：
 
 - **两侧 DSN 必须带 `parseTime=true` 且 `loc=` 一致**（引擎强制校验，不一致直接拒绝）。
-- `--source-prefix` 是老站表前缀/库名限定（如 `wzbcmc.` 或 `legacy_`），留空则同库。
+- `--source-prefix` 是老站表前缀/库名限定（如 `legacy.` 表示同实例的 legacy 库，或 `legacy_` 表前缀），留空则同库。
 - `--textures-src` 给老站纹理目录；`--textures-dst` 给目标 `SKIN_TEXTURES_DIR`
   （compose 默认 `/data/textures`），不给则只迁库不迁文件。
 - 导入会保留主键 ID：目标表必须为空（或与老站同 ID 数据），否则撞主键会 skip。
@@ -161,7 +161,7 @@ skin-nexus migrate import \
 
      ```bash
      # 老站库导出（值为单行 PEM，\n 是字面转义）
-     mysql -N -e "SELECT value FROM wzbcmc.options WHERE k=0x7967675f707269766174655f6b6579" > yggk.txt
+     mysql -N -e "SELECT value FROM legacy.options WHERE k=0x7967675f707269766174655f6b6579" > yggk.txt
      sed 's/\\n/\n/g' yggk.txt > sign-key.pem
      # 双侧公钥指纹比对（应一致）
      openssl pkey -in sign-key.pem -pubout | openssl pkey -pubin -outform DER | sha256sum

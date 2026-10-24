@@ -12,7 +12,7 @@ import (
 
 type Config struct {
 	Listen      string // e.g. ":8080"
-	BaseURL     string // e.g. https://skin.wzbcmc.cn (used for texture URLs / ALI)
+	BaseURL     string // e.g. https://skin.example.com (used for texture URLs / ALI)
 	DatabaseDSN string // user:pass@tcp(host:3306)/skin-nexus?parseTime=true&charset=utf8mb4
 
 	TexturesDir string
@@ -27,7 +27,7 @@ type Config struct {
 
 	// Phase 2: yggc/OIDC passwordless login (internal OIDC provider).
 	OIDCEnabled    bool
-	OIDCIssuer     string // e.g. https://skin.wzbcmc.cn
+	OIDCIssuer     string // e.g. https://skin.example.com
 	OIDCSignKey    string // OIDC token signing key PEM — MUST differ from SignKeyPath
 	SharedClientID string // discovery shared_client_id (launcher public client)
 

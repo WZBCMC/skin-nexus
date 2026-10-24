@@ -146,7 +146,7 @@ func newTestAPI(t *testing.T) (*API, *memStore) {
 	store.users["steve"] = u
 	store.users["steve@example.com"] = u
 	p := Player{ID: 10, UID: 1, Name: "Steve", UUID: testUUID,
-		SkinURL: "https://skin.wzbcmc.cn/textures/" + strings.Repeat("ab", 32),
+		SkinURL: "https://skin.example.com/textures/" + strings.Repeat("ab", 32),
 		SkinModel: "slim", CapeURL: ""}
 	store.players["Steve"] = p
 	store.byUUID[testUUID] = p
@@ -157,11 +157,11 @@ func newTestAPI(t *testing.T) (*API, *memStore) {
 	}
 	svc := NewService(store, signer)
 	api := NewAPI(svc, MetadataConfig{
-		ServerName:  "温州商学院皮肤站",
+		ServerName:  "示例皮肤站",
 		Version:     "test",
-		Homepage:    "https://skin.wzbcmc.cn",
-		Register:    "https://skin.wzbcmc.cn/auth/register",
-		SkinDomains: []string{"skin.wzbcmc.cn"},
+		Homepage:    "https://skin.example.com",
+		Register:    "https://skin.example.com/auth/register",
+		SkinDomains: []string{"skin.example.com"},
 	})
 	return api, store
 }
@@ -194,7 +194,7 @@ func TestMetadataContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	meta := m["meta"].(map[string]interface{})
-	if meta["serverName"] != "温州商学院皮肤站" {
+	if meta["serverName"] != "示例皮肤站" {
 		t.Fatalf("serverName = %v", meta["serverName"])
 	}
 	if meta["implementationName"] != "SkinNexus" {

@@ -112,10 +112,10 @@ func TestJoinAcceptsWireForms(t *testing.T) {
 // config ∪ union hosts ∪ site_url host ∪ request host, deduplicated.
 func TestMetadataSkinDomainsFormula(t *testing.T) {
 	api, _ := newTestAPI(t)
-	api.cfg.SkinDomains = []string{"skin.wzbcmc.cn"}
+	api.cfg.SkinDomains = []string{"skin.example.com"}
 	api.cfg.Homepage = "https://site.example"
 	api.cfg.ExtraSkinDomains = func() []string {
-		return []string{"skin.union-a.example", "skin.wzbcmc.cn", "site.example:8443"}
+		return []string{"skin.union-a.example", "skin.example.com", "site.example:8443"}
 	}
 	rec := do(t, api.Handler(), "GET", "/api/yggdrasil/", "", nil)
 	var doc struct {
@@ -125,7 +125,7 @@ func TestMetadataSkinDomainsFormula(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]bool{
-		"skin.wzbcmc.cn":        true,
+		"skin.example.com":        true,
 		"skin.union-a.example":  true,
 		"site.example:8443":     true,
 		"site.example":          true,

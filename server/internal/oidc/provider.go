@@ -19,7 +19,7 @@ import (
 
 // Config is the provider bootstrap configuration (SKIN_OIDC_* env vars).
 type Config struct {
-	Issuer         string // e.g. https://skin.wzbcmc.cn (site root, per contract)
+	Issuer         string // e.g. https://skin.example.com (site root, per contract)
 	Key            *rsa.PrivateKey
 	KID            string // JWK key id (kid) — launchers match on it
 	SharedClientID string // discovery shared_client_id ("2" by default)

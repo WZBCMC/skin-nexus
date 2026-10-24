@@ -2,7 +2,7 @@
 
 // import_integration_test.go: drives migrate.RunImport against legacy-shaped
 // shadow tables (prefix `legacy_`) inside the disposable test DB — the same
-// run pattern the cutover uses with prefix `wzbcmc.`.
+// run pattern the cutover uses with prefix `legacy.`.
 package store
 
 import (

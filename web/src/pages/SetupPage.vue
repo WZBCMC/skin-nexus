@@ -83,7 +83,7 @@ function goHome() {
     <!-- step 1: site identity -->
     <template v-if="step === 1">
       <label>站点名称</label>
-      <input v-model="siteName" placeholder="例如：温州商学院皮肤站" />
+      <input v-model="siteName" placeholder="例如：示例皮肤站" />
       <label>站点地址（Base URL）</label>
       <input v-model="baseURL" placeholder="https://skin.example.com" />
     </template>

@@ -2,7 +2,7 @@
 
 > 下一代 Minecraft 皮肤站：Yggdrasil 外置登录兼容、一键迁移 blessing-skin-server、自托管优先。
 
-**状态**（每轮开发收尾同步 · 2026-10-25）：一期 M0–M5 ✅ · 二期免密登录（yggc/OIDC 内置）+ MUA Union 可开关模块 ✅ · 三期骨架（i18n / SEO / 主题 / Docker / 空库初始化）✅ · 管理面板对齐 blessing B1–B5 ✅ · 全量迁移闭环并已生产切流（`skin.wzbcmc.cn` 运行中，67 用户 / 61 纹理零丢行、UUID 零漂移）✅ · 高清皮肤原生分辨率渲染 ✅ · 逐轮变更见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)，路线图见下。
+**状态**（每轮开发收尾同步 · 2026-10-25）：一期 M0–M5 ✅ · 二期免密登录（yggc/OIDC 内置）+ MUA Union 可开关模块 ✅ · 三期骨架（i18n / SEO / 主题 / Docker / 空库初始化）✅ · 管理面板对齐 blessing B1–B5 ✅ · 全量迁移闭环并已生产切流（67 用户 / 61 纹理零丢行、UUID 零漂移）✅ · 高清皮肤原生分辨率渲染 ✅ · 逐轮变更见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)，路线图见下。
 
 **许可**：AGPL-3.0 · **发起人/著作权人**：YMZS
 
@@ -47,7 +47,7 @@ docker compose pull && docker compose up -d     # 首次没有镜像时用 docke
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| 一期 M0–M5 | 技术验证 / 骨架 / Yggdrasil 全量 / 迁移工具 / 前端管理 / 部署切流 | ✅ 开发完成（2026-10-22）；**生产切流完成（2026-10-25，skin.wzbcmc.cn）** |
+| 一期 M0–M5 | 技术验证 / 骨架 / Yggdrasil 全量 / 迁移工具 / 前端管理 / 部署切流 | ✅ 开发完成（2026-10-22）；**生产切流完成（2026-10-25）** |
 | 二期 H1/H2/L1–L4 | OIDC 免密核心 / Union 可开关模块 / 前端+管理+集成 | ✅ 完成（2026-10-23） |
 | 兼容矩阵 | blessing/yggdrasil-connect 1:1 复刻缺口（实测基线） | ✅ 36 端点全量实测全对齐，P1 主干全清；缺口明细见 [`docs/compat-matrix.md`](docs/compat-matrix.md) |
 | 三期骨架 | i18n / SEO / 主题与自定义 CSS-JS / Docker Compose / 空库初始化 | ✅ 骨架完成（2026-10-23） |

@@ -1,6 +1,6 @@
-# SkinNexus 部署（腾讯云 / 宝塔）与切流预案
+# SkinNexus 部署与切流预案
 
-> 目标环境：腾讯云 2C/3.5G（150.158.12.29，Debian + 宝塔，2026-10-22 确认；早期 N100 假设作废）；MySQL 8 已有；反代域名 skin.wzbcmc.cn（2026-10-25 生产切流完成）。
+> 目标环境：任意 Linux 主机 + MySQL（5.7/8.0）+ Nginx 反代；本文示例为 systemd 单二进制托管。
 > 回滚原则：旧站只读保全量备份，任何 P0 触发即切回（docs/phase1-dev-plan.md §5）。
 > **本文是部署/运维手册**；从源码或 Docker 构建产物见 [build.md](build.md)，从老站迁数据见 [migration.md](migration.md)。
 
@@ -53,18 +53,19 @@ After=network.target mysql.service
 [Service]
 WorkingDirectory=/opt/skin-nexus
 Environment=SKIN_LISTEN=127.0.0.1:8080
-Environment=SKIN_BASE_URL=https://skin.wzbcmc.cn
+Environment=SKIN_BASE_URL=https://skin.example.com
 Environment=SKIN_DATABASE_DSN=skin:PASS@tcp(127.0.0.1:3306)/skin-nexus?parseTime=true&charset=utf8mb4
-Environment=SKIN_SERVER_NAME=温州商学院皮肤站
-# skinDomains 实测版（2026-10-23 抓旧站 /api/yggdrasil/ 共 53 域；与联盟清单逐字一致，改动会破坏联盟互认）
-Environment=SKIN_SKIN_DOMAINS=skin.yitmc.cn,skin.cauc.fun,skin.cduestc.fun,skin.cqumc.cn,csu-mc.magicalsheep.cn,mcweb.unsafe.top,skin.ecnumc.cn,mcskin.ecustvr.top,auth.fdcraft.fishp.xyz,skin.ghm.mualliance.cn,skin.gxucraft.cn,skin.gzszmc.cn,bobbyskin.com,skin.hljumc.cn,skin.starkettle.com,skin.metaconstr.net,skin.imucraft.cn,skin.jsumc.fun,mc.jxufe.edu.cn,mcskin.mevisual.top,skin.mualliance.ltd,skin.twinklestars.top,club.barrierslink.cn,skin.nmo.net.cn,skin.nnumc.com.cn,skin.npucraft.com,skin.nudtmc.cn,skin.nufe.wiki,skin.nuistcraft.com,skin.nwafu.com.cn,skin.chancelethay.top,skin.qutcraft.cn,skin.sducraft.cn,skin.sdustmc.cn,skin.sitmc.club,skin.mc.sjtu.cn,skin.nekoplay.fun,user.suesmc.ltd,union-test.gpa.ac.cn,skin.tongji-mc.cn,hall.mc.taru.xj.cn,skin.mc.taru.xj.cn,www.ustb.world,skin.wzbcmc.cn,skin.xauatcraft.com,www.xducraft.cn,skin.xjtumc.com,skin.xmc.net.cn,cop.imu.nm.cn,skin.ybumua.homes,skin.uemcraft.cn,skin.ysumc.net,skin.zjutmc.top
+Environment=SKIN_SERVER_NAME=我的皮肤站
+# skinDomains：本站域名 + 联盟（MUA Union）成员站域名清单——接入联盟时以联盟公布的清单为准，
+# 改动会破坏联盟互认；不接联盟时填本站域名即可
+Environment=SKIN_SKIN_DOMAINS=skin.example.com
 Environment=SKIN_TEXTURES_DIR=/opt/skin-nexus/data/textures
 Environment=SKIN_SIGN_KEY=/opt/skin-nexus/data/sign-key.pem
 Environment=SKIN_LEGACY_ENV=/opt/skin-nexus/legacy.env
 Environment=SKIN_ADMIN_TOKEN=（随机 64 位 hex，openssl rand -hex 32；机器/API 回退——管理面板首选管理员账号（users.permission>0）登录直用，无需 token）
 # —— 二期：yggc/OIDC 免密登录（不启用可整段移除）——
 Environment=SKIN_OIDC_ENABLED=true
-Environment=SKIN_OIDC_ISSUER=https://skin.wzbcmc.cn
+Environment=SKIN_OIDC_ISSUER=https://skin.example.com
 Environment=SKIN_OIDC_SIGN_KEY=/opt/skin-nexus/data/oidc-key.pem
 Environment=SKIN_OIDC_SHARED_CLIENT_ID=2
 # —— 二期：MUA Union 成员站模块（默认关；未接入联盟保持 false = 零挂载零表面）——
@@ -95,7 +96,7 @@ for f in server/migrations/000*.sql; do mysql -u skin -p skin-nexus < "$f"; done
 
 # 5. 启动
 systemctl enable --now skin-nexus
-curl -s https://skin.wzbcmc.cn/api/yggdrasil/ | head -c 300   # 验元数据
+curl -s https://skin.example.com/api/yggdrasil/ | head -c 300   # 验元数据
 ```
 
 ## 三、Nginx 反代（宝塔站点配置）

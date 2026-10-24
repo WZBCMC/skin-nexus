@@ -367,7 +367,7 @@ func RenderAvatar(skin *image.NRGBA, size int, threeD bool) *image.NRGBA {
 	yaw, pitch := 0.0, 0.0
 	if threeD {
 		// -45° puts the face left and the head's left side panel right,
-		// matching the live legacy probe (skin.wzbcmc.cn ?3d).
+		// matching the live legacy probe (skin.example.com ?3d).
 		yaw, pitch = -45, 22
 	}
 	c := newCam(yaw, pitch)
