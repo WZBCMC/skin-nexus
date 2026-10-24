@@ -524,6 +524,16 @@ func main() {
 	// CustomSkinAPI R1 (GET /{player}.json) is served by pub.WrapRoot below:
 	// ServeMux cannot register "{player}.json" next to the "/" SPA catch-all.
 	root.Handle("GET /textures/{hash}", textureHandler(ts))
+	// Blessing TextureController static surface (routes/static.php
+	// parity): avatars + previews. Registered at the root mux so they
+	// beat the SPA catch-all below.
+	av := &avatarDeps{st: st, ts: ts}
+	root.HandleFunc("GET /avatar/player/{name}", av.handleAvatarPlayer)
+	root.HandleFunc("GET /avatar/user/{uid}", av.handleAvatarUser)
+	root.HandleFunc("GET /avatar/hash/{hash}", av.handleAvatarHash)
+	root.HandleFunc("GET /avatar/{tid}", av.handleAvatarTID)
+	root.HandleFunc("GET /preview/hash/{hash}", av.handlePreviewHash)
+	root.HandleFunc("GET /preview/{tid}", av.handlePreviewTID)
 	// Phase 3 public surface: health probe, SEO outputs, theme assets.
 	root.Handle("GET /healthz", healthzHandler(st))
 	root.Handle("GET /sitemap.xml", sitemapHandler(seoEng, st, cfg.BaseURL))

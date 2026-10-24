@@ -261,6 +261,51 @@ func (m *Mysql) TextureType(ctx context.Context, tid int64) (string, error) {
 	return typ, err
 }
 
+// TextureByTID returns a texture's hash, kind and slim flag in one round
+// trip — the avatar/preview handlers need all three (hash to open the
+// file, type for the cape-422 gate, slim for the arm geometry).
+func (m *Mysql) TextureByTID(ctx context.Context, tid int64) (hash, typ string, slim bool, err error) {
+	var model sql.NullString
+	err = m.db.QueryRowContext(ctx,
+		`SELECT hash, type, model FROM textures WHERE id = ?`, tid).
+		Scan(&hash, &typ, &model)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = ErrNotFound
+	}
+	slim = model.Valid && model.String == "slim"
+	return
+}
+
+// TextureMetaByHash is TextureByTID keyed by content hash (preview/hash route).
+func (m *Mysql) TextureMetaByHash(ctx context.Context, hash string) (typ string, slim bool, err error) {
+	var model sql.NullString
+	err = m.db.QueryRowContext(ctx,
+		`SELECT type, model FROM textures WHERE hash = ? LIMIT 1`, hash).
+		Scan(&typ, &model)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = ErrNotFound
+	}
+	slim = model.Valid && model.String == "slim"
+	return
+}
+
+// UserAvatarTID returns the tid a user set as avatar (0 = none).
+// Legacy users.avatar stores the tid; avatar handler renders it.
+func (m *Mysql) UserAvatarTID(ctx context.Context, uid int64) (int64, error) {
+	var tid sql.NullInt64
+	err := m.db.QueryRowContext(ctx, `SELECT avatar_tid FROM users WHERE id = ?`, uid).Scan(&tid)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = ErrNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	if !tid.Valid {
+		return 0, nil
+	}
+	return tid.Int64, nil
+}
+
 // PlayerTextureIDs returns current skin/cape texture ids (0 = unset).
 func (m *Mysql) PlayerTextureIDs(ctx context.Context, pid int64) (skin, cape int64, err error) {
 	var s, c sql.NullInt64
