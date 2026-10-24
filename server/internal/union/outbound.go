@@ -108,6 +108,62 @@ type (
 	}
 )
 
+// flexString tolerates the hub encoding a spec-"string" field as a bare JSON
+// number (observed 2026-10-24 on the live hub: /serverlist `version` and
+// /privatekey `privateKeyVersion` arrive as numbers, e.g. 3 not "3"). Wire
+// field NAMES and public struct fields stay frozen (string) — this is purely
+// additive decode tolerance, same trap family as MS1 `{id}` narrowing.
+type flexString string
+
+// UnmarshalJSON accepts "x", 3, 3.0, true, and null (→ "").
+func (f *flexString) UnmarshalJSON(b []byte) error {
+	b = bytes.TrimSpace(b)
+	if len(b) == 0 || string(b) == "null" {
+		*f = ""
+		return nil
+	}
+	if b[0] == '"' {
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return err
+		}
+		*f = flexString(s)
+		return nil
+	}
+	*f = flexString(b) // bare number/bool literal as-is
+	return nil
+}
+
+// UnmarshalJSON shadow-decodes ServerList so `version` tolerates number
+// encoding while the exported field remains a plain string.
+func (s *ServerList) UnmarshalJSON(b []byte) error {
+	var raw struct {
+		Servers []ServerEntry `json:"servers"`
+		Version flexString    `json:"version"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	s.Servers = raw.Servers
+	s.Version = string(raw.Version)
+	return nil
+}
+
+// UnmarshalJSON shadow-decodes PrivateKeyDoc so `privateKeyVersion` tolerates
+// number encoding while the exported field remains a plain string.
+func (p *PrivateKeyDoc) UnmarshalJSON(b []byte) error {
+	var raw struct {
+		PrivateKey        flexString `json:"privateKey"`
+		PrivateKeyVersion flexString `json:"privateKeyVersion"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	p.PrivateKey = string(raw.PrivateKey)
+	p.PrivateKeyVersion = string(raw.PrivateKeyVersion)
+	return nil
+}
+
 // NewOutbound builds the hub client. Disabled config yields an inert client
 // (Enabled() == false, all calls return ErrDisabled) and never touches the
 // network. client may be nil (default: plain http.Client, per-call timeouts).
