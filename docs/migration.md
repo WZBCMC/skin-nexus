@@ -86,6 +86,12 @@ skin-nexus migrate import --source-dsn 'USER:PASS@tcp(127.0.0.1:3306)/wzbcmc?par
    写入目标 `data/sign-key.pem`（`SKIN_SIGN_KEY` 指向）后再切域名——否则
    authlib-injector 客户端缓存的 `signaturePublickey` 与新钥失配、全网皮肤
    签名校验失败。union hub 键连续性由 options 导入自动保持，无需手工。
+   - **union 模式例外（2026-10-25 线上实测）**：`union_enabled=1` 时对外
+     `signaturePublickey` 来自 union hub 私钥，与老站 yggdrasil-connect
+     插件所用密钥同指纹（实测 `6000acb241f046c1…` 双侧一致），切流无需改
+     `sign-key.pem`；一旦关闭 union 回退本地签名，必须先把老站
+     `ygg_private_key` 写入 `sign-key.pem`（老站 option 值可能存成单行、
+     换行转义为字面 `\n`，写入前需解开转义）。
 2. 改 `SKIN_BASE_URL` 与 nginx `server_name`、证书；
 3. 管理面板改 `site_url`（options 优先于 env）；
 4. yggdrasil 客户端的服务器地址需随域名更新（老玩家改一次启动器配置）；
