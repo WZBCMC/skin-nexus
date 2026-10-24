@@ -434,6 +434,33 @@ func (m *Mysql) SetPlayerTextures(ctx context.Context, pid, skinTid, capeTid int
 	return err
 }
 
+// SetUserAvatar points users.avatar_tid at a texture the user owns
+// (tid=0 clears — blessing 更改头像/重置头像 semantics; legacy column
+// users.avatar carried the same tid meaning). Ownership is the CALLER's
+// job (webapi checks TextureOwner first); this method only writes.
+func (m *Mysql) SetUserAvatar(ctx context.Context, uid, tid int64) error {
+	_, err := m.db.ExecContext(ctx,
+		`UPDATE users SET avatar_tid = IF(? = 0, NULL, ?) WHERE id = ?`, tid, tid, uid)
+	return err
+}
+
+// UserAvatarHash returns the texture hash behind users.avatar_tid ("" when
+// unset or the texture row is gone — avatar degrades to default skin).
+func (m *Mysql) UserAvatarHash(ctx context.Context, uid int64) (string, error) {
+	var h sql.NullString
+	err := m.db.QueryRowContext(ctx,
+		`SELECT t.hash FROM users u
+		 LEFT JOIN textures t ON t.id = u.avatar_tid
+		 WHERE u.id = ?`, uid).Scan(&h)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return h.String, nil
+}
+
 // OfflineUUID reproduces the legacy v3 UUID rule byte-exactly
 // (analysis/blessing-skin-plugins.md §2 — hex2bin(md5(...)) + variant bits).
 func OfflineUUID(name string) string {

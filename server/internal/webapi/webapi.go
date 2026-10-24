@@ -85,6 +85,14 @@ func (b *Backend) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/v1/me/players/{id}/skin", b.handleSetSkin)
 	mux.HandleFunc("PUT /api/v1/me/players/{id}/cape", b.handleSetCape)
 	mux.HandleFunc("POST /api/v1/me/password", b.handlePasswordChange)
+	// User-center self-service (A 级批次): profile edit / account delete /
+	// avatar / own-player rename+delete — ownership-gated, blessing parity.
+	mux.HandleFunc("PUT /api/v1/me/profile", b.handleProfileUpdate)
+	mux.HandleFunc("DELETE /api/v1/me", b.handleAccountDelete)
+	mux.HandleFunc("PUT /api/v1/me/avatar", b.handleAvatarSet)
+	mux.HandleFunc("DELETE /api/v1/me/avatar", b.handleAvatarReset)
+	mux.HandleFunc("PUT /api/v1/me/players/{id}/name", b.handlePlayerRename)
+	mux.HandleFunc("DELETE /api/v1/me/players/{id}", b.handlePlayerDeleteSelf)
 	mux.HandleFunc("GET /api/v1/me/closet", b.handleClosetList)
 	mux.HandleFunc("POST /api/v1/me/closet", b.handleClosetAdd)
 	mux.HandleFunc("PUT /api/v1/me/closet/{id}", b.handleClosetRename)
@@ -346,10 +354,34 @@ func (b *Backend) handleMe(w http.ResponseWriter, r *http.Request) {
 	if p, err := b.Store.UserPermission(r.Context(), uid); err == nil {
 		perm = p
 	}
+	// User-center dashboard extras (A 级批次): player count vs limit for the
+	// usage card, storage bytes for "存储 1/1MB"-style display, avatar hash
+	// for the profile page. Storage = sum of own texture file sizes (small
+	// N per user; missing file = skipped, not fatal).
+	playerCount := 0
+	if ps, err := b.Store.PlayersByUID(r.Context(), uid); err == nil {
+		playerCount = len(ps)
+	}
+	storageBytes := int64(0)
+	if texs, err := b.Store.ListTextures(r.Context(), uid); err == nil {
+		for _, tx := range texs {
+			if p, err := b.Textures.Path(tx.Hash); err == nil {
+				if fi, err := statFile(p); err == nil {
+					storageBytes += fi
+				}
+			}
+		}
+	}
+	avatarHash := ""
+	if h, err := b.Store.UserAvatarHash(r.Context(), uid); err == nil {
+		avatarHash = h
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"id": u.ID, "nickname": u.Nickname,
 		"emailVerified": u.EmailVerified, "playerLimit": limit,
-		"permission": perm,
+		"permission":    perm,
+		"playerCount":   playerCount, "storageBytes": storageBytes,
+		"avatarHash":    avatarHash,
 	})
 }
 

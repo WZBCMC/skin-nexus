@@ -108,13 +108,10 @@ func main() {
 	// Site URL (拍板 2026-10-24 dev-plan §9): option `site_url`（blessing
 	// 原名，迁移导入值直接生效）wins over env —— env 只是首启默认。legacy
 	// `base_url` option（B4 时代写入）作为过渡回退，两键皆空才用 env。
-	// 校验仅收 http(s) 绝对地址（settings 面板同校验；启动侧再兜一次，
-	// 防直写 DB 的垃圾值烧进纹理 URL / OIDC issuer / sitemap）。
-	if v, ok, err := st.GetOption(context.Background(), "site_url"); err == nil && ok && isHTTPBaseURL(v) {
-		cfg.BaseURL = strings.TrimRight(v, "/")
-	} else if v, ok, err := st.GetOption(context.Background(), "base_url"); err == nil && ok && isHTTPBaseURL(v) {
-		cfg.BaseURL = strings.TrimRight(v, "/")
-	}
+	cfg.BaseURL = resolveBaseURL(func(key string) (string, bool) {
+		v, ok, err := st.GetOption(context.Background(), key)
+		return v, err == nil && ok
+	}, cfg.BaseURL)
 	if os.Getenv("SKIN_SKIN_DOMAINS") == "" {
 		if v, ok, err := st.GetOption(context.Background(), "skin_domains"); err == nil && ok && v != "" {
 			for _, d := range strings.Split(v, ",") {
@@ -588,6 +585,20 @@ func zeroTime() time.Time { return time.Time{} }
 // this catches direct DB writes before they poison texture URLs/issuer).
 func isHTTPBaseURL(v string) bool {
 	return strings.HasPrefix(v, "http://") || strings.HasPrefix(v, "https://")
+}
+
+// resolveBaseURL applies the 拍板 priority: option site_url → legacy option
+// base_url → env fallback (the passed envDef). Non-http(s) option values
+// are rejected (kept envDef) — garbage from a direct DB write must not
+// burn into texture URLs / OIDC issuer / sitemap.
+func resolveBaseURL(getOpt func(key string) (string, bool), envDef string) string {
+	if v, ok := getOpt("site_url"); ok && isHTTPBaseURL(v) {
+		return strings.TrimRight(v, "/")
+	}
+	if v, ok := getOpt("base_url"); ok && isHTTPBaseURL(v) {
+		return strings.TrimRight(v, "/")
+	}
+	return envDef
 }
 
 func textureHandler(ts *texture.Store) http.HandlerFunc {
