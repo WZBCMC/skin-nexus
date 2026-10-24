@@ -51,6 +51,7 @@ type UnionSigner struct {
 	OnKeyPersist func(pem, version string) error
 
 	cur atomic.Pointer[signingKey] // nil => fallback mode; lock-free reads
+	hubMode atomic.Bool            // hot toggle: false = ignore hub keys (union_enabled)
 
 	mu          sync.Mutex
 	loopRunning bool
@@ -95,24 +96,45 @@ var _ ygg.Signer = (*UnionSigner)(nil)
 // missing hub key is a hard error at signing time). out may be nil: rotation
 // then reports ErrNotConfigured while SetKey keeps working.
 func NewUnionSigner(cfg Config, out *Outbound, fallback ygg.Signer, audit AuditFunc) *UnionSigner {
-	return &UnionSigner{
+	s := &UnionSigner{
 		out:      out,
 		fallback: fallback,
 		audit:    audit,
 		now:      time.Now,
 		enabled:  cfg.Enabled,
 	}
+	s.hubMode.Store(true) // hub keys allowed until told otherwise
+	return s
 }
 
 // Enabled reports whether the signer does real work (nil-safe).
 func (s *UnionSigner) Enabled() bool { return s != nil && s.enabled }
+
+// SetHubMode hot-toggles the key source (union_enabled option, 2026-10-24
+// 拍板「热切换」): false = sign ONLY with the local fallback key even when a
+// hub key has landed (trust statement: off means the shared network key is
+// not in use); true = hub key when present. Constructor semantics are
+// untouched — an Enabled()==false signer still refuses everything.
+func (s *UnionSigner) SetHubMode(on bool) {
+	if s != nil {
+		s.hubMode.Store(on)
+	}
+}
+
+// hubKey reports whether hub-distributed keys may be used right now.
+func (s *UnionSigner) hubKey() *signingKey {
+	if s == nil || !s.hubMode.Load() {
+		return nil
+	}
+	return s.cur.Load()
+}
 
 // Mode reports the active key source for the admin panel.
 func (s *UnionSigner) Mode() string {
 	if !s.Enabled() {
 		return ModeDisabled
 	}
-	if s.cur.Load() != nil {
+	if s.hubKey() != nil {
 		return ModeUnionManaged
 	}
 	return ModeLocalFallback
@@ -123,7 +145,7 @@ func (s *UnionSigner) PrivateKeyVersion() string {
 	if s == nil {
 		return ""
 	}
-	if k := s.cur.Load(); k != nil {
+	if k := s.hubKey(); k != nil {
 		return k.version
 	}
 	return ""
@@ -136,7 +158,7 @@ func (s *UnionSigner) SignValue(value string) (string, error) {
 	if !s.Enabled() {
 		return "", ErrDisabled
 	}
-	if k := s.cur.Load(); k != nil { // one-way switch: new signatures use the new key
+	if k := s.hubKey(); k != nil { // one-way switch: new signatures use the new key
 		return signSHA1(k.key, value)
 	}
 	if s.fallback != nil {
@@ -150,7 +172,7 @@ func (s *UnionSigner) PublicKeyPEM() string {
 	if !s.Enabled() {
 		return ""
 	}
-	if k := s.cur.Load(); k != nil {
+	if k := s.hubKey(); k != nil {
 		return k.pubPEM
 	}
 	if s.fallback != nil {
@@ -165,7 +187,7 @@ func (s *UnionSigner) KeyFingerprint() string {
 	if !s.Enabled() {
 		return ""
 	}
-	if k := s.cur.Load(); k != nil {
+	if k := s.hubKey(); k != nil {
 		return k.fp
 	}
 	if s.fallback != nil {
@@ -321,6 +343,12 @@ func (s *UnionSigner) rotationLoop(ctx context.Context, base time.Duration) {
 // test). Reports whether the key changed.
 func (s *UnionSigner) rotateOnce(ctx context.Context) (bool, error) {
 	if !s.Enabled() {
+		return false, ErrDisabled
+	}
+	if !s.hubMode.Load() {
+		// hot-off (union_enabled): no hub traffic, no hub keys — same
+		// "needs human action" halt the loop applies to ErrDisabled, and
+		// setEnabled(true) restarts the loop.
 		return false, ErrDisabled
 	}
 	s.mu.Lock()

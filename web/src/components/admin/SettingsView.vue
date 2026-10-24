@@ -12,6 +12,16 @@ const { t } = useI18n()
 const settings = ref([])
 const setError = ref('')
 
+// row widget routing (shared by loadSettings normalization + template)
+const boolKeys = new Set([
+  'invite_required', 'require_verification',
+  'union_enabled', 'union_enable_update', 'union_enable_oauth2',
+])
+const textKeys = new Set([
+  'skin_domains', 'announcement', 'custom_player_name_regexp', 'texture_name_regexp',
+  'union_oauth2_sig_private_key', 'union_oauth2_sig_public_key',
+])
+
 async function loadSettings() {
   setError.value = ''
   try {
@@ -19,7 +29,6 @@ async function loadSettings() {
     // Bool rows normalize to "1"/"0" on load (review B P2: the checkbox uses
     // true-value="1", so a stored "true"/"on"/"yes" rendered as UNCHECKED and
     // the next save silently wrote the feature back to "0").
-    const boolKeys = new Set(['invite_required', 'require_verification'])
     settings.value = (d.settings || []).map((s) =>
       boolKeys.has(s.key)
         ? { ...s, value: ['1', 'true', 'on', 'yes'].includes(String(s.value).toLowerCase()) ? '1' : '0' }
@@ -156,17 +165,21 @@ onMounted(load)
           {{ s.desc }}
           <span class="muted" style="display: block; font-weight: 400; font-size: 11px;">{{ s.key }}</span>
         </label>
-        <input v-if="s.key === 'invite_required' || s.key === 'require_verification'"
+        <input v-if="boolKeys.has(s.key)"
                type="checkbox" v-model="s.value" true-value="1" false-value="0" style="width: auto;" />
-        <textarea v-else-if="s.key === 'skin_domains' || s.key === 'announcement' || s.key === 'custom_player_name_regexp' || s.key === 'texture_name_regexp'"
-                  v-model="s.value" style="max-width: 360px; min-height: 38px;"></textarea>
+        <textarea v-else-if="textKeys.has(s.key)"
+                  v-model="s.value" :style="s.key.startsWith('union_oauth2_sig_') ? 'max-width: 360px; min-height: 72px; font-family: monospace; font-size: 11px;' : 'max-width: 360px; min-height: 38px;'"></textarea>
         <select v-else-if="s.key === 'player_name_rule'" v-model="s.value" style="max-width: 160px;">
           <option value="official">official（字母/数字/下划线）</option>
           <option value="cjk">cjk（+ 中文/§）</option>
           <option value="utf8">utf8（任意非空白）</option>
           <option value="custom">custom（自定义正则）</option>
         </select>
-        <input v-else v-model="s.value" style="max-width: 300px;" :placeholder="s.default" />
+        <select v-else-if="s.key === 'union_queryemail_mode'" v-model="s.value" style="max-width: 160px;">
+          <option value="full">full（按 union 协议返回邮箱）</option>
+          <option value="off">off（不返回）</option>
+        </select>
+        <input v-else v-model="s.value" :type="s.key === 'union_member_key' ? 'password' : 'text'" style="max-width: 300px;" :placeholder="s.default" />
         <button @click="saveSetting(s)">保存</button>
         <span class="muted" style="font-size: 11px;">{{ s.restart ? '重启后生效' : '立即生效' }}</span>
       </div>

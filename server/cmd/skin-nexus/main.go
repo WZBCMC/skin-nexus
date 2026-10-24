@@ -142,146 +142,17 @@ func main() {
 	}
 	log.Printf("signing key fingerprint: %s", signer.KeyFingerprint())
 
-	// Phase 2: MUA Union member module. Switchable — when disabled (default)
-	// nothing is mounted and the texture signer stays local (zero surface).
+	// Phase 2: MUA Union member module. Options-first config (2026-10-24 拍板):
+	// the stack is ALWAYS assembled so `union_enabled` hot-toggles from the
+	// admin panel without a restart (blessing parity: 插件启停即改即生效).
+	// When off: every union route 404s and texture signing reverts to the
+	// local key live (zero-surface semantics preserved).
+	ustack := newUnionStack(context.Background(), st, cfg, version, signer)
+	unionAPI, unionGrant := ustack.api, ustack.grant
+	unionOut, unionSigner := ustack.out, ustack.signer
 	var activeSigner ygg.Signer = signer
-	var unionAPI *union.API
-	var unionGrant *union.Grantor
-	var unionOut *union.Outbound
-	var unionSigner *union.UnionSigner
-	if cfg.UnionEnabled {
-		hostPub, err := os.ReadFile(cfg.UnionHostPublicKeyPath)
-		if err != nil {
-			log.Fatalf("union host pubkey: %v", err)
-		}
-		sigPEM, err := os.ReadFile(cfg.UnionSigPrivateKey)
-		if err != nil {
-			log.Fatalf("union oauth2 sig key: %v", err)
-		}
-		// T3.2: audit rows go to the DB (plus the log); actor_uid NULL = system.
-		audit := func(event string, detail map[string]any) {
-			log.Printf("union audit: %s %v", event, detail)
-			st.InsertAudit(context.Background(), 0, "union."+event, detail)
-		}
-		// member key rotation persistence (T3.3): a rotated key survives
-		// restarts via options and overrides the env initial value.
-		memberKey := cfg.UnionMemberKey
-		if k, ok, err := st.GetOption(context.Background(), "union_member_key"); err == nil && ok && k != "" {
-			memberKey = k
-			log.Printf("union: member key restored from options (rotated)")
-		}
-		ucfg := union.Config{
-			Enabled:               true,
-			ApiRoot:               cfg.UnionAPIRoot,
-			MemberKey:             memberKey,
-			HostPublicKeyPEM:      string(hostPub),
-			AllowUpdateBackendKey: cfg.UnionAllowUpdateBkKey,
-			QueryEmailMode:        cfg.UnionQueryEmailMode,
-			HubOrigin:             cfg.UnionHubOrigin,
-			SigPrivateKeyPEM:      string(sigPEM),
-			YggdrasilApiVersion:   version,
-			UnionOAuth2:           true,
-		}
-		out, err := union.NewOutbound(ucfg, nil)
-		if err != nil {
-			log.Fatalf("union outbound: %v", err)
-		}
-		usigner := union.NewUnionSigner(ucfg, out, signer, audit)
-		grant, err := union.NewGrantor(ucfg)
-		if err != nil {
-			log.Fatalf("union grantor: %v", err)
-		}
-		// T3.3: member data hooks — profile sync list, UUID remap, queryemail.
-		hooks := union.Hooks{
-			OnServerList: func(list any, version string) {
-				_ = st.SetOption(context.Background(), "union_server_list_version", version)
-				// Legacy skinDomains formula: member hosts feed the texture
-				// whitelist (options-cached like union_server_list).
-				if raw, err := json.Marshal(list); err == nil {
-					var entries []struct {
-						BSRoot string `json:"bs_root"`
-					}
-					if err := json.Unmarshal(raw, &entries); err == nil {
-						hosts := make([]string, 0, len(entries))
-						for _, e := range entries {
-							if u, err := url.Parse(e.BSRoot); err == nil && u.Host != "" {
-								hosts = append(hosts, u.Host)
-							}
-						}
-						_ = st.SetOption(context.Background(), "union_skin_domains", strings.Join(hosts, ","))
-					}
-				}
-			},
-			OnMemberKeyRotated: func(newKey string) {
-				if err := st.SetOption(context.Background(), "union_member_key", newKey); err != nil {
-					audit("member_key_persist_failed", map[string]any{"error": err.Error()})
-					return
-				}
-				audit("member_key_rotated", nil)
-			},
-			OnRemapUUID: func(remap map[string]string) error {
-				applied, skipped, err := st.RemapUUIDs(context.Background(), remap)
-				if err != nil {
-					return err
-				}
-				// true counts (MUA review P1: the old audit logged len(batch)
-				// regardless of rows actually moved)
-				st.InsertAudit(context.Background(), 0, "union_remapuuid_detail",
-					map[string]interface{}{"applied": applied, "skipped": skipped})
-				return nil
-			},
-			ProfileListFunc: func() (map[string]string, error) {
-				return st.ProfileNameByUUID(context.Background())
-			},
-			QueryEmailFunc: func(name string) (string, bool, error) {
-				return st.EmailByPlayerName(context.Background(), name)
-			},
-		}
-		unionAPI, err = union.NewAPI(ucfg, out, usigner, grant, hooks, audit)
-		if err != nil {
-			log.Fatalf("union api: %v", err)
-		}
-		unionGrant, unionOut, unionSigner = grant, out, usigner
-		activeSigner = usigner // hub-distributed key with local fallback
-		// Signing-key restart continuity (2026-10-23 hardening): every landed
-		// hub key is persisted to union_kv (the 0004 escape hatch built for
-		// exactly this) and the self-description version follows live
-		// rotations too. Failure is audited by the signer and surfaced to the
-		// rotation/inbound caller.
-		usigner.OnKeyPersist = func(pemStr, version string) error {
-			if err := st.SetUnionKV(context.Background(), "union_private_key", pemStr); err != nil {
-				return err
-			}
-			if err := st.SetUnionKV(context.Background(), "union_private_key_version", version); err != nil {
-				return err
-			}
-			unionAPI.SetPrivateKeyVersion(version) // keep self-description in step
-			return nil
-		}
-		// Restore the persisted hub key BEFORE serving: the signer used to be
-		// memory-only, so every restart signed with the LOCAL fallback key
-		// until the first 10-15min rotation landed and cross-site clients
-		// rejected our profiles in that window.
-		if pemStr, ok, err := st.GetUnionKV(context.Background(), "union_private_key"); err == nil && ok && pemStr != "" {
-			kvVersion, _, _ := st.GetUnionKV(context.Background(), "union_private_key_version")
-			if err := usigner.RestoreKey(pemStr, kvVersion); err != nil {
-				audit("signer_key_restore_failed", map[string]any{"error": err.Error()})
-			} else {
-				log.Printf("union: hub signing key restored (version %q)", kvVersion)
-			}
-		}
-		// Self-description versions survive restarts as well (inbound.go's
-		// caches start empty): key version from the signer state, server list
-		// version from the existing union_server_list_version option written
-		// by OnServerList below.
-		if v := usigner.PrivateKeyVersion(); v != "" {
-			unionAPI.SetPrivateKeyVersion(v)
-		}
-		if v, ok, err := st.GetOption(context.Background(), "union_server_list_version"); err == nil && ok && v != "" {
-			unionAPI.SetServerListVersion(v)
-		}
-		go usigner.StartRotation(context.Background(), 12*time.Minute) // 10–15min base + internal jitter
-		log.Printf("union: enabled (hub %s, queryemail %s)", cfg.UnionAPIRoot, cfg.UnionQueryEmailMode)
+	if ustack.signer != nil {
+		activeSigner = ustack.signer // hub key w/ local fallback; hot-off reverts live
 	}
 
 	yggSvc := ygg.NewService(st, activeSigner)
@@ -433,6 +304,22 @@ func main() {
 	pub := publicapi.New(st, ts)
 	admin := adminapi.New(st, yggSvc)
 	admin.Version = version
+	// Union hot settings (2026-10-24 拍板「热切换」): the three hot keys apply
+	// on save without a restart; the rest of the union group is marked
+	// restart-only in the settings panel.
+	admin.OnSettingChanged = func(key, value string) {
+		switch key {
+		case "union_enabled":
+			ustack.setEnabled(context.Background(), value == "1")
+			log.Printf("union: hot toggle -> %s", value)
+		case "union_api_root":
+			if err := ustack.setAPIRoot(value); err != nil {
+				log.Printf("union: hot api_root rejected: %v", err)
+			}
+		case "union_member_key":
+			ustack.setMemberKey(value)
+		}
+	}
 	// Dashboard storage card: sum of texture files on disk (the textures
 	// table has no size column; schema is frozen — walk the dir instead).
 	// Small file counts (hundreds); no cache needed, failures degrade to "—".
@@ -471,6 +358,15 @@ func main() {
 		"ygg_tokens_limit":     "10",
 		"ygg_search_profile_max": "5",
 		"ygg_rate_limit":       "1000",
+		// Union group (2026-10-24): option-first, env fallback, blessing 原名
+		"union_enabled":        boolStr(cfg.UnionEnabled),
+		"union_api_root":       cfg.UnionAPIRoot,
+		"union_member_key":     cfg.UnionMemberKey,
+		"union_enable_update":  boolStr(cfg.UnionAllowUpdateBkKey),
+		"union_enable_oauth2":  "1",
+		"union_queryemail_mode": cfg.UnionQueryEmailMode,
+		"union_oauth2_sig_private_key": "",
+		"union_oauth2_sig_public_key":  "",
 	}
 	// Admin user management shares the credential-change revoke semantics.
 	admin.OnUserCredentialChange = func(uid int64) {
@@ -526,17 +422,18 @@ func main() {
 	admin.MountAppearance(adminapi.AppearanceDeps{SEO: seoEng, Appear: appearEng, Themes: themeReg})
 	if unionSigner != nil {
 		admin.MountUnion(adminapi.UnionDeps{
+			Enabled: ustack.Enabled, // hot gate: 404 whole subtree when off
 			Status: func() map[string]any {
 				return map[string]any{
-					"enabled":             true,
+					"enabled":             ustack.Enabled(),
 					"mode":                unionSigner.Mode(),
 					"key_fingerprint":     unionSigner.KeyFingerprint(),
 					"private_key_version": unionSigner.PrivateKeyVersion(),
 					"server_list_version": unionAPI.ServerListVersion(),
 					"rotation_suspended":  unionSigner.RotationSuspended(),
-					"queryemail_mode":     cfg.UnionQueryEmailMode,
-					"hub_origin":          cfg.UnionHubOrigin,
-					"allow_update_bk_key": cfg.UnionAllowUpdateBkKey,
+					"queryemail_mode":     ustack.cfg.QueryEmailMode,
+					"hub_origin":          ustack.cfg.HubOrigin,
+					"allow_update_bk_key": ustack.cfg.AllowUpdateBackendKey,
 				}
 			},
 			ResumeRotation: unionSigner.ResumeRotation,
@@ -605,13 +502,15 @@ func main() {
 	if unionAPI != nil {
 		// 1 MiB body cap (MUA review P2): /api/union/* verified its signature
 		// over io.ReadAll — an unbounded body was a memory DoS surface.
-		root.Handle("/api/union/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// ustack.gate = hot union_enabled check (2026-10-24 拍板): routes stay
+		// mounted, switched off = whole subtree 404.
+		root.Handle("/api/union/", ustack.gate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Body != nil {
 				r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 			}
 			unionAPI.Handler().ServeHTTP(w, r)
-		}))
-		root.Handle("GET /api/union/member/oauth2/grant", unionGrantHandler(unionGrant, unionOut, st, cfg.UnionAPIRoot))
+		})))
+		root.Handle("GET /api/union/member/oauth2/grant", ustack.gate(unionGrantHandler(unionGrant, unionOut, st)))
 	}
 	root.Handle("/api/v1/", backend.Handler())
 	root.Handle("/api/admin/v1/", admin.Handler())
@@ -642,8 +541,9 @@ func main() {
 
 // unionGrantHandler is the login-state glue for the Union OAuth2 grant
 // (analysis/yggdrasil-connect.md §4.5): fetch the hub encryption key, build
-// the signed+encrypted userInfo token, 302 to the hub continuation URL.
-func unionGrantHandler(grant *union.Grantor, out *union.Outbound, st *store.Mysql, apiRoot string) http.Handler {
+// the signed+encrypted userInfo token, 302 to the hub continuation URL. The
+// continuation base follows the live API root (hot union_api_root).
+func unionGrantHandler(grant *union.Grantor, out *union.Outbound, st *store.Mysql) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := r.Cookie("skin_session")
 		if err != nil {
@@ -670,7 +570,7 @@ func unionGrantHandler(grant *union.Grantor, out *union.Outbound, st *store.Mysq
 			http.Error(w, "grant failed", http.StatusInternalServerError)
 			return
 		}
-		http.Redirect(w, r, grant.GrantRedirectURL(token, apiRoot+"/oauth2/continue", r.URL.Query()), http.StatusFound)
+		http.Redirect(w, r, grant.GrantRedirectURL(token, out.APIRoot()+"/oauth2/continue", r.URL.Query()), http.StatusFound)
 	})
 }
 

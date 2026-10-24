@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -35,10 +36,25 @@ type Verifier struct {
 	audit AuditFunc
 	now   func() time.Time // injectable clock for tests
 
+	// keySource (2026-10-24 拍板「对齐老站：每次现取」): when set, the hub
+	// signing key is resolved through it — mirroring UnionHostVerify.php:67
+	// which fetches GET union_api_root -> union_host_signature_public_key on
+	// demand. Results are cached briefly (hub rotations must land without a
+	// restart) and the pinned key stays as fetch-failure fallback. Wire
+	// untouched: only the KEY SOURCE changes, never the payload math.
+	keySource   func() (string, error)
+	keyMu       sync.Mutex
+	keyCache    *rsa.PublicKey
+	keyCachedAt time.Time
+
 	mu        sync.Mutex
 	nonces    map[string]time.Time // nonce -> expiry
 	lastSweep time.Time
 }
+
+// HostKeyCacheTTL bounds how long a fetched hub key is trusted before a
+// refresh is attempted (fetch failure keeps the last known key).
+const HostKeyCacheTTL = 5 * time.Minute
 
 // Verification failure sentinels; the middleware maps all of them to the same
 // 403 but keeps the reason apart for the audit trail.
@@ -51,17 +67,23 @@ var (
 	errVerifySignature = errors.New("invalid signature")
 )
 
-// NewVerifier builds the pinned-key verifier. When the module is disabled an
-// inert verifier is returned without parsing anything. The pinned key must be
-// a PKIX PEM ("BEGIN PUBLIC KEY"); a PKCS#1 PEM ("BEGIN RSA PUBLIC KEY") is
-// accepted as well for robustness against hub key-format drift.
+// NewVerifier builds the verifier. When the module is disabled an inert
+// verifier is returned without parsing anything. An empty HostPublicKeyPEM is
+// legal (2026-10-24 拍板「现取」): the caller installs a key source via
+// SetHostKeySource and the pinned key only covers fetch failures. A present
+// pinned key must be PKIX PEM ("BEGIN PUBLIC KEY"); a PKCS#1 PEM ("BEGIN RSA
+// PUBLIC KEY") is accepted too for robustness against hub key-format drift.
 func NewVerifier(cfg Config, audit AuditFunc) (*Verifier, error) {
 	if !cfg.Enabled {
 		return &Verifier{audit: audit, now: time.Now, nonces: map[string]time.Time{}}, nil
 	}
-	pub, err := parsePublicKeyPEM(cfg.HostPublicKeyPEM)
-	if err != nil {
-		return nil, fmt.Errorf("union: pinned host public key: %w", err)
+	var pub *rsa.PublicKey
+	if strings.TrimSpace(cfg.HostPublicKeyPEM) != "" {
+		p, err := parsePublicKeyPEM(cfg.HostPublicKeyPEM)
+		if err != nil {
+			return nil, fmt.Errorf("union: pinned host public key: %w", err)
+		}
+		pub = p
 	}
 	return &Verifier{
 		pub:    pub,
@@ -72,7 +94,64 @@ func NewVerifier(cfg Config, audit AuditFunc) (*Verifier, error) {
 }
 
 // Enabled reports whether the verifier performs real work (nil-safe).
-func (v *Verifier) Enabled() bool { return v != nil && v.pub != nil }
+func (v *Verifier) Enabled() bool {
+	return v != nil && (v.pub != nil || v.keySource != nil)
+}
+
+// SetHostKeySource installs the live hub-key fetcher (returns the
+// union_host_signature_public_key PEM). Additive; the pinned key remains the
+// fallback when the fetch fails or before the first success.
+func (v *Verifier) SetHostKeySource(f func() (string, error)) {
+	if v == nil {
+		return
+	}
+	v.keyMu.Lock()
+	defer v.keyMu.Unlock()
+	v.keySource = f
+}
+
+// activeKey resolves the verification key for one message: live source with
+// cache first (老站「每次现取」语义 + 缓存), then the pinned fallback.
+func (v *Verifier) activeKey() (*rsa.PublicKey, error) {
+	v.keyMu.Lock()
+	src := v.keySource
+	cached := v.keyCache
+	age := time.Since(v.keyCachedAt)
+	v.keyMu.Unlock()
+	if src == nil {
+		if v.pub == nil {
+			return nil, errVerify
+		}
+		return v.pub, nil
+	}
+	if cached != nil && age < HostKeyCacheTTL {
+		return cached, nil
+	}
+	pemStr, err := src()
+	if err != nil {
+		if cached != nil {
+			return cached, nil // keep last known key on transient hub failure
+		}
+		if v.pub != nil {
+			return v.pub, nil
+		}
+		return nil, fmt.Errorf("%w: hub key unavailable: %w", errVerify, err)
+	}
+	pub, err := parsePublicKeyPEM(pemStr)
+	if err != nil {
+		if cached != nil {
+			return cached, nil
+		}
+		if v.pub != nil {
+			return v.pub, nil
+		}
+		return nil, fmt.Errorf("%w: hub key rejected: %w", errVerify, err)
+	}
+	v.keyMu.Lock()
+	v.keyCache, v.keyCachedAt = pub, time.Now()
+	v.keyMu.Unlock()
+	return pub, nil
+}
 
 // Verify checks one message: the exact middleware core, usable outside HTTP.
 // Every failure maps to 403 in the middleware (legacy semantics).
@@ -103,9 +182,13 @@ func (v *Verifier) Verify(rawBody []byte, signature, timestamp, nonce string) er
 	if err != nil {
 		return fmt.Errorf("%w: signature is not base64: %w", errVerify, errVerifySignature)
 	}
+	key, err := v.activeKey()
+	if err != nil {
+		return err
+	}
 	digest := crypto.SHA256.New()
 	digest.Write([]byte(payload))
-	if err := rsa.VerifyPKCS1v15(v.pub, crypto.SHA256, digest.Sum(nil), sig); err != nil {
+	if err := rsa.VerifyPKCS1v15(key, crypto.SHA256, digest.Sum(nil), sig); err != nil {
 		return fmt.Errorf("%w: %w", errVerify, errVerifySignature)
 	}
 	// Cache the nonce only after full success, mirroring the legacy

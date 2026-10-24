@@ -13,8 +13,11 @@ import (
 	"strings"
 )
 
-// UnionDeps are wired from main when SKIN_UNION_ENABLED; nil = routes absent.
+// UnionDeps are wired from main; nil = routes absent. Enabled (optional, hot
+// toggle 2026-10-24 拍板) makes every admin union route answer 404 while the
+// module is switched off — same zero-surface semantics as /api/union/*.
 type UnionDeps struct {
+	Enabled func() bool
 	// Status returns the current signer/rotation view for the dashboard.
 	Status func() map[string]any
 	// ResumeRotation lifts the daily-switch suspension (operator action).
@@ -41,6 +44,19 @@ type UnionDeps struct {
 // MountUnion registers the union admin routes when deps are present.
 func (b *Backend) MountUnion(deps UnionDeps) {
 	b.union = deps
+}
+
+// unionGate wraps every admin union handler with the hot toggle (2026-10-24
+// 拍板): 404 for the whole subtree while the module is switched off, so the
+// disabled state is indistinguishable from "route absent" (zero surface).
+func (b *Backend) unionGate(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if b.union.Enabled != nil && !b.union.Enabled() {
+			http.NotFound(w, r)
+			return
+		}
+		next(w, r)
+	}
 }
 
 func (b *Backend) handleUnionStatus(w http.ResponseWriter, r *http.Request) {

@@ -48,6 +48,16 @@ var settingsWhitelist = []struct {
 	{"ygg_tokens_limit", false, "每用户 ygg 令牌数上限（默认 10，0=不限）：超限淘汰最旧令牌并留审计"},
 	{"ygg_search_profile_max", false, "批量查角色单次上限（默认 5，1-100）"},
 	{"ygg_rate_limit", false, "同名认证最小间隔（毫秒，默认 1000，0=关闭）"},
+	// Union（blessing yggdrasil-connect 原名；union_enabled 为本项目新增键
+	// ——老站用插件启停表达，无 option 行。热切换 2026-10-24 拍板）
+	{"union_enabled", false, "Union 联盟模块开关（热切换：关=全路由 404、签名回本地密钥）"},
+	{"union_api_root", false, "Union hub API 根（默认 https://skin.mualliance.ltd/api/union，立即生效）"},
+	{"union_member_key", false, "Union 成员密钥（联盟下发；切勿泄露，立即生效）"},
+	{"union_enable_update", true, "允许 hub 远程轮换成员密钥（updatebackendkey，重启后生效）"},
+	{"union_enable_oauth2", true, "Union OAuth2 联合登录（重启后生效）"},
+	{"union_queryemail_mode", true, "Union 查询邮箱模式：full/off（重启后生效）"},
+	{"union_oauth2_sig_private_key", true, "Union OAuth2 用户信息签名私钥（PEM；留空首启自动生成，重启后生效）"},
+	{"union_oauth2_sig_public_key", true, "Union OAuth2 用户信息签名公钥（PEM；留空首启自动生成，重启后生效）"},
 }
 
 func (b *Backend) settingValue(ctx context.Context, key, def string) string {
@@ -94,7 +104,7 @@ func (b *Backend) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	}
 	val := strings.TrimSpace(req.Value)
 	switch req.Key {
-	case "invite_required", "require_verification":
+	case "invite_required", "require_verification", "union_enabled", "union_enable_update", "union_enable_oauth2":
 		normalized, ok := normalizeBool(val)
 		if !ok {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "布尔值需为 1/0/true/false/on/off/yes/no"})
@@ -137,6 +147,27 @@ func (b *Backend) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "角色名规则需为 official/cjk/utf8/custom"})
 			return
 		}
+	case "union_api_root":
+		// same shape gate as union.Config.Validate: absolute http(s) URL
+		if val != "" {
+			if !strings.HasPrefix(val, "http://") && !strings.HasPrefix(val, "https://") {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "union_api_root 需为 http(s) 绝对地址"})
+				return
+			}
+		}
+	case "union_queryemail_mode":
+		switch val {
+		case "full", "off":
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "查询邮箱模式需为 full/off"})
+			return
+		}
+	case "union_oauth2_sig_private_key", "union_oauth2_sig_public_key":
+		// PEM sanity only (full parse happens at boot; restart-marked key)
+		if val != "" && (!strings.Contains(val, "-----BEGIN ") || !strings.Contains(val, "-----END ")) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "需为 PEM 格式密钥（或留空自动生成）"})
+			return
+		}
 	case "custom_player_name_regexp", "texture_name_regexp":
 		// an unparsable regexp would silently fail-closed at every new write
 		if val != "" {
@@ -157,6 +188,9 @@ func (b *Backend) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	if err := b.Store.SetOption(r.Context(), req.Key, val); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "save failed"})
 		return
+	}
+	if b.OnSettingChanged != nil {
+		b.OnSettingChanged(req.Key, val) // hot-apply (union keys)
 	}
 	b.Store.InsertAudit(r.Context(), actorUID(r), "settings_update", map[string]any{
 		"key": req.Key, "value": val,

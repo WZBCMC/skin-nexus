@@ -19,11 +19,11 @@ import (
 // bounded by a timeout and returns wrapped errors. It is safe for concurrent
 // use; the member key is swappable at runtime (updatebackendkey rotation).
 type Outbound struct {
-	root   string // hub API root without trailing slash
+	root   atomic.Value // string: hub API root without trailing slash
 	client *http.Client
 	key    atomic.Value // string: union member key
 	to     time.Duration
-	enable bool
+	enable atomic.Bool  // hot-toggled by union_enabled (2026-10-24 拍板)
 }
 
 // keyStore semantics: the member key is read on every request and rewritten
@@ -168,12 +168,13 @@ func (p *PrivateKeyDoc) UnmarshalJSON(b []byte) error {
 // (Enabled() == false, all calls return ErrDisabled) and never touches the
 // network. client may be nil (default: plain http.Client, per-call timeouts).
 func NewOutbound(cfg Config, client *http.Client) (*Outbound, error) {
-	o := &Outbound{client: client, to: cfg.requestTimeout(), enable: cfg.Enabled}
+	o := &Outbound{client: client, to: cfg.requestTimeout()}
+	o.enable.Store(cfg.Enabled)
 	if o.client == nil {
 		o.client = &http.Client{}
 	}
 	if !cfg.Enabled {
-		o.root = cfg.apiRoot()
+		o.root.Store(cfg.apiRoot())
 		o.key.Store("")
 		return o, nil
 	}
@@ -185,13 +186,48 @@ func NewOutbound(cfg Config, client *http.Client) (*Outbound, error) {
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return nil, errors.New("union: ApiRoot must be an absolute URL")
 	}
-	o.root = root
+	o.root.Store(root)
 	o.key.Store(cfg.MemberKey)
 	return o, nil
 }
 
 // Enabled reports whether the client performs real work (nil-safe).
-func (o *Outbound) Enabled() bool { return o != nil && o.enable }
+func (o *Outbound) Enabled() bool { return o != nil && o.enable.Load() }
+
+// SetEnabled hot-toggles the client (union_enabled option, 2026-10-24 拍板:
+// UI 开关即改即生效). Off = every call fails fast with ErrDisabled.
+func (o *Outbound) SetEnabled(on bool) {
+	if o != nil {
+		o.enable.Store(on)
+	}
+}
+
+// SetAPIRoot hot-swaps the hub root (union_api_root option). Same validation
+// as the constructor; the old root stays on rejection.
+func (o *Outbound) SetAPIRoot(root string) error {
+	if o == nil {
+		return ErrDisabled
+	}
+	root = strings.TrimRight(strings.TrimSpace(root), "/")
+	u, err := url.Parse(root)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return errors.New("union: ApiRoot must be an absolute URL")
+	}
+	o.root.Store(root)
+	return nil
+}
+
+// APIRoot reads the current hub root (hot-swappable via SetAPIRoot).
+func (o *Outbound) APIRoot() string {
+	if o == nil {
+		return ""
+	}
+	s, _ := o.root.Load().(string)
+	return s
+}
+
+// apiRoot is the internal spelling.
+func (o *Outbound) apiRoot() string { return o.APIRoot() }
 
 // SetMemberKey swaps the rotating member key (updatebackendkey channel).
 func (o *Outbound) SetMemberKey(key string) {
@@ -259,6 +295,22 @@ func (o *Outbound) Privatekey(ctx context.Context) (*PrivateKeyDoc, error) {
 		return nil, err
 	}
 	return &doc, nil
+}
+
+// HostPublicKey pulls the hub message-signing key from the hub root JSON
+// (GET {api_root} -> union_host_signature_public_key), the exact source
+// UnionHostVerify.php:67 uses per request. Callers cache; wire untouched.
+func (o *Outbound) HostPublicKey(ctx context.Context) (string, error) {
+	var doc struct {
+		Key string `json:"union_host_signature_public_key"`
+	}
+	if _, _, err := o.doJSON(ctx, http.MethodGet, "", nil, &doc); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(doc.Key) == "" {
+		return "", errors.New("union: hub root has no union_host_signature_public_key")
+	}
+	return doc.Key, nil
 }
 
 // Diagnose pings POST /diagnose; the hub response shape is hub-private, so it
@@ -404,7 +456,7 @@ func (o *Outbound) doJSON(ctx context.Context, method, path string, body any, ou
 	if payload != nil {
 		reader = bytes.NewReader(payload)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, o.root+path, reader)
+	req, err := http.NewRequestWithContext(ctx, method, o.apiRoot()+path, reader)
 	if err != nil {
 		return 0, nil, fmt.Errorf("union: build %s %s: %w", method, path, err)
 	}
@@ -447,7 +499,7 @@ func (o *Outbound) doProxy(ctx context.Context, method, path string, body json.R
 	if body != nil {
 		reader = bytes.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, o.root+path, reader)
+	req, err := http.NewRequestWithContext(ctx, method, o.apiRoot()+path, reader)
 	if err != nil {
 		return nil, fmt.Errorf("union: build %s %s: %w", method, path, err)
 	}
