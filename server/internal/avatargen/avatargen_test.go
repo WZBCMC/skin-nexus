@@ -170,10 +170,10 @@ func TestRenderAvatarEmptySkinNoPanic(t *testing.T) {
 	}
 }
 
-// TestLoadSkinReaderHD: HD sheets (128×128, 128×64) are integer upscales of
-// the standard 64-wide layout; the UV tables are 64-space, so decoding must
-// downsample to the canonical sheet — otherwise every face samples the wrong
-// texel and HD skins render garbled (reported 2026-10-25).
+// TestLoadSkinReaderHD: HD sheets (128×128, 128×64) keep their native
+// resolution; render() maps the 64-space UV tables onto the sheet grid, so
+// faces land on the right texels AND HD detail survives (a downsample to 64
+// would throw the extra detail away — the 2026-10-25 v2 regression).
 func TestLoadSkinReaderHD(t *testing.T) {
 	up := func(src *image.NRGBA, scale int) *image.NRGBA {
 		b := src.Bounds()
@@ -197,18 +197,43 @@ func TestLoadSkinReaderHD(t *testing.T) {
 		return got
 	}
 
-	t.Run("128x128", func(t *testing.T) {
+	t.Run("128x128_native", func(t *testing.T) {
 		got := decode(up(makeSkin(), 2))
-		if b := got.Bounds(); b.Dx() != 64 || b.Dy() != 64 {
-			t.Fatalf("hd sheet = %v, want 64×64", b)
+		if b := got.Bounds(); b.Dx() != 128 || b.Dy() != 128 {
+			t.Fatalf("hd sheet = %v, want native 128×128", b)
 		}
-		// Face texel (64-space 8,8) must be the magenta front face, not a
-		// side/back texel from the un-scaled 128-space sheet.
-		if c := got.NRGBAAt(8, 8); c.R < 200 || c.B < 200 || c.G > 50 {
-			t.Fatalf("face texel = %v, want magenta", c)
+		// Face texel at HD (16,16) is gray; canonical (8,8) is magenta and
+		// the renderer must map onto it.
+		if c := got.NRGBAAt(16, 16); c.R < 200 || c.B < 200 || c.G > 50 {
+			t.Fatalf("hd face texel = %v, want magenta", c)
 		}
 		if c := RenderAvatar(got, 64, false).NRGBAAt(32, 32); c.R < 200 || c.B < 200 || c.G > 50 {
 			t.Fatalf("hd avatar center = %v, want magenta front face", c)
+		}
+		if !HasLayer2(got) {
+			t.Fatal("128×128 sheet must be treated as having the overlay layer")
+		}
+	})
+
+	t.Run("hd_detail_preserved", func(t *testing.T) {
+		hd := up(makeSkin(), 2)
+		// A single HD texel column inside the head front face (canonical
+		// x≈8.5) — survives only when sampling maps onto the HD grid.
+		for y := 16; y < 32; y++ {
+			hd.SetNRGBA(17, y, color.NRGBA{0, 255, 0, 255})
+		}
+		prev := RenderPreview(decode(hd), false)
+		found := false
+		for y := 0; y < prev.Bounds().Dy() && !found; y++ {
+			for x := 0; x < prev.Bounds().Dx(); x++ {
+				if c := prev.NRGBAAt(x, y); c.G > 200 && c.R < 100 && c.B < 100 {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			t.Fatal("HD detail column lost: preview has no green pixel")
 		}
 	})
 
@@ -225,11 +250,18 @@ func TestLoadSkinReaderHD(t *testing.T) {
 			}
 		}
 		got := decode(up(legacy, 2))
-		if b := got.Bounds(); b.Dx() != 64 || b.Dy() != 32 {
-			t.Fatalf("legacy hd sheet = %v, want 64×32", b)
+		if b := got.Bounds(); b.Dx() != 128 || b.Dy() != 64 {
+			t.Fatalf("legacy hd sheet = %v, want native 128×64", b)
 		}
-		if c := got.NRGBAAt(8, 8); c.R < 200 || c.B < 200 || c.G > 50 {
+		if c := got.NRGBAAt(16, 16); c.R < 200 || c.B < 200 || c.G > 50 {
 			t.Fatalf("legacy face texel = %v, want magenta", c)
+		}
+		if c := RenderAvatar(got, 64, false).NRGBAAt(32, 32); c.R < 200 || c.B < 200 || c.G > 50 {
+			t.Fatalf("legacy hd avatar center = %v, want magenta front face", c)
+		}
+		// 2:1 legacy layout has no helmet/limb overlay even in HD.
+		if HasLayer2(got) {
+			t.Fatal("128×64 legacy sheet must NOT have the overlay layer")
 		}
 	})
 }

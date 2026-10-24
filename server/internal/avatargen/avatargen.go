@@ -37,8 +37,9 @@ import (
 // RenderVersion is bumped whenever rasterizer output changes (UV fixes,
 // sampling or scaling changes). Callers embed it in preview/avatar URLs
 // (`/preview/{tid}?v=N`) so month-long immutable caches re-fetch instead of
-// serving stale renders — 2026-10-25: v2 fixed HD-sheet sampling.
-const RenderVersion = "2"
+// serving stale renders — 2026-10-25: v2 downscaled HD (lost detail), v3
+// keeps the sheet native and maps UVs onto it (halo layer detection fixed).
+const RenderVersion = "3"
 
 //go:embed av_default2d.png av_default3d.png
 var defaultFS embed.FS
@@ -226,8 +227,20 @@ func render(skin *image.NRGBA, parts []box, c cam, ratio float64, pad int) *imag
 	}
 	offX, offY := float64(pad)-ominX*ratio, float64(pad)-ominY*ratio
 
-	sample := func(u, v int) color.NRGBA {
-		if u < 0 || v < 0 || u >= skin.Bounds().Dx() || v >= skin.Bounds().Dy() {
+	// HD sheets keep their full resolution: the UV tables are 64-space, so
+	// canonical texel coords are mapped onto the sheet's pixel grid (1024×1024
+	// = 16×; legacy-ratio sheets are 2:1). Sampling each output pixel at
+	// sub-texel precision preserves HD detail at the preview's 10 px per skin
+	// pixel, where a downscale to 64 would have thrown the detail away.
+	sbx := skin.Bounds()
+	sxf := float64(sbx.Dx()) / 64
+	syf := sxf
+	if sbx.Dy()*2 == sbx.Dx() { // 64×32 legacy ratio (incl. its HD upscales)
+		syf = float64(sbx.Dy()) / 32
+	}
+	sample := func(fu, fv float64) color.NRGBA {
+		u, v := int(fu*sxf), int(fv*syf)
+		if u < 0 || v < 0 || u >= sbx.Dx() || v >= sbx.Dy() {
 			return color.NRGBA{}
 		}
 		return skin.NRGBAAt(u, v)
@@ -283,7 +296,7 @@ func render(skin *image.NRGBA, parts []box, c cam, ratio float64, pad int) *imag
 					if a < 0 || a >= 1 || b < 0 || b >= 1 {
 						continue
 					}
-					over(x, y, sample(uv.u+int(a*float64(uv.w)), uv.v+int(b*float64(uv.h))))
+					over(x, y, sample(float64(uv.u)+a*float64(uv.w), float64(uv.v)+b*float64(uv.h)))
 				}
 			}
 		}
@@ -334,8 +347,16 @@ func resizeNearest(src *image.NRGBA, r image.Rectangle, w, h int) *image.NRGBA {
 	return dst
 }
 
-// HasLayer2 reports whether the decoded skin carries a 64×64 second layer.
-func HasLayer2(img image.Image) bool { return img.Bounds().Dy() > 32 }
+// HasLayer2 reports whether the decoded skin carries the second (overlay)
+// layer: only 64×64-shaped sheets do. Legacy 64×32 sheets — and their HD 2:1
+// upscales (128×64, 640×320, …) — have no helmet/limb overlay at all.
+func HasLayer2(img image.Image) bool {
+	b := img.Bounds()
+	if b.Dy()*2 == b.Dx() { // 2:1 legacy layout
+		return false
+	}
+	return b.Dy() > 32
+}
 
 // RenderAvatar renders the head shot resized to size×size (legacy
 // avatar() unconditionally resizes the render to size). threeD selects
@@ -409,11 +430,9 @@ func LoadSkin(path string) (*image.NRGBA, error) {
 	return LoadSkinReader(f)
 }
 
-// LoadSkinReader decodes a texture PNG stream into NRGBA. HD skins (128×128,
-// 256×256, …) are integer upscales of the standard 64-wide sheet; the UV
-// tables are 64-space, so such sheets are nearest-neighbour downscaled to the
-// canonical 64-wide layout before rendering (legacy skinview3d does the same
-// conceptually via UV scaling; nearest keeps pixel art crisp).
+// LoadSkinReader decodes a texture PNG stream into NRGBA at its native
+// resolution. HD sheets stay full-resolution — render() maps the 64-space UV
+// tables onto whatever grid the sheet has, so no detail is discarded.
 func LoadSkinReader(r io.Reader) (*image.NRGBA, error) {
 	img, err := png.Decode(r)
 	if err != nil {
@@ -421,9 +440,5 @@ func LoadSkinReader(r io.Reader) (*image.NRGBA, error) {
 	}
 	dst := image.NewNRGBA(img.Bounds())
 	draw.Draw(dst, dst.Bounds(), img, img.Bounds().Min, draw.Src)
-	if b := dst.Bounds(); b.Dx() > 64 || b.Dy() > 64 {
-		// Keep the sheet's aspect ratio: 64×64 modern, 64×32 legacy HD.
-		return resizeNearest(dst, b, 64, b.Dy()*64/b.Dx()), nil
-	}
 	return dst, nil
 }
