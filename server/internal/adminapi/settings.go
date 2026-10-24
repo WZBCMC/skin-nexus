@@ -34,7 +34,8 @@ var settingsWhitelist = []struct {
 	{"rate_limit_auth", true, "认证端点每 IP 每 10 分钟请求数上限（0=关闭；重启后生效）"},
 	{"login_fail_limit", true, "同账号连续失败锁定阈值（0=关闭；重启后生效）"},
 	// B4 (blessing 原名 — 迁移导入器原样搬运生产 options，改名会让存量值成死键)
-	{"announcement", false, "站点公告（纯文本，用户中心公告卡显示，留空隐藏）"},
+	{"site_url", true, "站点地址（http(s) 绝对地址；纹理 URL/OIDC issuer/sitemap 基址，重启后生效）"},
+	{"announcement", false, "站点公告（Markdown，支持标题/粗体/链接/列表；双层消毒渲染，留空隐藏）"},
 	{"regs_per_ip", false, "每 IP 可注册账号数上限（0=不限制，立即生效）"},
 	{"max_upload_file_size", false, "材质上传大小上限（KB，不超过服务端硬顶，立即生效）"},
 	{"player_name_rule", false, "角色名规则：official/cjk/utf8/custom（仅拦新写入，立即生效）"},
@@ -176,10 +177,18 @@ func (b *Backend) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	case "site_url":
+		// 拍板（dev-plan §9）: 仅收 http(s) 绝对地址。留空=回退 env 首启默认，
+		// 所以放行空串。boot 侧 isHTTPBaseURL 再兜一次（防直写 DB）。
+		if val != "" && !strings.HasPrefix(val, "http://") && !strings.HasPrefix(val, "https://") {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "site_url 需为 http(s) 绝对地址"})
+			return
+		}
+		val = strings.TrimRight(val, "/")
 	case "announcement":
-		// plain text only — no markdown/HTML rendering surface (dev plan §7:
-		// sanitizer choice stays with Pro); length cap keeps the options
-		// TEXT column honest.
+		// Markdown source（拍板双层消毒：服务端 goldmark+bluemonday，前端
+		// marked+DOMPurify 再消毒——渲染实现见 internal/announce）；长度
+		// 上限保持 options TEXT 列诚实。
 		if len(val) > 4096 {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "公告最长 4096 字符"})
 			return

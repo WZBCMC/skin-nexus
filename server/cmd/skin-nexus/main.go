@@ -105,10 +105,15 @@ func main() {
 			cfg.ServerName = v
 		}
 	}
-	if os.Getenv("SKIN_BASE_URL") == "" {
-		if v, ok, err := st.GetOption(context.Background(), "base_url"); err == nil && ok && v != "" {
-			cfg.BaseURL = strings.TrimRight(v, "/")
-		}
+	// Site URL (拍板 2026-10-24 dev-plan §9): option `site_url`（blessing
+	// 原名，迁移导入值直接生效）wins over env —— env 只是首启默认。legacy
+	// `base_url` option（B4 时代写入）作为过渡回退，两键皆空才用 env。
+	// 校验仅收 http(s) 绝对地址（settings 面板同校验；启动侧再兜一次，
+	// 防直写 DB 的垃圾值烧进纹理 URL / OIDC issuer / sitemap）。
+	if v, ok, err := st.GetOption(context.Background(), "site_url"); err == nil && ok && isHTTPBaseURL(v) {
+		cfg.BaseURL = strings.TrimRight(v, "/")
+	} else if v, ok, err := st.GetOption(context.Background(), "base_url"); err == nil && ok && isHTTPBaseURL(v) {
+		cfg.BaseURL = strings.TrimRight(v, "/")
 	}
 	if os.Getenv("SKIN_SKIN_DOMAINS") == "" {
 		if v, ok, err := st.GetOption(context.Background(), "skin_domains"); err == nil && ok && v != "" {
@@ -342,6 +347,7 @@ func main() {
 	admin.SettingsDefaults = map[string]string{
 		"site_name":            cfg.SiteName,
 		"server_name":          cfg.ServerName,
+		"site_url":             cfg.BaseURL,
 		"skin_domains":         strings.Join(cfg.SkinDomains, ","),
 		"invite_required":      boolStr(cfg.RequireInvite),
 		"require_verification": boolStr(cfg.RequireVerification),
@@ -576,6 +582,13 @@ func unionGrantHandler(grant *union.Grantor, out *union.Outbound, st *store.Mysq
 
 // textureHandler serves stored textures byte-exact with strict hash validation.
 func zeroTime() time.Time { return time.Time{} }
+
+// isHTTPBaseURL gates site_url/base_url option values at boot: only
+// http(s) absolute origins survive (settings panel enforces the same rule;
+// this catches direct DB writes before they poison texture URLs/issuer).
+func isHTTPBaseURL(v string) bool {
+	return strings.HasPrefix(v, "http://") || strings.HasPrefix(v, "https://")
+}
 
 func textureHandler(ts *texture.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

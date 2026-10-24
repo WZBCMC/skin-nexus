@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"skin-nexus/server/internal/announce"
 	"skin-nexus/server/internal/auth"
 	"skin-nexus/server/internal/ratelimit"
 	"skin-nexus/server/internal/store"
@@ -90,8 +91,8 @@ func (b *Backend) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/me/closet/{id}", b.handleClosetRemove)
 	mux.HandleFunc("GET /api/v1/stats", b.handleStats)
 	// Site announcement (blessing parity): public read, admin-edited via
-	// the settings panel (option `announcement`). Plain text only — the
-	// frontend interpolates it, so no HTML/Markdown injection surface.
+	// the settings panel (option `announcement`). Markdown source; the
+	// response carries both the raw text and server-sanitized HTML.
 	mux.HandleFunc("GET /api/v1/announcement", b.handleAnnouncement)
 	// Install wizard (empty-DB init): state-gated, one-way door after done.
 	mux.HandleFunc("GET /api/v1/setup/status", b.handleSetupStatus)
@@ -594,10 +595,16 @@ func (b *Backend) handleStats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"weakHashUsers": weak})
 }
 
-// handleAnnouncement: public site announcement (plain text; empty string
-// hides the card client-side).
+// handleAnnouncement: public site announcement. Markdown source (raw) plus
+// server-sanitized HTML (goldmark + bluemonday — 拍板双层消毒的服务端层；
+// the frontend re-sanitizes with marked + DOMPurify before v-html). Empty
+// raw hides the card client-side.
 func (b *Backend) handleAnnouncement(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]interface{}{"announcement": b.Store.Announcement(r.Context())})
+	raw := b.Store.Announcement(r.Context())
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"announcement": raw,
+		"html":         announce.Render(raw),
+	})
 }
 
 var _ = errors.Is
