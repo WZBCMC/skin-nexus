@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"skin-nexus/server/internal/union"
 )
 
 // UnionDeps are wired from main; nil = routes absent. Enabled (optional, hot
@@ -30,8 +32,9 @@ type UnionDeps struct {
 	// SyncRoster pushes the full local profile roster ("同步角色数据");
 	// returns the pushed count.
 	SyncRoster func(ctx context.Context) (int, error)
-	// Diagnose pings the hub and relays its answer ("自助诊断").
-	Diagnose func(ctx context.Context) (json.RawMessage, error)
+	// Diagnose pings the hub and reports in the legacy triggerDiagnose
+	// shape ({status,data}) — "自助诊断" 1:1 with yggdrasil-connect.
+	Diagnose func(ctx context.Context) (*union.DiagnoseReport, error)
 	// Blacklist proxy (B5.4): query/add/release(=invalidate, keeps record)/
 	// delete(irreversible). Release and delete are PERMANENT operator actions
 	// — frontend double-confirms and both write audit rows here.
@@ -113,17 +116,25 @@ func (b *Backend) handleUnionRosterSync(w http.ResponseWriter, r *http.Request) 
 }
 
 // POST /api/admin/v1/union/ops/diagnose — connectivity + versions probe.
+// Response is the legacy yggdrasil-connect triggerDiagnose shape ({status,
+// data}) so the admin UI renders 1:1 rows; site key metadata is appended
+// for the exported report header.
 func (b *Backend) handleUnionDiagnose(w http.ResponseWriter, r *http.Request) {
-	raw, err := b.union.Diagnose(r.Context())
+	rep, err := b.union.Diagnose(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		writeJSON(w, http.StatusBadGateway, map[string]any{
+			"status": "error",
+			"data":   map[string]any{"exception": err.Error()},
+		})
 		return
 	}
+	st := b.union.Status()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"hub":                json.RawMessage(raw),
-		"key_fingerprint":    b.union.Status()["key_fingerprint"],
-		"private_key_version": b.union.Status()["private_key_version"],
-		"server_list_version": b.union.Status()["server_list_version"],
+		"status":               rep.Status,
+		"data":                 json.RawMessage(rep.Data),
+		"key_fingerprint":      st["key_fingerprint"],
+		"private_key_version":  st["private_key_version"],
+		"server_list_version":  st["server_list_version"],
 	})
 }
 

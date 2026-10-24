@@ -34,11 +34,23 @@ type APIError struct {
 	Method     string
 	Path       string
 	StatusCode int
+	Headers    http.Header // response headers (diagnostic evidence)
 	Body       json.RawMessage
 }
 
 func (e *APIError) Error() string {
 	return fmt.Sprintf("union: %s %s: hub returned %d: %s", e.Method, e.Path, e.StatusCode, strings.TrimSpace(string(e.Body)))
+}
+
+// DiagnoseReport mirrors the legacy yggdrasil-connect triggerDiagnose
+// response exactly (config.twig renders these rows verbatim):
+//
+//	{status:'ok',    data:<hub json>}                     — hub 2xx
+//	{status:'error', data:{status_code,headers,body}}     — hub non-2xx
+//	{status:'error', data:{exception}}                    — transport failure
+type DiagnoseReport struct {
+	Status string          `json:"status"` // "ok" | "error"
+	Data   json.RawMessage `json:"data"`
 }
 
 // Hub wire documents (§4.2). JSON tags are the hub field names, verbatim.
@@ -313,16 +325,33 @@ func (o *Outbound) HostPublicKey(ctx context.Context) (string, error) {
 	return doc.Key, nil
 }
 
-// Diagnose pings POST /diagnose; the hub response shape is hub-private, so it
-// is relayed raw (legacy triggerDiagnose wraps it the same way).
-func (o *Outbound) Diagnose(ctx context.Context) (json.RawMessage, error) {
+// Diagnose runs the hub connectivity check (POST /diagnose) and reports in
+// the legacy triggerDiagnose shape so the admin UI can render 1:1 rows and
+// export the report. Every outcome IS a result: hub non-2xx and transport
+// failures come back as {status:"error", data:{...evidence}}; the error
+// return is reserved for the module-disabled gate.
+func (o *Outbound) Diagnose(ctx context.Context) (*DiagnoseReport, error) {
+	if !o.Enabled() {
+		return nil, ErrDisabled
+	}
 	ctx, cancel := context.WithTimeout(ctx, diagnoseTimeout)
 	defer cancel()
 	_, body, err := o.doJSON(ctx, http.MethodPost, "/diagnose", map[string]any{}, nil)
 	if err != nil {
-		return nil, err
+		var apiErr *APIError
+		if errors.As(err, &apiErr) {
+			// Hub answered non-2xx: status_code/headers/body are the report.
+			data, _ := json.Marshal(map[string]any{
+				"status_code": apiErr.StatusCode,
+				"headers":     apiErr.Headers,
+				"body":        string(apiErr.Body),
+			})
+			return &DiagnoseReport{Status: "error", Data: data}, nil
+		}
+		data, _ := json.Marshal(map[string]any{"exception": err.Error()})
+		return &DiagnoseReport{Status: "error", Data: data}, nil
 	}
-	return body, nil
+	return &DiagnoseReport{Status: "ok", Data: body}, nil
 }
 
 // ServerCode exchanges the member key for the public server code:
@@ -475,7 +504,7 @@ func (o *Outbound) doJSON(ctx context.Context, method, path string, body any, ou
 		return resp.StatusCode, nil, fmt.Errorf("union: %s %s: read response: %w", method, path, err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return resp.StatusCode, raw, &APIError{Method: method, Path: path, StatusCode: resp.StatusCode, Body: raw}
+		return resp.StatusCode, raw, &APIError{Method: method, Path: path, StatusCode: resp.StatusCode, Headers: resp.Header, Body: raw}
 	}
 	if out != nil && len(raw) > 0 {
 		if err := json.Unmarshal(raw, out); err != nil {

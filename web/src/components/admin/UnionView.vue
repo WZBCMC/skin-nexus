@@ -3,7 +3,7 @@
 // + union blacklist proxy (B5.4). The module-disabled case shows an empty
 // state. Release/Delete are irreversible-ish — both double-confirm, delete
 // is permanent (hub erases the record).
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { fetchJSON } from '../../adminApi.js'
 
@@ -54,6 +54,82 @@ async function runOp(name, path, confirmMsg) {
   } finally {
     opBusy.value = false
   }
+}
+
+// ---- 自助诊断 (1:1 with legacy yggdrasil-connect triggerDiagnose) ----
+// Three states (idle → running → result) and the same nine result rows the
+// legacy modal renders, plus an exported standalone HTML report.
+const diagOpen = ref(false)
+const diagLoading = ref(false)
+const diag = ref(null) // {status, data, key_fingerprint, ...}
+
+function openDiagnose() {
+  diagOpen.value = true
+  diag.value = null
+}
+
+function closeDiagnose() {
+  diagOpen.value = false
+  diag.value = null
+}
+
+async function triggerDiagnose() {
+  diagLoading.value = true
+  diag.value = null
+  try {
+    // Non-2xx / transport failures still come back as {status:'error',data}
+    // so one table renders every outcome — mirror of legacy triggerDiagnose.
+    diag.value = await fetchJSON('/api/admin/v1/union/ops/diagnose', { method: 'POST' })
+  } catch (e) {
+    diag.value = { status: 'error', data: { exception: e.message } }
+  } finally {
+    diagLoading.value = false
+  }
+}
+
+function diagRow(k, v) { return { k, v } }
+
+const diagRows = computed(() => {
+  const d = diag.value
+  if (!d) return []
+  const data = d.data || {}
+  const rows = []
+  // 1. 皮肤站→Union  2. Union→皮肤站 (legacy table order, verbatim)
+  rows.push(diagRow(t('admin.diagSiteToUnion'), d.status === 'ok' ? 'ok' : 'fail'))
+  if (d.status === 'ok') {
+    rows.push(diagRow(t('admin.diagUnionToSite'), data.healthy ? 'ok' : 'fail'))
+    if (data.healthy && typeof data.delay === 'number') {
+      rows.push(diagRow(t('admin.diagDelay'), `${(data.delay * 1000).toFixed(2)} ms`))
+    }
+    if (data.timestamp) rows.push(diagRow(t('admin.diagTimestamp'), String(data.timestamp)))
+  }
+  if (data.tls_handshake) rows.push({ k: t('admin.diagTLS'), area: String(data.tls_handshake) })
+  if (data.exception) rows.push({ k: t('admin.diagException'), area: String(data.exception) })
+  if (data.status_code) rows.push(diagRow(t('admin.diagStatusCode'), String(data.status_code)))
+  if (data.headers) rows.push({ k: t('admin.diagHeaders'), area: JSON.stringify(data.headers, null, 2) })
+  if (data.body) rows.push({ k: t('admin.diagBody'), area: String(data.body) })
+  return rows
+})
+
+function exportDiagnose() {
+  const rows = diagRows.value.map((r) => {
+    const val = r.area
+      ? `<textarea readonly rows="8" style="width:100%;box-sizing:border-box;">${String(r.area).replace(/&/g, '&amp;').replace(/</g, '&lt;')}</textarea>`
+      : r.v === 'ok' ? '<span style="color:#198754;font-weight:600;">✔ 成功</span>'
+      : r.v === 'fail' ? '<span style="color:#dc3545;font-weight:600;">✘ 失败</span>'
+      : String(r.v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    return `<tr><th style="text-align:left;vertical-align:top;width:20%;padding:6px 10px;">${r.k}</th><td style="padding:6px 10px;">${val}</td></tr>`
+  }).join('')
+  const meta = diag.value
+    ? `<p>key_fingerprint: ${diag.value.key_fingerprint || '—'} · private_key_version: ${diag.value.private_key_version || '—'} · server_list_version: ${diag.value.server_list_version || '—'}</p>`
+    : ''
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${t('admin.diagExportTitle')}</title></head><body><h2>${t('admin.diagExportTitle')}</h2><p>${new Date().toLocaleString()}</p>${meta}<table style="border-collapse:collapse;width:100%;">${rows}</table></body></html>`
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `诊断报告-${Math.round(Date.now() / 1000)}.html`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 async function loadBlacklist() {
@@ -137,7 +213,7 @@ onMounted(async () => {
         <button class="secondary" :disabled="opBusy" @click="runOp('admin.unionOpRosterSync', '/api/admin/v1/union/ops/roster-sync')">
           {{ t('admin.unionOpRosterSync') }}
         </button>
-        <button class="secondary" :disabled="opBusy" @click="runOp('admin.unionOpDiagnose', '/api/admin/v1/union/ops/diagnose')">
+        <button class="secondary" :disabled="opBusy" @click="openDiagnose">
           {{ t('admin.unionOpDiagnose') }}
         </button>
       </div>
@@ -186,6 +262,49 @@ onMounted(async () => {
         <button class="secondary" @click="blAdd">{{ t('admin.unionBlAdd') }}</button>
       </div>
     </div>
+
+    <!-- 自助诊断 modal (1:1 with legacy yggdrasil-connect diagnoseModal) -->
+    <div v-if="diagOpen" class="diag-overlay" @click.self="closeDiagnose">
+      <div class="diag-modal">
+        <div class="diag-head">
+          <h3>🩺 {{ t('admin.unionOpDiagnose') }}</h3>
+          <button class="diag-close" @click="closeDiagnose" aria-label="close">×</button>
+        </div>
+        <div class="diag-body">
+          <div class="diag-idle" v-if="!diag && !diagLoading">
+            <button class="diag-start" @click="triggerDiagnose">{{ t('admin.diagStart') }}</button>
+          </div>
+          <div class="diag-loading" v-if="diagLoading">
+            <span class="diag-spinner"></span>
+            <span>{{ t('admin.diagRunning') }}</span>
+          </div>
+          <div class="diag-result" v-if="diag && !diagLoading">
+            <div class="diag-result-bar">
+              <span class="diag-badge" :class="diag.status === 'ok' ? 'ok' : 'fail'">
+                {{ diag.status === 'ok' ? t('admin.diagAllOk') : t('admin.diagHasFail') }}
+              </span>
+              <button class="diag-export" @click="exportDiagnose">⤓ {{ t('admin.diagExport') }}</button>
+            </div>
+            <table class="diag-table">
+              <tr v-for="(r, i) in diagRows" :key="i">
+                <th>{{ r.k }}</th>
+                <td>
+                  <span v-if="r.v === 'ok'" class="diag-badge ok">{{ t('admin.diagOk') }}</span>
+                  <span v-else-if="r.v === 'fail'" class="diag-badge fail">{{ t('admin.diagFail') }}</span>
+                  <textarea v-else-if="r.area" readonly rows="8" :value="r.area"></textarea>
+                  <span v-else class="diag-mono">{{ r.v }}</span>
+                </td>
+              </tr>
+            </table>
+            <p class="diag-meta" v-if="diag.key_fingerprint">
+              key_fingerprint: <span class="diag-mono">{{ diag.key_fingerprint }}</span>
+              · private_key_version: <span class="diag-mono">{{ diag.private_key_version || '—' }}</span>
+              · server_list_version: <span class="diag-mono">{{ diag.server_list_version || '—' }}</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -204,5 +323,118 @@ onMounted(async () => {
 .bl-table td {
   word-break: break-all;
   vertical-align: top;
+}
+
+/* ---- 自助诊断 modal (1:1 legacy diagnoseModal, dark theme) ---- */
+.diag-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 80;
+}
+.diag-modal {
+  width: min(860px, 92vw);
+  max-height: 86vh;
+  overflow: auto;
+  background: var(--panel, #161b22);
+  border: 1px solid var(--border, #30363d);
+  border-radius: 12px;
+}
+.diag-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border, #30363d);
+}
+.diag-head h3 { margin: 0; font-size: 16px; }
+.diag-close {
+  background: none;
+  border: none;
+  color: var(--muted, #8b949e);
+  font-size: 22px;
+  cursor: pointer;
+  line-height: 1;
+}
+.diag-body { padding: 18px; }
+.diag-idle { text-align: center; padding: 26px 0; }
+.diag-start {
+  padding: 10px 26px;
+  border-radius: 8px;
+  border: 1px solid var(--accent, #58a6ff);
+  background: var(--accent, #58a6ff);
+  color: #fff;
+  font-size: 15px;
+  cursor: pointer;
+}
+.diag-loading {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 0;
+}
+.diag-spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 3px solid var(--border, #30363d);
+  border-top-color: var(--accent, #58a6ff);
+  animation: diag-spin 0.9s linear infinite;
+}
+@keyframes diag-spin { to { transform: rotate(360deg); } }
+.diag-result-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.diag-badge {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.diag-badge.ok { background: rgba(46, 160, 67, 0.16); color: #3fb950; border: 1px solid #2ea04355; }
+.diag-badge.fail { background: rgba(248, 81, 73, 0.14); color: #f85149; border: 1px solid #f8514955; }
+.diag-export {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #30363d);
+  background: none;
+  color: var(--text, #e6edf3);
+  cursor: pointer;
+}
+.diag-table { width: 100%; border-collapse: collapse; }
+.diag-table th {
+  width: 20%;
+  text-align: right;
+  padding: 8px 12px;
+  color: var(--muted, #8b949e);
+  font-weight: 500;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border, #30363d);
+}
+.diag-table td {
+  padding: 8px 12px;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border, #30363d);
+}
+.diag-table textarea {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+}
+.diag-mono { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; word-break: break-all; }
+.diag-meta {
+  margin: 12px 0 0;
+  color: var(--muted, #8b949e);
+  font-size: 12px;
 }
 </style>

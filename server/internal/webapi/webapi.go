@@ -111,16 +111,27 @@ func (b *Backend) Handler() http.Handler {
 	// Install wizard (empty-DB init): state-gated, one-way door after done.
 	mux.HandleFunc("GET /api/v1/setup/status", b.handleSetupStatus)
 	mux.HandleFunc("POST /api/v1/setup", b.handleSetup)
-	// Union user surface: only when the module is enabled (zero surface off).
-	if b.union != nil && b.union.Enabled() {
-		mux.HandleFunc("GET /api/v1/union/servers", b.handleUnionServers)
-		mux.HandleFunc("GET /api/v1/union/detail", b.handleUnionDetail)
-		mux.HandleFunc("GET /api/v1/union/unmapped", b.handleUnionUnmapped)
-		mux.HandleFunc("POST /api/v1/union/bind", b.handleUnionBind)
-		mux.HandleFunc("POST /api/v1/union/bindto", b.handleUnionBindTo)
-		mux.HandleFunc("POST /api/v1/union/unbind", b.handleUnionUnbind)
-		mux.HandleFunc("POST /api/v1/union/remapuuid", b.handleUnionRemapUUID)
+	// Union user surface: routes are ALWAYS registered and gate per
+	// request, so `union_enabled` truly hot-toggles both ways. (Previously
+	// registration itself was gated on Enabled() at boot — a later off→on
+	// toggle left the mux empty and the bind page showed "union disabled"
+	// forever. Off still answers 404 on every route: zero surface.)
+	requireUnion := func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if b.union == nil || !b.union.Enabled() {
+				http.NotFound(w, r)
+				return
+			}
+			h(w, r)
+		}
 	}
+	mux.HandleFunc("GET /api/v1/union/servers", requireUnion(b.handleUnionServers))
+	mux.HandleFunc("GET /api/v1/union/detail", requireUnion(b.handleUnionDetail))
+	mux.HandleFunc("GET /api/v1/union/unmapped", requireUnion(b.handleUnionUnmapped))
+	mux.HandleFunc("POST /api/v1/union/bind", requireUnion(b.handleUnionBind))
+	mux.HandleFunc("POST /api/v1/union/bindto", requireUnion(b.handleUnionBindTo))
+	mux.HandleFunc("POST /api/v1/union/unbind", requireUnion(b.handleUnionUnbind))
+	mux.HandleFunc("POST /api/v1/union/remapuuid", requireUnion(b.handleUnionRemapUUID))
 	return maxBody(mux)
 }
 

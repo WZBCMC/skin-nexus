@@ -5,7 +5,6 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '../api.js'
-import SkinPreview from '../components/SkinPreview.vue'
 
 const { t } = useI18n()
 
@@ -95,9 +94,13 @@ async function renameItem(it) {
   }
 }
 
-// textureURL points at /textures/<hash>; a 3D preview is nicer for skins.
+// Server-rendered preview PNG (avatargen /preview/{tid}: back+front views).
+// One <img> per card — a skinview3d canvas per card burns a WebGL context
+// each and the grid exceeds the browser's ~16-context budget: oldest
+// contexts get dropped (white cards + "Context Lost" + renderer crashes).
+// Capes have no body render; serve the flat texture instead.
 function previewURL(it) {
-  return it.textureURL
+  return it.type === 'skin' ? `/preview/${it.tid}` : it.textureURL
 }
 
 onMounted(async () => {
@@ -134,8 +137,8 @@ onMounted(async () => {
     <div class="skinlib-grid" v-else>
       <div class="skin-card" v-for="it in items" :key="it.tid">
         <div class="skin-card-prev">
-          <SkinPreview v-if="it.type === 'skin'" :url="previewURL(it)" />
-          <img v-else :src="previewURL(it)" :alt="it.name" class="cape-thumb" />
+          <img v-if="it.type === 'skin'" :src="previewURL(it)" :alt="it.name" class="skin-preview-img" loading="lazy" />
+          <img v-else :src="previewURL(it)" :alt="it.name" class="cape-thumb" loading="lazy" />
         </div>
         <div class="skin-card-body">
           <div class="skin-card-name" :title="it.name">
@@ -193,7 +196,7 @@ onMounted(async () => {
   height: 180px; display: flex; align-items: center; justify-content: center;
   background: rgba(255, 255, 255, 0.02);
 }
-.skin-card-prev :deep(canvas) { width: 96px !important; height: 144px !important; }
+.skin-preview-img { height: 150px; image-rendering: pixelated; object-fit: contain; }
 .cape-thumb { max-width: 90%; max-height: 150px; image-rendering: pixelated; }
 .skin-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
 .skin-card-name {

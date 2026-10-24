@@ -189,11 +189,14 @@ func TestOutboundDataPulls(t *testing.T) {
 		t.Fatalf("ServerCode decoded wrong: %+v", code)
 	}
 
-	raw, err := o.Diagnose(ctx)
+	rep, err := o.Diagnose(ctx)
 	if err != nil {
 		t.Fatalf("Diagnose: %v", err)
 	}
-	if len(raw) == 0 {
+	if rep.Status != "ok" {
+		t.Fatalf("Diagnose status = %q, want ok", rep.Status)
+	}
+	if len(rep.Data) == 0 {
 		t.Fatal("Diagnose must relay the hub body")
 	}
 
