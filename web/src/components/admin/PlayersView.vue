@@ -109,21 +109,22 @@ onMounted(load)
       <span class="muted">{{ t('admin.playerTotal', { total }) }}</span>
     </div>
     <div class="error" v-if="error">{{ error }}</div>
-    <table v-if="players.length" style="margin-top: 10px;">
+    <div class="table-scroll" v-if="players.length">
+    <table class="players-table" style="margin-top: 10px;">
       <tr>
         <th>PID</th><th>{{ t('admin.colPreview') }}</th><th>{{ t('admin.colPlayerName') }}</th>
         <th>UUID</th><th>{{ t('admin.colOwner') }}</th><th>{{ t('admin.colSkin') }}</th>
         <th>{{ t('admin.colCape') }}</th><th>{{ t('admin.colUpdated') }}</th><th></th>
       </tr>
       <tr v-for="p in players" :key="p.id">
-        <td>{{ p.id }}</td>
+        <td class="muted">{{ p.id }}</td>
         <td>
           <img v-if="p.skinHash" class="thumb" :src="texURL(p.skinHash)" alt="" />
           <span v-else class="muted">—</span>
         </td>
-        <td>{{ p.name }}</td>
+        <td class="pname">{{ p.name }}</td>
         <td><code class="uuid">{{ p.uuid || '—' }}</code></td>
-        <td>{{ p.ownerNickname || '—' }} <span class="muted">#{{ p.uid }}</span></td>
+        <td class="nowrap">{{ p.ownerNickname || '—' }} <span class="muted">#{{ p.uid }}</span></td>
         <td>
           <button class="secondary cell-btn" @click="swapTexture(p, 'skin')">
             <img v-if="p.skinHash" class="thumb-sm" :src="texURL(p.skinHash)" alt="" />
@@ -136,14 +137,15 @@ onMounted(load)
             <span v-else>{{ t('admin.none') }}</span>
           </button>
         </td>
-        <td class="muted">{{ (p.updatedAt || '').slice(0, 10) }}</td>
-        <td style="white-space: nowrap;">
+        <td class="muted nowrap">{{ (p.updatedAt || '').slice(0, 10) }}</td>
+        <td class="nowrap">
           <button class="secondary" @click="renamePlayer(p)">{{ t('admin.rename') }}</button>
           <button class="secondary" style="margin-left: 6px;" @click="changeOwner(p)">{{ t('admin.changeOwner') }}</button>
-          <button class="secondary" style="margin-left: 6px;" @click="deletePlayer(p)">{{ t('admin.delete') }}</button>
+          <button class="secondary danger-outline" style="margin-left: 6px;" @click="deletePlayer(p)">{{ t('admin.delete') }}</button>
         </td>
       </tr>
     </table>
+    </div>
     <p class="muted" v-else>{{ t('admin.playerEmpty') }}</p>
     <div class="row" style="margin-top: 12px;" v-if="total > pageSize">
       <button class="secondary" :disabled="page <= 1" @click="turnPage(-1)">‹ {{ t('admin.prevPage') }}</button>
@@ -154,8 +156,22 @@ onMounted(load)
 </template>
 
 <style scoped>
-.thumb { width: 24px; height: auto; image-rendering: pixelated; vertical-align: middle; }
-.thumb-sm { width: 16px; height: auto; image-rendering: pixelated; vertical-align: middle; }
-.cell-btn { padding: 2px 6px; min-width: 48px; }
-.uuid { font-size: 11px; }
+/* narrow viewports scroll the table instead of crushing columns */
+.table-scroll { overflow-x: auto; }
+.players-table { min-width: 920px; }
+.players-table th:nth-child(1), .players-table td:nth-child(1) { width: 56px; }
+.players-table th:nth-child(2), .players-table td:nth-child(2) { width: 64px; text-align: center; }
+.players-table th:nth-child(3), .players-table td:nth-child(3) { width: 130px; }
+.players-table th:nth-child(5), .players-table td:nth-child(5) { width: 130px; }
+.players-table th:nth-child(6), .players-table td:nth-child(6) { width: 80px; text-align: center; }
+.players-table th:nth-child(7), .players-table td:nth-child(7) { width: 80px; text-align: center; }
+.players-table th:nth-child(8), .players-table td:nth-child(8) { width: 96px; }
+.nowrap { white-space: nowrap; }
+.pname { font-weight: 600; }
+.thumb { width: 28px; height: auto; image-rendering: pixelated; vertical-align: middle; border-radius: 4px; }
+.thumb-sm { width: 18px; height: auto; image-rendering: pixelated; vertical-align: middle; }
+.cell-btn { padding: 3px 8px; min-width: 48px; display: inline-flex; align-items: center; justify-content: center; }
+.uuid { font-size: 11px; letter-spacing: .2px; }
+.danger-outline { border-color: var(--danger); color: var(--danger); }
+.danger-outline:hover { background: var(--danger); color: #fff; }
 </style>

@@ -152,21 +152,24 @@ onMounted(load)
       <span class="muted">{{ t('admin.userTotal', { total }) }}</span>
     </div>
     <div class="error" v-if="error">{{ error }}</div>
-    <table v-if="users.length" style="margin-top: 10px;">
+    <div class="table-scroll" v-if="users.length">
+    <table class="users-table" style="margin-top: 10px;">
       <tr>
         <th>{{ t('admin.colId') }}</th><th>{{ t('admin.colNickname') }}</th><th>{{ t('admin.colEmail') }}</th>
         <th>{{ t('admin.colPermission') }}</th><th>{{ t('admin.colVerified') }}</th>
         <th>{{ t('admin.colAlgo') }}</th><th>{{ t('admin.colCreated') }}</th><th></th>
       </tr>
       <tr v-for="u in users" :key="u.id">
-        <td>{{ u.id }}</td>
-        <!-- inline edit: blur/enter commits, Esc reverts -->
+        <td class="muted">{{ u.id }}</td>
+        <!-- inline edit: blur/enter commits, Esc reverts. Inputs render
+             borderless until hover/focus (the dark filled boxes broke the
+             row rhythm and clipped the email) -->
         <td><input class="cell-input" v-model="u.nickname" @blur="saveNickname(u)"
                    @keyup.escape="load()" /></td>
-        <td><input class="cell-input" v-model="u.email" placeholder="—" @blur="saveEmail(u)"
+        <td><input class="cell-input cell-email" v-model="u.email" placeholder="—" @blur="saveEmail(u)"
                    @keyup.escape="load()" /></td>
         <td>
-          <select class="cell-input" :value="String(u.permission)" @change="changePermission(u, $event)"
+          <select class="cell-input cell-perm" :value="String(u.permission)" @change="changePermission(u, $event)"
                   :disabled="u.id === 1">
             <option value="-1">{{ t('admin.perm-1') }}</option>
             <option value="0">{{ t('admin.perm0') }}</option>
@@ -174,18 +177,19 @@ onMounted(load)
           </select>
         </td>
         <td>
-          <button class="secondary" @click="toggleVerified(u)">
+          <button class="veri-btn" :class="{ on: Number(u.emailVerified) }" @click="toggleVerified(u)">
             {{ Number(u.emailVerified) ? '✓' : '—' }}
           </button>
         </td>
         <td><span class="badge" :style="u.passwordAlgo.startsWith('legacy') ? 'border-color: var(--danger); color: var(--danger);' : ''">{{ u.passwordAlgo }}</span></td>
-        <td class="muted">{{ (u.createdAt || '').slice(0, 10) }}</td>
-        <td style="white-space: nowrap;">
+        <td class="muted nowrap">{{ (u.createdAt || '').slice(0, 10) }}</td>
+        <td class="nowrap">
           <button class="secondary" @click="adminResetPassword(u)">{{ t('admin.resetPw') }}</button>
-          <button class="secondary" v-if="u.id !== 1" @click="adminDeleteUser(u)" style="margin-left: 6px;">{{ t('admin.delete') }}</button>
+          <button class="secondary danger-outline" v-if="u.id !== 1" @click="adminDeleteUser(u)" style="margin-left: 6px;">{{ t('admin.delete') }}</button>
         </td>
       </tr>
     </table>
+    </div>
     <div class="row" style="margin-top: 12px;" v-if="total > pageSize">
       <button class="secondary" :disabled="page <= 1" @click="turnPage(-1)">‹ {{ t('admin.prevPage') }}</button>
       <span class="muted">{{ page }} / {{ pageMax() }}</span>
@@ -195,5 +199,32 @@ onMounted(load)
 </template>
 
 <style scoped>
-.cell-input { max-width: 160px; padding: 4px 6px; font-size: 13px; }
+/* narrow viewports scroll the table instead of crushing columns */
+.table-scroll { overflow-x: auto; }
+.users-table { min-width: 860px; }
+.users-table th:nth-child(1), .users-table td:nth-child(1) { width: 56px; }
+.users-table th:nth-child(2), .users-table td:nth-child(2) { width: 170px; }
+.users-table th:nth-child(4), .users-table td:nth-child(4) { width: 130px; }
+.users-table th:nth-child(5), .users-table td:nth-child(5) { width: 64px; text-align: center; }
+.users-table th:nth-child(6), .users-table td:nth-child(6) { width: 110px; }
+.users-table th:nth-child(7), .users-table td:nth-child(7) { width: 96px; }
+.nowrap { white-space: nowrap; }
+/* inline edit: borderless until hover/focus — no more dark clipped boxes */
+.cell-input {
+  width: 100%; padding: 5px 8px; font-size: 13px;
+  background: transparent; border: 1px solid transparent; border-radius: 6px;
+  color: var(--text);
+}
+.cell-input:hover { border-color: var(--border); }
+.cell-input:focus { border-color: var(--accent); background: var(--bg); outline: none; }
+.cell-input:disabled { opacity: .55; cursor: not-allowed; }
+.cell-email { min-width: 200px; }
+.cell-perm { min-width: 110px; }
+.veri-btn {
+  width: 36px; padding: 4px 0; font-size: 13px;
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+}
+.veri-btn.on { color: #57ab5a; border-color: #57ab5a66; }
+.danger-outline { border-color: var(--danger); color: var(--danger); }
+.danger-outline:hover { background: var(--danger); color: #fff; }
 </style>

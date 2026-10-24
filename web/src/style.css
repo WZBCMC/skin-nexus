@@ -15,6 +15,9 @@ body {
   font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
 }
 .container { max-width: 960px; margin: 0 auto; padding: 24px; }
+/* admin panel carries 8-9 column management tables — the 960px column
+   squeezed them into vertical header wrap + overflowing action buttons */
+.container.wide { max-width: 1280px; }
 .card {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -52,6 +55,12 @@ label { display: block; margin: 10px 0 4px; font-size: 13px; color: var(--muted)
 .success { color: #57ab5a; font-size: 13px; margin-top: 8px; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); }
+/* management tables: headers never stack characters ("拥 有 者"), rows get
+   hover tracking, dates/ids stay on one line */
+th { white-space: nowrap; font-size: 13px; color: var(--muted); font-weight: 600; }
+td { vertical-align: middle; }
+tbody tr, table tr { transition: background .12s; }
+tbody tr:hover, table tr:hover { background: rgba(255, 255, 255, .03); }
 .badge {
   display: inline-block; padding: 2px 8px; border-radius: 999px;
   font-size: 12px; border: 1px solid var(--border); color: var(--muted);

@@ -274,7 +274,7 @@ onMounted(boot)
 </script>
 
 <template>
-  <div class="container">
+  <div class="container" :class="{ wide: view === 'admin' }">
     <div class="row" style="justify-content: space-between; margin-bottom: 16px;">
       <div>
         <h1>{{ t('site.name') }} <span class="muted">{{ t('site.subtitle') }}</span></h1>
