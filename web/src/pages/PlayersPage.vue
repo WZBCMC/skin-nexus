@@ -97,7 +97,8 @@ onMounted(load)
     </div>
     <div class="error" v-if="err">{{ err }}</div>
     <div class="success" v-if="ok">{{ ok }}</div>
-    <table v-if="players.length" style="margin-top: 12px;">
+    <div class="table-scroll" v-if="players.length">
+    <table class="p-table" style="margin-top: 12px;">
       <tr>
         <th>PID</th>
         <th>{{ t('players.colPreview') }}</th>
@@ -109,7 +110,7 @@ onMounted(load)
       </tr>
       <tr v-for="p in players" :key="pid(p)">
         <td class="muted">{{ pid(p) }}</td>
-        <td><SkinPreview :url="p.SkinURL || p.skinurl" /></td>
+        <td class="prev-cell"><SkinPreview :url="p.SkinURL || p.skinurl" /></td>
         <td class="pname">{{ pname(p) }}</td>
         <td><code class="uuid">{{ puuid(p).slice(0, 18) }}…</code></td>
         <td>
@@ -130,14 +131,26 @@ onMounted(load)
         </td>
       </tr>
     </table>
+    </div>
     <p class="muted" v-else>{{ t('players.empty') }}</p>
   </div>
 </template>
 
 <style scoped>
+/* narrow viewports scroll the table instead of crushing columns */
+.table-scroll { overflow-x: auto; }
+.p-table { min-width: 860px; }
+.p-table th:nth-child(1), .p-table td:nth-child(1) { width: 48px; }
+.p-table th:nth-child(2), .p-table td:nth-child(2) { width: 72px; text-align: center; }
+.p-table th:nth-child(3), .p-table td:nth-child(3) { width: 130px; }
+.p-table th:nth-child(5), .p-table td:nth-child(5) { width: 160px; }
+.p-table th:nth-child(6), .p-table td:nth-child(6) { width: 160px; }
+/* SkinPreview renders a 128×192 canvas — scale it down to row height or
+   it stretches the table far past the card (screenshot bug) */
+.prev-cell :deep(canvas) { width: 48px !important; height: 72px !important; }
 .pname { font-weight: 600; }
 .uuid { font-size: 11px; }
-.cell-sel { min-width: 150px; padding: 4px 6px; font-size: 13px; }
+.cell-sel { width: 100%; padding: 4px 6px; font-size: 13px; }
 .nowrap { white-space: nowrap; }
 .danger-outline { border-color: var(--danger); color: var(--danger); }
 .danger-outline:hover { background: var(--danger); color: #fff; }

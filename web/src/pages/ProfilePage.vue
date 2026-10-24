@@ -108,8 +108,11 @@ onMounted(load)
     <!-- avatar -->
     <h3>{{ t('profile.avatarSection') }}</h3>
     <div class="row avatar-row">
+      <!-- face crop: MC skin front-head sits at (8,8)-(16,16); scale the
+           64px texture 8× and offset to that tile (same layout on 64×32
+           legacy skins — top half is identical) -->
       <div class="avatar-box">
-        <img v-if="avatarUrl" :src="avatarUrl" class="avatar-img" alt="" />
+        <div v-if="avatarUrl" class="avatar-face" :style="{ backgroundImage: `url(${avatarUrl})` }"></div>
         <div v-else class="avatar-empty">{{ t('profile.avatarDefault') }}</div>
       </div>
       <div class="row" style="flex-wrap: wrap;">
@@ -160,7 +163,15 @@ onMounted(load)
 h3 { font-size: 14px; margin: 18px 0 8px; color: var(--muted); font-weight: 600; }
 .avatar-row { gap: 16px; }
 .avatar-box { width: 64px; height: 64px; border: 1px solid var(--border); border-radius: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-.avatar-img { width: 48px; height: auto; image-rendering: pixelated; }
+/* face crop: 64px skin × 8 = 512px sheet; front-head tile at (8,8) → -64px */
+.avatar-face {
+  width: 48px; height: 48px;
+  background-repeat: no-repeat;
+  background-size: 512px 512px;
+  background-position: -64px -64px;
+  image-rendering: pixelated;
+  border-radius: 2px;
+}
 .avatar-empty { color: var(--muted); font-size: 12px; }
 .avatar-pick { max-width: 260px; }
 .fld { flex: 1; min-width: 220px; }
