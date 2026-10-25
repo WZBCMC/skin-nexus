@@ -208,11 +208,11 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!DOCTYPE html>
       </div>
     </section>
     {{end}}
-    <footer>
-      Powered by <a href="https://github.com/YimingZhanshen/skin-nexus">SkinNexus</a>
-      · © {{.Year}} {{.SiteName}}
-    </footer>
   </div>
+  <footer>
+    Powered by <a href="https://github.com/YimingZhanshen/skin-nexus">SkinNexus</a>
+    · © {{.Year}} {{.SiteName}}
+  </footer>
   {{.BodyAnchor}}
 </body>
 </html>

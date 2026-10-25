@@ -180,4 +180,9 @@ func TestSpaHandlerServesLandingAtRoot(t *testing.T) {
 			t.Fatalf("landing must not carry %q: %s", bad, body)
 		}
 	}
+	// footer must close after the LAST div — i.e. outside .wrap, so full-bleed
+	// theme footers don't leave the wrap's bottom padding as dead space below.
+	if li, fi := strings.LastIndex(body, "</div>"), strings.Index(body, "</footer>"); fi < 0 || li > fi {
+		t.Fatalf("footer must sit outside .wrap (after last </div>): divEnd=%d footerEnd=%d", li, fi)
+	}
 }
