@@ -65,6 +65,15 @@ async function copyAli() {
   setTimeout(() => { copyState.value = '' }, 2000)
 }
 
+// 拖拽快速配置：authlib-injector《启动器技术规范》「通过拖拽设置」规定
+// text/plain 载荷 = authlib-injector:yggdrasil-server:{encodeURIComponent(API根)}、效果 copy；
+// PCL2 FormMain_Drop 取 DataFormats.Text、前缀匹配后 WebUtility.UrlDecode（FormMain.xaml.cs:934）。
+// 注意：裸 <a href> 拖出去的是 text/uri-list 裸 URL，启动器不认——必须走本 handler。
+function onDragLauncher(e) {
+  e.dataTransfer.setData('text/plain', 'authlib-injector:yggdrasil-server:' + encodeURIComponent(aliUrl))
+  e.dataTransfer.dropEffect = 'copy'
+}
+
 async function load() {
   try {
     const [u, tx, cl] = await Promise.all([api.me(), api.textures(), api.closet()])
@@ -123,8 +132,8 @@ onMounted(() => { load(); loadAnnouncement() })
     <div class="row">
       <code class="ali">{{ aliUrl }}</code>
       <button class="secondary" @click="copyAli">{{ copyState === 'ok' ? t('dashboard.copied') : copyState === 'fail' ? t('dashboard.copyFail') : t('dashboard.copy') }}</button>
-      <!-- draggable link: HMCL/PCL accept a dragged authlib-injector URL -->
-      <a class="drag-btn" :href="aliUrl" draggable="true">{{ t('dashboard.dragBtn') }}</a>
+      <!-- draggable label: payload authlib-injector:yggdrasil-server:{url} (launcher spec DnD) -->
+      <a class="drag-btn" :href="aliUrl" draggable="true" @dragstart="onDragLauncher">{{ t('dashboard.dragBtn') }}</a>
     </div>
     <p class="muted" style="margin-top: 8px; font-size: 12px;">{{ t('dashboard.launcherTutor') }}</p>
   </div>

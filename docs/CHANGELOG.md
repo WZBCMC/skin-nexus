@@ -10,6 +10,7 @@
 - 服务侧无需改动：spaHandler 按 `os.Stat` 对 dist 既有文件原样放行，favicon/manifest 均直达；landing head 同步补齐图标/manifest 链接（SPA 壳与访客首页双覆盖）。
 - **访客首页 logo 入场编舞**（pixel2motion 工序产出移植）：hero 区内嵌动效标识——底板淡入→N 块面 mask 擦除→电路线 draw-on→枢纽节点 stagger pop→整体收束，1600ms 共此时钟（黄金比 20/50/30、字面缓动值防 Chromium `var()` 静默降级、draw-on 用 butt cap 防起点墨点）；`prefers-reduced-motion` 直接终态；动画 SVG/CSS 零依赖内联，主题仍可经自定义 CSS 覆盖。
 - **landing footer 移出 `.wrap`**：footer 原窝在内容容器里，wrap 底距垫在全出血页脚带下方成死角留空——挪为 body 级元素（语义也更对），并加结构回归断言（footer 必须闭合于最后一个 `</div>` 之后）。
+- **修复「拖到启动器」拖拽载荷**：原按钮是裸 `<a href>` 拖拽（text/uri-list 裸 URL），HMCL/PCL2 均不认——按 authlib-injector《启动器技术规范》「通过拖拽设置」改为 `dragstart` 写 `text/plain` = `authlib-injector:yggdrasil-server:{encodeURIComponent(API根)}`、`dropEffect=copy`（与老站 yggc `dnd.ts` 同款；PCL2 `FormMain_Drop` 取 DataFormats.Text 前缀匹配后 `WebUtility.UrlDecode`）。
 
 ## 2026-10-25（访客首页 + 逐页 SEO meta）
 
