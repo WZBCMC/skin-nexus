@@ -20,7 +20,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -539,6 +538,10 @@ func main() {
 	root.Handle("GET /sitemap.xml", sitemapHandler(seoEng, st, cfg.BaseURL))
 	root.Handle("GET /robots.txt", robotsHandler(seoEng))
 	root.Handle("GET /theme-assets/{id}/{file}", themeAssetHandler(themeReg))
+	// Public server-rendered texture detail page (2026-10-25 拍板: 皮肤详情
+	// 是搜索引擎的内容页). Registered on the root mux so it beats the SPA
+	// catch-all below; private textures render only for their owner (noindex).
+	root.HandleFunc("GET /skinlib/{tid}", texturePageHandler(st, seoEng, appearEng, cfg.SiteName, cfg.BaseURL))
 	// Public landing page data (counts + featured library cards).
 	landingFn := func(ctx context.Context) landingData {
 		d := landingData{SiteName: cfg.SiteName}
@@ -713,7 +716,11 @@ func healthzHandler(st *store.Mysql) http.Handler {
 	})
 }
 
-// sitemapHandler serves /sitemap.xml (static routes + bounded player pages).
+// sitemapHandler serves /sitemap.xml (static routes + bounded public
+// texture detail pages). The texture detail page replaced player profile
+// pages as the crawlable content surface (2026-10-25): profile pages are
+// SPA shells with no anonymous content, and only /skinlib/{tid} renders
+// real server-side HTML.
 func sitemapHandler(seoEng *seo.Engine, st *store.Mysql, baseURL string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s := seoEng.Settings(r.Context())
@@ -721,23 +728,19 @@ func sitemapHandler(seoEng *seo.Engine, st *store.Mysql, baseURL string) http.Ha
 			http.NotFound(w, r)
 			return
 		}
-		paths := []string{}
-		// bounded: at most 5000 profile pages
-		if rows, err := st.ProfileNameByUUID(r.Context()); err == nil {
-			names := make([]string, 0, len(rows))
-			for _, name := range rows {
-				names = append(names, name)
-			}
-			sort.Strings(names)
-			if len(names) > 5000 {
-				names = names[:5000]
-			}
-			for _, n := range names {
-				paths = append(paths, "/profile/"+url.PathEscape(n))
+		entries := []seo.SitemapEntry{}
+		// bounded: at most 5000 public texture pages
+		if rows, err := st.PublicTextureIDs(r.Context(), 5000); err == nil {
+			for _, row := range rows {
+				e := seo.SitemapEntry{Path: "/skinlib/" + strconv.FormatInt(row.TID, 10)}
+				if row.UploadAt.Valid {
+					e.LastMod = row.UploadAt.Time
+				}
+				entries = append(entries, e)
 			}
 		}
 		w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-		_, _ = w.Write([]byte(seo.SitemapXML(s.Canonical, baseURL, paths)))
+		_, _ = w.Write([]byte(seo.SitemapXML(s.Canonical, baseURL, entries)))
 	})
 }
 

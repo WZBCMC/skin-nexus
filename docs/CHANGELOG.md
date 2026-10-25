@@ -14,6 +14,17 @@
 - **超管显示与保护修复**：用户管理表 `permission=2`（SUPER_ADMIN）因下拉无 2 选项显示为空白——改为「超级管理员」徽标（中英 i18n 补 `perm2`）；同时补两个服务端守卫洞——① `DELETE /users/{id}` 原只护 uid 1（迁移库中 uid 1 是普通用户、真超管是别的 uid，等于超管可被任意管理员删除）→ 改为 permission≥2 一律不可删 + `inlineGuard`（禁自删/只能操作严格低于自己的）；② `PUT /users/{id}/password` 原无守卫（普通管理员可重置超管密码=接管）→ 同挂 `inlineGuard`。UI 删除按钮对 uid 1 / permission=2 隐藏。
 - **修复启动器深链 `/user/closet`、`/user/profile`**：PCL 由 API 根替换 `api/yggdrasil/authserver` → `user/closet`/`user/profile` 构造跳转（`PageLoginProfileSkin.xaml.cs:151`、`ProfileUi.cs:291`，blessing 路由约定），而 SPA `boot()` 只认 `/device`/`/register`——启动器「换皮肤/修改密码」按钮落到仪表盘而非衣柜/资料页。现按路径直达对应视图；未登录深链先出登录卡、登录后直落目标页。`/user/players`、`/user/skinlib`、`/user/dashboard` 同映射。
 
+## 2026-10-25（皮肤详情页 = SEO 内容页）
+
+- **拍板**：以皮肤详情页取代玩家档案页作为搜索引擎的内容页（原 `/profile/{name}` 70 条 sitemap 条目是 SPA 空壳——匿名访问落到登录框、且不存在的角色名也返回 200，构成软 404 毒药；已从 sitemap 移除）。
+- **服务端渲染详情页 `/skinlib/{tid}`**（`texturepage.go`，Go 模板直出正文，不依赖 JS 即完整可读）：名称/上传者/模型/点赞数/上传时间/可见性 + 服务端渲染预览图（skin → `/preview/{tid}`，cape → `/textures/{hash}` 平铺，与皮肤库 UI 同款分流）+ 下载纹理 PNG。经同一套 SEO/主题/自定义注入层。
+- **SEO 重点**：逐页 title（`{名称} 的 Minecraft 皮肤 - {站名}`）/description（含名称、类型、模型、上传者、点赞数）/canonical/逐页 og:image（服务端渲染预览图）/JSON-LD（schema.org `CreativeWork`：name/image/author/datePublished/interactionStatistic 点赞数）。
+- **隐私与安全**：私密纹理仅上传者/管理员可见且带 `noindex,nofollow`；不可见即 404（品牌化 404 页，非裸 `http.NotFound`）；JSON-LD 注入层对 `</` 做 `<\/` 中和（材质名含 `</script>` 无法提前闭合 script 元素，json.Marshal 双保险）。
+- **渐进增强**：无 JS 时页面是完整的静态预览图+元数据；有 WebGL 时 `assets/viewer.js`（固定名，非哈希——服务端模板引用需稳定契约）动态 import skinview3d（~500KB chunk 仅皮肤页按需加载，披风页/老浏览器不载）把静态图升级为自动旋转 3D 预览，并接好喜欢/入衣柜按钮（401 → 跳登录）。
+- **sitemap 切换**：`/skinlib/{tid}` 公开材质条目（≤5000，升序）替代原 profile 条目，带 `<lastmod>`（上传时间，`SitemapXML` 支持 `SitemapEntry{Path,LastMod}`）；私密材质永不枚举（`PublicTextureIDs` 强制 `public=1`）。新增 `store.SkinlibOne`（可见性 gate：公开→所有人，私密→仅本人/管理员）。
+- **皮肤库卡片接通详情页**：预览图与名称均为链接指向 `/skinlib/{tid}`。
+- 回归测试：模板渲染（含披风页无 3D canvas、私密标签）、JSON-LD 注入安全、absURL 拼接、逐页 NoIndex/OG image、sitemap 无 profile 条目 + lastmod 只出现一次、store 可见性 gate 集成测试（匿名/他人/本人/管理员/缺失 × 公开/私密矩阵）。
+
 ## 2026-10-25（访客首页 + 逐页 SEO meta）
 
 - **服务端渲染公开首页上线**（拍板：方案 B + 基础三件套 + 皮肤库精选）：根路径 `/` 由 Go 模板直出正文（不依赖 JS，爬虫/AI 抓包即完整内容）——hero + 注册/登录 CTA、实时统计（注册用户/游戏角色/皮肤材质）、站点简介、皮肤库精选（`/preview/{tid}` 服务端渲染图，按点赞取前 8 公开材质）、页脚署名。经同一套 SEO/主题/自定义 CSS-JS 注入层（设计令牌带 fallback，主题切换即整站换肤）。

@@ -936,3 +936,81 @@ func TestIntegrationAllProfileUUIDs(t *testing.T) {
 		t.Fatalf("roster missing pair: %v (want uuid %s -> RosterSteve)", roster, uuid)
 	}
 }
+
+// TestIntegrationSkinlibOneAndPublicIDs covers the store gate behind the
+// server-rendered texture detail page + its sitemap: private textures must
+// 404 for anonymous/other viewers (no leak through the SEO surface) and
+// never enumerate into PublicTextureIDs.
+func TestIntegrationSkinlibOneAndPublicIDs(t *testing.T) {
+	m := openTestStore(t)
+	ctx := context.Background()
+	uid := seedUserAs(t, m, "skinlib1@example.com", "skinlib_user1")
+	other := seedUserAs(t, m, "skinlib2@example.com", "skinlib_user2")
+
+	// one public skin, one private cape (raw inserts: the suite owns the
+	// schema, texture bytes live on disk outside store scope)
+	exec := func(q string, args ...any) {
+		t.Helper()
+		if _, err := m.db.ExecContext(ctx, q, args...); err != nil {
+			t.Fatalf("seed %s: %v", q, err)
+		}
+	}
+	exec(`INSERT INTO textures (uid, type, hash, model, description, public) VALUES (?, 'skin', 'deadbeef1', 'slim', '公开展示', 1)`, uid)
+	exec(`INSERT INTO textures (uid, type, hash, model, description, public) VALUES (?, 'cape', 'deadbeef2', NULL, '私密披风', 0)`, uid)
+	var pubID, privID int64
+	if err := m.db.QueryRowContext(ctx, `SELECT id FROM textures WHERE hash='deadbeef1'`).Scan(&pubID); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.db.QueryRowContext(ctx, `SELECT id FROM textures WHERE hash='deadbeef2'`).Scan(&privID); err != nil {
+		t.Fatal(err)
+	}
+
+	// anonymous: public visible, private 404
+	if row, err := m.SkinlibOne(ctx, pubID, 0, false); err != nil || row.Name != "公开展示" || row.Model != "slim" || row.Nickname != "skinlib_user1" {
+		t.Fatalf("anon public: row=%+v err=%v", row, err)
+	}
+	if _, err := m.SkinlibOne(ctx, privID, 0, false); err != ErrNotFound {
+		t.Fatalf("anon private err = %v, want ErrNotFound", err)
+	}
+	// other logged-in user: still 404
+	if _, err := m.SkinlibOne(ctx, privID, other, false); err != ErrNotFound {
+		t.Fatalf("other-user private err = %v, want ErrNotFound", err)
+	}
+	// owner: visible
+	if row, err := m.SkinlibOne(ctx, privID, uid, false); err != nil || !row.Public {
+		t.Fatalf("owner private: row=%+v err=%v", row, err)
+	}
+	// admin: visible
+	if row, err := m.SkinlibOne(ctx, privID, 999999, true); err != nil || row.TID != privID {
+		t.Fatalf("admin private: row=%+v err=%v", row, err)
+	}
+	// missing id
+	if _, err := m.SkinlibOne(ctx, 999999999, 0, false); err != ErrNotFound {
+		t.Fatalf("missing err = %v, want ErrNotFound", err)
+	}
+
+	// sitemap enumeration: public only, ascending, bounded
+	ids, err := m.PublicTextureIDs(ctx, 5000)
+	if err != nil {
+		t.Fatalf("PublicTextureIDs: %v", err)
+	}
+	foundPub, foundPriv := false, false
+	for i, e := range ids {
+		if e.TID == pubID {
+			foundPub = true
+		}
+		if e.TID == privID {
+			foundPriv = true
+		}
+		if i > 0 && ids[i-1].TID > e.TID {
+			t.Fatalf("PublicTextureIDs not ascending at %d", i)
+		}
+	}
+	if !foundPub || foundPriv {
+		t.Fatalf("enumeration leak/miss: public=%v private=%v", foundPub, foundPriv)
+	}
+	// limit respected
+	if ids2, err := m.PublicTextureIDs(ctx, 1); err != nil || len(ids2) != 1 {
+		t.Fatalf("limit=1: %v err=%v", ids2, err)
+	}
+}

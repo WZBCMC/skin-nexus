@@ -161,6 +161,11 @@ type PageMeta struct {
 	TitleSuffix string // appended as "<suffix> - <site title>" when set
 	Description string // "" = keep the site-wide description
 	Path        string // canonical path below the site base ("/profile/steve")
+	OGImage     string // absolute per-page image; "" = site-wide OG image
+	NoIndex     bool   // private content viewed by its owner: never index
+	JSONLD      string // pre-marshalled JSON-LD block ("" = none); "</" is
+	// escaped on injection so user-supplied names can never close the
+	// script element early.
 }
 
 // RenderHead replaces the SEO placeholders in the SPA index.html template.
@@ -199,7 +204,7 @@ func (e *Engine) RenderHeadWith(ctx context.Context, indexHTML string, pm PageMe
 	if s.Keywords != "" {
 		sb.WriteString(`<meta name="keywords" content="` + esc(s.Keywords) + `">` + "\n")
 	}
-	sb.WriteString(`<meta name="robots" content="` + robotsContent(s) + `">` + "\n")
+	sb.WriteString(`<meta name="robots" content="` + robotsContent(s, pm.NoIndex) + `">` + "\n")
 	if canonical != "" {
 		sb.WriteString(`<link rel="canonical" href="` + esc(canonical) + `">` + "\n")
 	}
@@ -211,14 +216,24 @@ func (e *Engine) RenderHeadWith(ctx context.Context, indexHTML string, pm PageMe
 	if desc != "" {
 		sb.WriteString(`<meta property="og:description" content="` + esc(desc) + `">` + "\n")
 	}
-	if s.OGImage != "" {
-		sb.WriteString(`<meta property="og:image" content="` + esc(s.OGImage) + `">` + "\n")
+	ogImage := s.OGImage
+	if pm.OGImage != "" {
+		ogImage = pm.OGImage
+	}
+	if ogImage != "" {
+		sb.WriteString(`<meta property="og:image" content="` + esc(ogImage) + `">` + "\n")
+	}
+	if pm.JSONLD != "" {
+		// "</" → "<\/" keeps JSON semantics intact (legal in JSON strings)
+		// while making it impossible to close the script element early.
+		sb.WriteString(`<script type="application/ld+json">` +
+			strings.ReplaceAll(pm.JSONLD, "</", "<\\/") + `</script>` + "\n")
 	}
 	return strings.Replace(indexHTML, "<!--skin-seo-->", sb.String(), 1)
 }
 
-func robotsContent(s Settings) string {
-	if s.NoIndex {
+func robotsContent(s Settings, pageNoIndex bool) string {
+	if s.NoIndex || pageNoIndex {
 		return "noindex, nofollow"
 	}
 	return "index, follow"
@@ -230,9 +245,15 @@ func esc(s string) string {
 	return r.Replace(s)
 }
 
-// SitemapXML builds the sitemap: static routes first, then player profile
-// pages supplied by the caller (bounded to 5000 by the caller).
-func SitemapXML(canonical, baseURL string, playerPaths []string) string {
+// SitemapEntry is one dynamic sitemap URL with an optional lastmod.
+type SitemapEntry struct {
+	Path    string    // "/skinlib/42"
+	LastMod time.Time // zero = omit <lastmod>
+}
+
+// SitemapXML builds the sitemap: static routes first, then the dynamic
+// entries supplied by the caller (bounded to 5000 by the caller).
+func SitemapXML(canonical, baseURL string, entries []SitemapEntry) string {
 	base := strings.TrimRight(canonical, "/")
 	if base == "" {
 		base = strings.TrimRight(baseURL, "/")
@@ -240,12 +261,22 @@ func SitemapXML(canonical, baseURL string, playerPaths []string) string {
 	var sb strings.Builder
 	sb.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
 	sb.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
+	// Only public, crawlable routes: the landing page, the registration page,
+	// and the (server-rendered, anonymous-readable) texture detail pages. The
+	// SPA list at /user/skinlib sits behind login — never advertise it.
 	statics := []string{"/", "/register"}
-	for _, p := range statics {
-		sb.WriteString("  <url><loc>" + esc(base+p) + "</loc></url>\n")
+	writeURL := func(p string, lastmod time.Time) {
+		sb.WriteString("  <url><loc>" + esc(base+p) + "</loc>")
+		if !lastmod.IsZero() {
+			sb.WriteString("<lastmod>" + lastmod.UTC().Format("2006-01-02") + "</lastmod>")
+		}
+		sb.WriteString("</url>\n")
 	}
-	for _, p := range playerPaths {
-		sb.WriteString("  <url><loc>" + esc(base+p) + "</loc></url>\n")
+	for _, p := range statics {
+		writeURL(p, time.Time{})
+	}
+	for _, e := range entries {
+		writeURL(e.Path, e.LastMod)
 	}
 	sb.WriteString("</urlset>\n")
 	return sb.String()

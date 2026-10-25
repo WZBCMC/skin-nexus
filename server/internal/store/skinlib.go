@@ -157,6 +157,74 @@ func (m *Mysql) SkinlibList(ctx context.Context, opt SkinlibOpts) ([]SkinlibRow,
 	return out, total, rows.Err()
 }
 
+// SkinlibOne returns a single library entry by tid with visibility applied
+// (public → everyone; private → owner or admin). The public detail page and
+// its sitemap entries rely on this gate — a private texture must 404 for
+// anonymous viewers, never leak through the SEO page.
+func (m *Mysql) SkinlibOne(ctx context.Context, tid, viewerUID int64, viewerAdmin bool) (SkinlibRow, error) {
+	clause := "t.public = 1"
+	args := []any{}
+	switch {
+	case viewerAdmin:
+		clause = "1=1"
+	case viewerUID != 0:
+		clause = "(t.public = 1 OR t.uid = ?)"
+		args = append(args, viewerUID)
+	}
+	sel := fmt.Sprintf(`
+		SELECT t.id, t.uid, COALESCE(t.description,''), t.type,
+		       COALESCE(t.model,'default'), t.hash, t.public,
+		       t.upload_at, u.nickname,
+		       (SELECT COUNT(*) FROM user_closet c WHERE c.texture_tid = t.id) AS likes,
+		       EXISTS(SELECT 1 FROM user_closet c WHERE c.texture_tid = t.id AND c.user_uid = ?) AS liked
+		FROM textures t
+		JOIN users u ON u.id = t.uid
+		WHERE t.id = ? AND %s`, clause)
+	qargs := append([]any{viewerUID}, args...)
+	qargs = append(qargs, tid)
+
+	var r SkinlibRow
+	err := m.db.QueryRowContext(ctx, sel, qargs...).Scan(&r.TID, &r.UID, &r.Name, &r.Type,
+		&r.Model, &r.Hash, &r.Public, &r.UploadAt, &r.Nickname, &r.Likes, &r.Liked)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SkinlibRow{}, ErrNotFound
+	}
+	if err != nil {
+		return SkinlibRow{}, fmt.Errorf("skinlib one: %w", err)
+	}
+	return r, nil
+}
+
+// TextureIDTime is one sitemap row: a public texture id plus its upload time
+// (lastmod for the sitemap entry).
+type TextureIDTime struct {
+	TID      int64
+	UploadAt sql.NullTime
+}
+
+// PublicTextureIDs lists public texture ids (bounded, ascending) — the
+// sitemap source. Private textures never enumerate here.
+func (m *Mysql) PublicTextureIDs(ctx context.Context, limit int) ([]TextureIDTime, error) {
+	if limit <= 0 || limit > 5000 {
+		limit = 5000
+	}
+	rows, err := m.db.QueryContext(ctx,
+		`SELECT id, upload_at FROM textures WHERE public = 1 ORDER BY id LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("public texture ids: %w", err)
+	}
+	defer rows.Close()
+	var out []TextureIDTime
+	for rows.Next() {
+		var r TextureIDTime
+		if err := rows.Scan(&r.TID, &r.UploadAt); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // ClosetLikes returns the like count of one texture (pivot count).
 func (m *Mysql) ClosetLikes(ctx context.Context, tid int64) (int64, error) {
 	var n int64

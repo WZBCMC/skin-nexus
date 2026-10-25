@@ -139,13 +139,15 @@ onMounted(async () => {
     <div class="skinlib-grid" v-else>
       <div class="skin-card" v-for="it in items" :key="it.tid">
         <div class="skin-card-prev">
-          <img v-if="it.type === 'skin'" :src="previewURL(it)" :alt="it.name" class="skin-preview-img" loading="lazy" />
-          <img v-else :src="previewURL(it)" :alt="it.name" class="cape-thumb" loading="lazy" />
+          <a :href="'/skinlib/' + it.tid" :title="it.name || ('#' + it.tid)">
+            <img v-if="it.type === 'skin'" :src="previewURL(it)" :alt="it.name" class="skin-preview-img" loading="lazy" />
+            <img v-else :src="previewURL(it)" :alt="it.name" class="cape-thumb" loading="lazy" />
+          </a>
         </div>
         <div class="skin-card-body">
           <div class="skin-card-name" :title="it.name">
             <span v-if="!it.public" class="lock">🔒</span>
-            {{ it.name || `#${it.tid}` }}
+            <a :href="'/skinlib/' + it.tid" class="skin-card-link">{{ it.name || `#${it.tid}` }}</a>
           </div>
           <div class="skin-card-meta">
             <span class="badge" :class="it.model === 'slim' ? 'alex' : 'steve'">
@@ -205,6 +207,9 @@ onMounted(async () => {
   font-weight: 600; font-size: 14px; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis;
 }
+.skin-card-link { color: inherit; text-decoration: none; }
+.skin-card-link:hover { color: var(--accent); }
+.skin-card-prev a { display: flex; align-items: center; justify-content: center; height: 100%; }
 .lock { margin-right: 2px; }
 .skin-card-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 .badge {
