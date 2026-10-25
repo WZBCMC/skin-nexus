@@ -9,6 +9,7 @@
 - **热开关**：面板键 `ygg_mojang_fallback`（默认开，env `SKIN_MOJANG_FALLBACK` 可改首启默认），保存即生效；关=行为与旧版完全一致。
 - **签名策略镜像**：本地 handler 默认剥签名（`unsigned` 非 `false` 即 strip），兜底请求同样仅在 `unsigned=false` 时向官方要签名（`unsigned=true` 反向透传），客户端无感。
 - **测试**：进程内 stub 覆盖透传/路径归一化/非 hex 拒发（含 `../` 穿越）/hasJoined 参数转发与坏 IP 丢弃/中文名零出网/禁用态零请求/七种响应门（404、500、204、HTML、无 id-name JSON、超限、302 不跟随且跳转目标零命中）/公网拨号器九地址拒接表/`isPublicIP` 十四例/处理器级（本地未命中→官方200、本地命中不惊动上游、开关关→回204）。全仓 `go test` 绿。
+- **线上实测（2026-10-26 取证）**：出网可达 `sessionserver.mojang.com`（DNS 正常、同族 `hasJoined` 204 应答正常、往返 0.3-0.9s），但 `session/profile/{uuid}` 对全部受测真实账号（jeb_、Hypixel、Dream、tommyinnit、sapnap、Notch）一律返回 Azure FD 404 HTML——浏览器/自定义 UA、IPv4/IPv6、HTTP/1.1、`unsigned` 参数逐一排除，系**该路径从本网络区域被软 404**（区域策略级）。实证结论：① 兜底机器确实发起上游请求（0.29-0.44s 往返后闸门正确拒掉 HTML 404 → 204，不编造数据）；② profile 兜底在本部署只能走「快败」路径（每次未命中 +0.3s，可接受，开关可关）；③ hasJoined 所在端点族可达，是实际有价值的一腿（正向 200 需真实官方 join 记录、无法按需复现，由单测覆盖）；④ 本地优先（真实角色 `wine_fox` 本地 200 名字精确匹配、单测证明不惊动上游）、垃圾输入闸门、面板热开关（1↔0↔1）均线上实证。
 
 ## 2026-10-26（A1 找回密码：SMTP 邮件流 + 忘记/重置密码全链路）
 

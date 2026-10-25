@@ -32,7 +32,7 @@
 | # | 项 | 来源启发 | 理由 | 量级 | 状态 |
 |---|---|---|---|---|---|
 | A1 | **找回密码 + SMTP 邮件能力** | 两家都有（`/reset-password`）；我们 `verification_token` 列在（0008 迁移保留）但无 SMTP、无重置流程 | 当前最真实的可用性短板：用户忘密码只能找管理员 | 1-2 天 | ✅ 2026-10-26 上线并实证（`54fb81c`+`304610a`：防枚举双200同文、单次令牌、面板热配置、发件人缺失如实503） |
-| A2 | **Fallback 最小版**（profile/hasJoined 未命中→Mojang 串行兜底） | 两家都有完整 Fallback 链（element-skin `service/fallback/`、`internal/service/probe/`；vSkin `backends/fallback_backend.py`） | 跨服可用性（「本站查不到也能进服」）；安全上吸取 element-skin 的出站防护设计（ValidateOutboundURL、禁重定向、响应上限） | ~1 天 | ✅ 2026-10-26（`ygg/fallback.go`：常量 origin+32-hex 门+不跟随重定向+仅公网拨号+1MiB/JSON 门+4s 硬超时；面板 `ygg_mojang_fallback` 热开关） |
+| A2 | **Fallback 最小版**（profile/hasJoined 未命中→Mojang 串行兜底） | 两家都有完整 Fallback 链（element-skin `service/fallback/`、`internal/service/probe/`；vSkin `backends/fallback_backend.py`） | 跨服可用性（「本站查不到也能进服」）；安全上吸取 element-skin 的出站防护设计（ValidateOutboundURL、禁重定向、响应上限） | ~1 天 | ✅ 2026-10-26（`ygg/fallback.go`：常量 origin+32-hex 门+不跟随重定向+仅公网拨号+1MiB/JSON 门+4s 硬超时；面板 `ygg_mojang_fallback` 热开关。线上注记：本区域 `session/profile` 被官方软 404、`hasJoined` 族可达——详见 CHANGELOG 实测段） |
 | A3 | **方形头像一键截脸** | vSkin 闭环（`utils/image_utils.py:114-144`：基础脸 (8,8)-(16,15) + 帽子层 (40,8)-(48,15) alpha 合成，NEAREST 256px） | 体验闭环，成本极低 | ~半天 | ⛔ 不重复建设（2026-10-26 核查：本站已有等价闭环——衣柜「设为头像」+ `PUT /api/v1/me/avatar` + `/avatar/user/{uid}` 服务端渲染方形头像（头+帽层、2D/3D、尺寸参数）+ 资料页选脸/重置；vSkin 差量仅「烘焙独立文件」，我们按需渲染更优） |
 | A4 | **安全加固** | vSkin 弱点反向：内存限流、微软 OAuth state 进程内存、redirect_uri 单值、shared client 刷新免 secret；我们自审 | top1 的安全性底线：session cookie 属性、重置接口限流、令牌单次消费 | 随 A1 做 | ✅ 2026-10-26（随 A1 落地：令牌单次原子消费、forgot/reset 三键限流、会话 SameSite=Lax+Secure 复核通过） |
 
