@@ -72,6 +72,9 @@ func (b *Backend) Handler() http.Handler {
 	mux.HandleFunc("GET /api/admin/v1/users", b.auth(b.handleUsers))
 	mux.HandleFunc("GET /api/admin/v1/textures", b.auth(b.handleTextures))
 	mux.HandleFunc("GET /api/admin/v1/audit", b.auth(b.handleAudit))
+	// Access/communication logs (2026-10-26 运维观测面): web + launcher
+	// logins, ygg server traffic, union traffic — filterable/paged.
+	mux.HandleFunc("GET /api/admin/v1/access-logs", b.auth(b.handleAccessLogs))
 	// Invitation codes (1:1 live blessing plugin admin surface).
 	mux.HandleFunc("GET /api/admin/v1/invitation-codes", b.auth(b.handleInvitationList))
 	mux.HandleFunc("POST /api/admin/v1/invitation-codes", b.auth(b.handleInvitationGenerate))
@@ -275,4 +278,18 @@ func (b *Backend) handleAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"audit": rows})
+}
+
+// handleAccessLogs pages the observability table (access_logs): web +
+// launcher logins, Yggdrasil server traffic, Union traffic. Filters: kind
+// (exact, "" = all) and q (substring over who/ip/detail).
+func (b *Backend) handleAccessLogs(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	rows, total, err := b.Store.ListAccessLogs(r.Context(), q.Get("kind"), q.Get("q"), page, 50)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"logs": rows, "total": total, "page": page})
 }

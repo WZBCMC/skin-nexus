@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"skin-nexus/server/internal/accesslog"
 	"skin-nexus/server/internal/adminapi"
 	"skin-nexus/server/internal/appearance"
 	"skin-nexus/server/internal/auth"
@@ -235,7 +236,26 @@ func main() {
 		}
 		return mojangFallbackDefault
 	}))
+	// 运维观测面（2026-10-26）：网页/启动器登录、Yggdrasil 服务器流量、
+	// 联盟出入站通信统一落 access_logs，管理面板可筛选分页查看。全程
+	// 旁路：nil 安全、写失败吞掉，任何情况下不改变协议响应。保留 90 天，
+	// 每 6h 清一次。
+	accessLog := accesslog.New(st.InsertAccessLog)
+	yggAPI.SetAccess(accessLog)
+	if unionOut != nil {
+		unionOut.SetAccess(accessLog)
+	}
+	go func() {
+		ticker := time.NewTicker(6 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if n, err := st.PurgeAccessLogs(context.Background(), 90*24*time.Hour); err == nil && n > 0 {
+				log.Printf("access_logs: purged %d rows older than 90d", n)
+			}
+		}
+	}()
 	backend := webapi.New(st, ts, yggSvc)
+	backend.Access = accessLog
 	backend.RequireInvite = cfg.RequireInvite
 	// A1 找回密码: reset-link base + mail subject + env fallbacks for the
 	// panel's SMTP keys (option wins per request, see smtpConfig).

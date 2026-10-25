@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"skin-nexus/server/internal/accesslog"
 )
 
 // Outbound is the member -> hub client (analysis/yggdrasil-connect.md §4.2,
@@ -24,6 +26,35 @@ type Outbound struct {
 	key    atomic.Value // string: union member key
 	to     time.Duration
 	enable atomic.Bool  // hot-toggled by union_enabled (2026-10-24 拍板)
+	// access logs every outbound hub call (union_out rows for the admin
+	// panel); nil = off. Recording never affects the call itself.
+	access *accesslog.Logger
+}
+
+// SetAccess installs the outbound traffic logger (main wires the
+// access_logs sink once, before any sync/goroutine starts).
+func (o *Outbound) SetAccess(l *accesslog.Logger) { o.access = l }
+
+// logOut records one outbound call: outcome ok (2xx) / error (transport or
+// decode) / fail (hub non-2xx); detail carries method, path, status and
+// latency — the operator's "did the hub answer, and how fast" line.
+func (o *Outbound) logOut(method, path string, status int, dur time.Duration, err error) {
+	if o.access == nil {
+		return
+	}
+	outcome := accesslog.OutcomeOK
+	switch {
+	case err != nil && status == 0:
+		outcome = accesslog.OutcomeError
+	case err != nil:
+		outcome = accesslog.OutcomeFail
+	}
+	o.access.Log(context.Background(), accesslog.Entry{
+		Kind:    accesslog.UnionOut,
+		Outcome: outcome,
+		Who:     method + " " + path,
+		Detail: fmt.Sprintf("status=%d dur=%dms", status, dur.Milliseconds()),
+	})
 }
 
 // keyStore semantics: the member key is read on every request and rewritten
@@ -461,7 +492,16 @@ func (o *Outbound) BlacklistDelete(ctx context.Context, id string) (*ProxyResult
 
 // doJSON performs one authenticated JSON call. Non-2xx becomes *APIError; a
 // nil out skips response decoding.
+// doJSON is the instrumented wrapper: one timing/logging point for every
+// hub call (the inner function keeps the original contract verbatim).
 func (o *Outbound) doJSON(ctx context.Context, method, path string, body any, out any) (int, json.RawMessage, error) {
+	start := time.Now()
+	st, raw, err := o.doJSONInner(ctx, method, path, body, out)
+	o.logOut(method, path, st, time.Since(start), err)
+	return st, raw, err
+}
+
+func (o *Outbound) doJSONInner(ctx context.Context, method, path string, body any, out any) (int, json.RawMessage, error) {
 	if !o.Enabled() {
 		return 0, nil, ErrDisabled
 	}
@@ -514,10 +554,22 @@ func (o *Outbound) doJSON(ctx context.Context, method, path string, body any, ou
 	return resp.StatusCode, raw, nil
 }
 
-// doProxy relays a blacklist call untouched: transport errors are returned,
-// hub non-2xx answers are passed through in ProxyResult (legacy behavior of
-// UnionBlacklistController: response(body, status)).
+// doProxy is the instrumented wrapper (see doJSON).
 func (o *Outbound) doProxy(ctx context.Context, method, path string, body json.RawMessage) (*ProxyResult, error) {
+	start := time.Now()
+	res, err := o.doProxyInner(ctx, method, path, body)
+	st := 0
+	if res != nil {
+		st = res.StatusCode
+	}
+	o.logOut(method, path, st, time.Since(start), err)
+	return res, err
+}
+
+// doProxyInner relays a blacklist call untouched: transport errors are
+// returned, hub non-2xx answers are passed through in ProxyResult (legacy
+// behavior of UnionBlacklistController: response(body, status)).
+func (o *Outbound) doProxyInner(ctx context.Context, method, path string, body json.RawMessage) (*ProxyResult, error) {
 	if !o.Enabled() {
 		return nil, ErrDisabled
 	}

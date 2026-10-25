@@ -13,6 +13,7 @@ import InvitationView from './admin/InvitationView.vue'
 import SettingsView from './admin/SettingsView.vue'
 import StatusView from './admin/StatusView.vue'
 import UnionView from './admin/UnionView.vue'
+import AccessLogsView from './admin/AccessLogsView.vue'
 
 const { t } = useI18n()
 
@@ -25,6 +26,7 @@ const nav = [
   { id: 'invitation', labelKey: 'admin.navInvitation', comp: InvitationView },
   { id: 'settings', labelKey: 'admin.navSettings', comp: SettingsView },
   { id: 'status', labelKey: 'admin.navStatus', comp: StatusView },
+  { id: 'access', labelKey: 'admin.navAccess', comp: AccessLogsView },
   { id: 'union', labelKey: 'admin.navUnion', comp: UnionView },
 ]
 const current = ref('dashboard')

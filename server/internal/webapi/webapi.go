@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"skin-nexus/server/internal/accesslog"
 	"skin-nexus/server/internal/announce"
 	"skin-nexus/server/internal/auth"
 	"skin-nexus/server/internal/ratelimit"
@@ -59,10 +60,26 @@ type Backend struct {
 	BaseURL      string
 	SiteName     string
 
+	// Access is the observability sidecar (nil = off): web login/register
+	// and inbound Union traffic lines for the admin panel. Best-effort —
+	// a failed log write never changes an HTTP response.
+	Access *accesslog.Logger
+
 	// union is the MUA Union hub client (nil or disabled -> no /api/v1/union/*
 	// routes exist at all: zero surface for non-alliance deployments).
 	union    *union.Outbound
 	unionSrv *unionServerCache
+}
+
+// webAccessLog records a web-side entry with the request's IP/UA attached
+// (nil-safe through the logger).
+func (b *Backend) webAccessLog(r *http.Request, e accesslog.Entry) {
+	if b.Access == nil {
+		return
+	}
+	e.IP = ygg.ClientIP(r)
+	e.UA = r.UserAgent()
+	b.Access.Log(r.Context(), e)
 }
 
 // inviteRequired resolves the register gate per request: options-panel value
@@ -132,10 +149,23 @@ func (b *Backend) Handler() http.Handler {
 	requireUnion := func(h http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			if b.union == nil || !b.union.Enabled() {
+				// Calls against a disabled module are a misconfiguration
+				// signal worth seeing in the panel, not silence.
+				b.webAccessLog(r, accesslog.Entry{Kind: accesslog.UnionIn,
+					Outcome: accesslog.OutcomeDenied,
+					Detail:  "module_disabled " + r.Method + " " + r.URL.Path})
 				http.NotFound(w, r)
 				return
 			}
-			h(w, r)
+			sw := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+			h(sw, r)
+			outcome := accesslog.OutcomeOK
+			if sw.status >= 400 {
+				outcome = accesslog.OutcomeFail
+			}
+			b.webAccessLog(r, accesslog.Entry{Kind: accesslog.UnionIn,
+				Outcome: outcome,
+				Detail:  r.Method + " " + r.URL.RequestURI() + " status=" + strconv.Itoa(sw.status)})
 		}
 	}
 	mux.HandleFunc("GET /api/v1/union/servers", requireUnion(b.handleUnionServers))
@@ -157,6 +187,19 @@ func maxBody(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// statusRecorder captures the response status for the union inbound log.
+// The JSON union handlers only use Header/WriteHeader/Write, so the plain
+// wrapper (no Flusher/Hijacker passthrough) covers the surface.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusRecorder) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
 }
 
 // ---- helpers ----
@@ -234,6 +277,8 @@ func (b *Backend) handleRegister(w http.ResponseWriter, r *http.Request) {
 	// rejects; default 3, 0 = off). Checked before any hashing work.
 	if limit := b.Store.RegsPerIP(r.Context()); limit > 0 {
 		if n, err := b.Store.CountUsersByIP(r.Context(), ygg.ClientIP(r)); err == nil && n >= limit {
+			b.webAccessLog(r, accesslog.Entry{Kind: accesslog.WebRegister,
+				Outcome: accesslog.OutcomeDenied, Who: req.Nickname, Detail: "ip_cap"})
 			writeErr(w, http.StatusForbidden, "该 IP 注册数已达上限")
 			return
 		}
@@ -252,6 +297,8 @@ func (b *Backend) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if code != "" {
 		uid, err = b.Store.CreateUserWithInvitation(r.Context(), req.Email, req.Nickname, hash, b.MaxChars, code, ygg.ClientIP(r))
 		if errors.Is(err, store.ErrNotFound) {
+			b.webAccessLog(r, accesslog.Entry{Kind: accesslog.WebRegister,
+				Outcome: accesslog.OutcomeFail, Who: req.Nickname, Detail: "bad_invite"})
 			writeErr(w, http.StatusBadRequest, "邀请码无效")
 			return
 		}
@@ -260,6 +307,8 @@ func (b *Backend) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		// unique constraint violation -> nickname/email taken
+		b.webAccessLog(r, accesslog.Entry{Kind: accesslog.WebRegister,
+			Outcome: accesslog.OutcomeFail, Who: req.Nickname, Detail: "taken"})
 		writeErr(w, http.StatusConflict, "昵称或邮箱已被占用")
 		return
 	}
@@ -267,6 +316,9 @@ func (b *Backend) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "会话创建失败，请重试")
 		return
 	}
+	b.webAccessLog(r, accesslog.Entry{Kind: accesslog.WebRegister,
+		Outcome: accesslog.OutcomeOK, UID: uid, Who: req.Nickname,
+		Detail: "invite=" + strconv.FormatBool(code != "")})
 	writeJSON(w, http.StatusCreated, map[string]interface{}{"id": uid, "nickname": req.Nickname})
 }
 
@@ -285,10 +337,14 @@ func (b *Backend) handleLogin(w http.ResponseWriter, r *http.Request) {
 		if b.Limiter.Locked(idKey) {
 			ra := int(b.Limiter.RetryAfter(idKey).Seconds()) + 1
 			w.Header().Set("Retry-After", strconv.Itoa(ra))
+			b.webAccessLog(r, accesslog.Entry{Kind: accesslog.WebLogin,
+				Outcome: accesslog.OutcomeDenied, Who: req.Identifier, Detail: "locked"})
 			writeErr(w, http.StatusTooManyRequests, "尝试次数过多，请稍后再试")
 			return
 		}
 		if !b.Limiter.Allow(ipKey) {
+			b.webAccessLog(r, accesslog.Entry{Kind: accesslog.WebLogin,
+				Outcome: accesslog.OutcomeDenied, Who: req.Identifier, Detail: "rate_limited"})
 			writeErr(w, http.StatusTooManyRequests, "请求过于频繁，请稍后再试")
 			return
 		}
@@ -298,6 +354,8 @@ func (b *Backend) handleLogin(w http.ResponseWriter, r *http.Request) {
 		if b.Limiter != nil {
 			b.Limiter.Fail(idKey)
 		}
+		b.webAccessLog(r, accesslog.Entry{Kind: accesslog.WebLogin,
+			Outcome: accesslog.OutcomeFail, Who: req.Identifier, Detail: "unknown_account"})
 		writeErr(w, http.StatusUnauthorized, "账号或密码错误")
 		return
 	}
@@ -306,6 +364,8 @@ func (b *Backend) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// "everyone's password is wrong"). Only a clean !ok is 401.
 	ok, err := b.Store.VerifyPassword(r.Context(), u.ID, req.Password)
 	if err != nil {
+		b.webAccessLog(r, accesslog.Entry{Kind: accesslog.WebLogin,
+			Outcome: accesslog.OutcomeError, UID: u.ID, Who: req.Identifier, Detail: "verify_error"})
 		writeErr(w, http.StatusInternalServerError, "登录校验失败，请稍后重试")
 		return
 	}
@@ -313,6 +373,8 @@ func (b *Backend) handleLogin(w http.ResponseWriter, r *http.Request) {
 		if b.Limiter != nil {
 			b.Limiter.Fail(idKey)
 		}
+		b.webAccessLog(r, accesslog.Entry{Kind: accesslog.WebLogin,
+			Outcome: accesslog.OutcomeFail, UID: u.ID, Who: req.Identifier, Detail: "bad_password"})
 		writeErr(w, http.StatusUnauthorized, "账号或密码错误")
 		return
 	}
@@ -327,9 +389,13 @@ func (b *Backend) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := b.issueSession(w, r, u.ID); err != nil {
+		b.webAccessLog(r, accesslog.Entry{Kind: accesslog.WebLogin,
+			Outcome: accesslog.OutcomeError, UID: u.ID, Who: u.Nickname, Detail: "session_error"})
 		writeErr(w, http.StatusInternalServerError, "会话创建失败，请重试")
 		return
 	}
+	b.webAccessLog(r, accesslog.Entry{Kind: accesslog.WebLogin,
+		Outcome: accesslog.OutcomeOK, UID: u.ID, Who: u.Nickname, Detail: "web"})
 	writeJSON(w, http.StatusOK, map[string]interface{}{"id": u.ID, "nickname": u.Nickname})
 }
 

@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"skin-nexus/server/internal/accesslog"
 )
 
 // Metadata is the ALI discovery document (live-capture shape,
@@ -49,6 +51,10 @@ type API struct {
 	// A2 Mojang fallback (nil = off, the default): misses on profile and
 	// hasJoined are offered to the official sessionserver before the 204.
 	fallback *Fallback
+	// Access is the observability sidecar (nil = off): authenticate/refresh/
+	// validate/join/hasJoined/profile traffic lines for the admin panel.
+	// Recording is best-effort and can never change a wire response.
+	access *accesslog.Logger
 }
 
 func NewAPI(svc *Service, cfg MetadataConfig) *API {
@@ -58,6 +64,19 @@ func NewAPI(svc *Service, cfg MetadataConfig) *API {
 // SetFallback installs the official-sessionserver fallback (main wires the
 // hot `ygg_mojang_fallback` panel toggle).
 func (a *API) SetFallback(f *Fallback) { a.fallback = f }
+
+// SetAccess installs the traffic logger (main wires the access_logs sink).
+func (a *API) SetAccess(l *accesslog.Logger) { a.access = l }
+
+// accessLog is the nil-safe recording call shared by every handler.
+func (a *API) accessLog(r *http.Request, e accesslog.Entry) {
+	if a.access == nil {
+		return
+	}
+	e.IP = clientIP(r)
+	e.UA = r.UserAgent()
+	a.access.Log(r.Context(), e)
+}
 
 // Handler returns the route table. Routes are rooted at the /api/yggdrasil
 // prefix — the compatibility surface itself (legacy clients hardcode it).
@@ -214,6 +233,8 @@ func (a *API) handleAuthenticate(w http.ResponseWriter, r *http.Request) {
 	ipKey := "ip:" + clientIP(r)
 	if ok, retryAfter := a.svc.AuthGapAllow(r.Context(), strings.TrimSpace(req.Username)); !ok {
 		w.Header().Set("Retry-After", strconv.Itoa(int(retryAfter.Seconds())+1))
+		a.accessLog(r, accesslog.Entry{Kind: accesslog.YggAuthenticate,
+			Outcome: accesslog.OutcomeDenied, Who: req.Username, Detail: "auth_gap"})
 		writeError(w, http.StatusForbidden, "ForbiddenOperationException",
 			"Too many requests. Please try again in "+strconv.Itoa(int(retryAfter.Seconds())+1)+"s.")
 		return
@@ -222,10 +243,14 @@ func (a *API) handleAuthenticate(w http.ResponseWriter, r *http.Request) {
 		if a.svc.Limiter.Locked(idKey) {
 			ra := int(a.svc.Limiter.RetryAfter(idKey).Seconds()) + 1
 			w.Header().Set("Retry-After", strconv.Itoa(ra))
+			a.accessLog(r, accesslog.Entry{Kind: accesslog.YggAuthenticate,
+				Outcome: accesslog.OutcomeDenied, Who: req.Username, Detail: "locked"})
 			writeError(w, http.StatusTooManyRequests, "TooManyRequests", "Too many failed attempts. Please try again later.")
 			return
 		}
 		if !a.svc.Limiter.Allow(ipKey) {
+			a.accessLog(r, accesslog.Entry{Kind: accesslog.YggAuthenticate,
+				Outcome: accesslog.OutcomeDenied, Who: req.Username, Detail: "rate_limited"})
 			writeError(w, http.StatusTooManyRequests, "TooManyRequests", "Too many requests from your address.")
 			return
 		}
@@ -235,12 +260,16 @@ func (a *API) handleAuthenticate(w http.ResponseWriter, r *http.Request) {
 		if a.svc.Limiter != nil {
 			a.svc.Limiter.Fail(idKey)
 		}
+		a.accessLog(r, accesslog.Entry{Kind: accesslog.YggAuthenticate,
+			Outcome: accesslog.OutcomeFail, Who: req.Username, Detail: "invalid_credentials"})
 		writeError(w, http.StatusForbidden, "ForbiddenOperationException", "Invalid credentials. Invalid username or password.")
 		return
 	}
 	if a.svc.Limiter != nil {
 		a.svc.Limiter.Succeed(idKey)
 	}
+	a.accessLog(r, accesslog.Entry{Kind: accesslog.YggAuthenticate,
+		Outcome: accesslog.OutcomeOK, Who: req.Username, Detail: "client_token=" + req.ClientToken})
 	writeTokenResponse(w, t, players, req.RequestUser)
 }
 
@@ -260,6 +289,8 @@ func (a *API) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 	// IP sliding window on refresh too (opaque-token brute force).
 	if a.svc.Limiter != nil && !a.svc.Limiter.Allow("ip:"+clientIP(r)) {
+		a.accessLog(r, accesslog.Entry{Kind: accesslog.YggRefresh,
+			Outcome: accesslog.OutcomeDenied, Detail: "rate_limited"})
 		writeError(w, http.StatusTooManyRequests, "TooManyRequests", "Too many requests from your address.")
 		return
 	}
@@ -268,6 +299,8 @@ func (a *API) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	if ref := parseProfileRef(req.SelectedProfile); ref != "" {
 		p, err := a.svc.PlayerPIDByUUID(r.Context(), ref)
 		if err != nil {
+			a.accessLog(r, accesslog.Entry{Kind: accesslog.YggRefresh,
+				Outcome: accesslog.OutcomeFail, Detail: "bad_profile_ref uuid=" + ref})
 			writeError(w, http.StatusBadRequest, "IllegalArgumentException", "请求参数不合法")
 			return
 		}
@@ -275,9 +308,13 @@ func (a *API) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 	t, players, err := a.svc.Refresh(r.Context(), req.AccessToken, req.ClientToken, pid)
 	if err != nil {
+		a.accessLog(r, accesslog.Entry{Kind: accesslog.YggRefresh,
+			Outcome: accesslog.OutcomeFail, Detail: "invalid_token"})
 		writeError(w, http.StatusForbidden, "ForbiddenOperationException", "Invalid token.")
 		return
 	}
+	a.accessLog(r, accesslog.Entry{Kind: accesslog.YggRefresh,
+		Outcome: accesslog.OutcomeOK, Detail: "client_token=" + req.ClientToken})
 	writeTokenResponse(w, t, players, req.RequestUser)
 }
 
@@ -294,9 +331,13 @@ func (a *API) handleValidate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.svc.Validate(r.Context(), req.AccessToken, req.ClientToken); err != nil {
+		a.accessLog(r, accesslog.Entry{Kind: accesslog.YggValidate,
+			Outcome: accesslog.OutcomeFail, Detail: "invalid_token"})
 		writeError(w, http.StatusForbidden, "ForbiddenOperationException", "Invalid token.")
 		return
 	}
+	a.accessLog(r, accesslog.Entry{Kind: accesslog.YggValidate,
+		Outcome: accesslog.OutcomeOK, Detail: ""})
 	noContent(w)
 }
 
@@ -351,18 +392,28 @@ func (a *API) handleJoin(w http.ResponseWriter, r *http.Request) {
 	// UUID spellings), matching the live legacy wire (capture 2026-10-23).
 	uu := parseProfileRef(req.SelectedProfile)
 	if uu == "" {
+		a.accessLog(r, accesslog.Entry{Kind: accesslog.YggJoin,
+			Outcome: accesslog.OutcomeFail, Detail: "bad_profile_ref serverId=" + req.ServerID})
 		writeError(w, http.StatusBadRequest, "IllegalArgumentException", "请求参数不合法")
 		return
 	}
 	err := a.svc.Join(r.Context(), req.AccessToken, uu, req.ServerID, clientIP(r))
 	switch {
 	case errors.Is(err, ErrEmailUnverified):
+		a.accessLog(r, accesslog.Entry{Kind: accesslog.YggJoin,
+			Outcome: accesslog.OutcomeFail, Detail: "email_unverified uuid=" + uu + " serverId=" + req.ServerID})
 		writeError(w, http.StatusForbidden, "ForbiddenOperationException", "Email not verified.")
 	case errors.Is(err, ErrPlayerMismatch):
+		a.accessLog(r, accesslog.Entry{Kind: accesslog.YggJoin,
+			Outcome: accesslog.OutcomeFail, Detail: "player_mismatch uuid=" + uu + " serverId=" + req.ServerID})
 		writeError(w, http.StatusForbidden, "ForbiddenOperationException", "请求的角色与令牌绑定的角色不一致")
 	case err != nil:
+		a.accessLog(r, accesslog.Entry{Kind: accesslog.YggJoin,
+			Outcome: accesslog.OutcomeFail, Detail: "invalid_token uuid=" + uu + " serverId=" + req.ServerID})
 		writeError(w, http.StatusForbidden, "ForbiddenOperationException", "Invalid token.")
 	default:
+		a.accessLog(r, accesslog.Entry{Kind: accesslog.YggJoin,
+			Outcome: accesslog.OutcomeOK, Detail: "uuid=" + uu + " serverId=" + req.ServerID})
 		noContent(w)
 	}
 }
@@ -388,18 +439,28 @@ func parseProfileRef(raw json.RawMessage) string {
 
 func (a *API) handleHasJoined(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	p, err := a.svc.HasJoined(r.Context(), q.Get("username"), q.Get("serverId"), q.Get("ip"))
+	name, sid := q.Get("username"), q.Get("serverId")
+	p, err := a.svc.HasJoined(r.Context(), name, sid, q.Get("ip"))
 	if err != nil {
 		// A2 fallback: no local join record → ask the official sessionserver
 		// before answering 204 (Mojang confirms joins it recorded itself —
 		// official-account players on authlib-injector servers).
-		if body, ok := a.fallback.hasJoined(r.Context(), q.Get("username"), q.Get("serverId"), q.Get("ip")); ok {
+		if body, ok := a.fallback.hasJoined(r.Context(), name, sid, q.Get("ip")); ok {
+			a.accessLog(r, accesslog.Entry{Kind: accesslog.YggHasJoined,
+				Outcome: accesslog.OutcomeOK, Who: name,
+				Detail: "src=official serverId=" + sid})
 			writeFallbackProfile(w, body)
 			return
 		}
+		a.accessLog(r, accesslog.Entry{Kind: accesslog.YggHasJoined,
+			Outcome: accesslog.OutcomeMiss, Who: name,
+			Detail: "src=none serverId=" + sid})
 		noContent(w) // unknown / expired / mismatch: 204, never 4xx
 		return
 	}
+	a.accessLog(r, accesslog.Entry{Kind: accesslog.YggHasJoined,
+		Outcome: accesslog.OutcomeOK, Who: name,
+		Detail: "src=local serverId=" + sid})
 	writeJSON(w, p)
 }
 
@@ -412,12 +473,18 @@ func (a *API) handleProfile(w http.ResponseWriter, r *http.Request) {
 		// still know it (signature policy mirrored: unsigned=true only when
 		// our own handler would have stripped signatures).
 		if body, ok := a.fallback.profile(r.Context(), uuid, withSig); ok {
+			a.accessLog(r, accesslog.Entry{Kind: accesslog.YggProfile,
+				Outcome: accesslog.OutcomeOK, Who: uuid, Detail: "src=official"})
 			writeFallbackProfile(w, body)
 			return
 		}
+		a.accessLog(r, accesslog.Entry{Kind: accesslog.YggProfile,
+			Outcome: accesslog.OutcomeMiss, Who: uuid, Detail: "src=none"})
 		noContent(w) // unknown profile: empty body
 		return
 	}
+	a.accessLog(r, accesslog.Entry{Kind: accesslog.YggProfile,
+		Outcome: accesslog.OutcomeOK, Who: uuid, Detail: "src=local"})
 	if !withSig {
 		for i := range p.Properties {
 			p.Properties[i].Signature = ""

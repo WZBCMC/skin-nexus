@@ -2,6 +2,18 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
+## 2026-10-26（C1 运维观测面：访问与通信日志全链路）
+
+- **需求**（用户点单）：网页/MC 启动器登录、MC 服务器↔皮肤站、MUA Union↔皮肤站通信全部落日志，运维在管理面板前端即可了解情况（UA/IP/时间等）。
+- **数据面**：`0011_access_logs` 迁移新增 `access_logs` 表（kind/outcome/uid/who/ip/ua/detail/created_at，kind×time、who、uid、time 四索引）；**保留 90 天**，启动期 6h 定时清理。与 `audit_log` 分工：audit 记「安全动作」，access_logs 记「流量事实」。
+- **旁路记录铁律**：`internal/accesslog.Logger` nil 安全（零值与 nil 均不记录）、sink 写失败吞掉、字段 rune-safe 截断（who 64/ip 45/ua 255/detail 255 字节，绝不劈开 UTF-8）、ctx detach（客户端断连仍留痕）——**协议面响应语义零变化**（ygg 处理器级测试断言无 logger 时行为不变）。
+- **采集点**：
+  - 网页登录六结局（成功/未知账号/密码错/锁定/限流/校验错误）、注册四结局（成功/占用/邀请码无效/IP 上限）。
+  - 启动器侧：authenticate（含 auth_gap/锁定/限流）、refresh、validate；join 三因（email_unverified/player_mismatch/invalid_token）；hasJoined 与 profile 标记数据来源 `src=local/official/none`——**A2 兜底何时命中官方一目了然**。
+  - Union 入站：`requireUnion` 包装捕获状态码（模块禁用时的调用也记——misconfig 信号）；出站：`doJSON`/`doProxy` 单点包裹（method/path/status/耗时）。
+- **面板**：新增「访问日志」页（类型下拉 + who/IP/详情子串搜索 + 分页 + 彩色结局徽章）；admin API `GET /api/admin/v1/access-logs?kind=&q=&page=`。
+- **测试**：accesslog 包单元测试（nil 安全/rune 对齐截断/sink 失败吞/断连留痕）；ygg 处理器级四测（profile/hasJoined 三来源、authenticate 结局、join 三因、无 logger 不变）；store 集成测试（插入/类型筛选/子串搜索/分页序/uid 回传/过期清理）。全仓 `go test` 绿、`vite build` 通过。
+
 ## 2026-10-26（A2 Mojang 官方兜底：profile/hasJoined 本地未命中 → 官方 sessionserver）
 
 - **动机**：两家竞品都有 fallback 链，本站在「服务器指向本站 authlib-injector、玩家却用官方账号」的场景会把人踢下线（本地未命中即 204）。补最小版：`profile/{uuid}` 与 `hasJoined` 本地未命中时向 `sessionserver.mojang.com` 串行查询一次，命中即原样透传官方 JSON（字节兼容），未命中维持原 204——**只扩展原本为空的分支，本地命中路径一字未动**。
