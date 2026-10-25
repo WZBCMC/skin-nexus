@@ -76,6 +76,7 @@ async function boot() {
     user.value = null
   }
   if (isDevice) view.value = 'device'
+  else if (!user.value && location.pathname === '/register') view.value = 'register' // landing CTA deep link
   else view.value = user.value ? 'dashboard' : 'login'
 }
 

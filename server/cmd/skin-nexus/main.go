@@ -539,7 +539,28 @@ func main() {
 	root.Handle("GET /sitemap.xml", sitemapHandler(seoEng, st, cfg.BaseURL))
 	root.Handle("GET /robots.txt", robotsHandler(seoEng))
 	root.Handle("GET /theme-assets/{id}/{file}", themeAssetHandler(themeReg))
-	spa := spaHandler("web/dist", seoEng, appearEng)
+	// Public landing page data (counts + featured library cards).
+	landingFn := func(ctx context.Context) landingData {
+		d := landingData{SiteName: cfg.SiteName}
+		if n, err := st.CountUsers(ctx); err == nil {
+			d.Users = n
+		}
+		if n, err := st.CountPlayers(ctx); err == nil {
+			d.Players = n
+		}
+		if n, err := st.CountTextures(ctx); err == nil {
+			d.Textures = n
+		}
+		if rows, _, err := st.SkinlibList(ctx, store.SkinlibOpts{Sort: "likes", Page: 1, PerPage: 8}); err == nil {
+			for _, r := range rows {
+				if r.Public {
+					d.Featured = append(d.Featured, landingTexture{TID: r.TID, Name: r.Name})
+				}
+			}
+		}
+		return d
+	}
+	spa := spaHandler("web/dist", seoEng, appearEng, landingFn)
 	if oidcProvider != nil {
 		spa = oidcProvider.Wrap(spa)
 	}
@@ -632,11 +653,19 @@ func textureHandler(ts *texture.Store) http.HandlerFunc {
 // directory itself, so "exists on disk" must not mean "static file" — root and
 // /index.html need the injected index.html too (2026-10-25 fix: "/" was served
 // raw and skipped SEO/theme/custom injection entirely).
-func spaHandler(dir string, seoEng *seo.Engine, appearEng *appearance.Engine) http.Handler {
+// The exact root path serves the public server-rendered landing page instead
+// of the SPA shell (2026-10-25 拍板: exposure for first-time visitors/crawlers).
+func spaHandler(dir string, seoEng *seo.Engine, appearEng *appearance.Engine, landing func(context.Context) landingData) http.Handler {
 	if st, err := os.Stat(dir); err == nil && st.IsDir() {
 		fs := http.FileServer(http.Dir(dir))
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			p := strings.TrimPrefix(r.URL.Path, "/")
+			if p == "" && landing != nil {
+				html := renderLanding(r.Context(), seoEng, appearEng, landing(r.Context()))
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				_, _ = w.Write([]byte(html))
+				return
+			}
 			inject := !strings.HasPrefix(p, "api/")
 			if inject {
 				if fi, err := os.Stat(dir + "/" + p); err == nil && !fi.IsDir() && p != "index.html" {
@@ -650,7 +679,7 @@ func spaHandler(dir string, seoEng *seo.Engine, appearEng *appearance.Engine) ht
 					return
 				}
 				html := string(raw)
-				html = seoEng.RenderHead(r.Context(), html)
+				html = seoEng.RenderHeadWith(r.Context(), html, pageMetaFor(p))
 				html = appearEng.Render(r.Context(), html)
 				w.Header().Set("Content-Type", "text/html; charset=utf-8")
 				_, _ = w.Write([]byte(html))

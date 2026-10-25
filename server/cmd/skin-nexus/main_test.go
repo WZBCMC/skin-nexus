@@ -93,9 +93,13 @@ func TestSpaHandlerInjectsEveryHTMLPath(t *testing.T) {
 	}
 	h := spaHandler(dir,
 		seo.NewEngine(opts, seo.Defaults{SiteName: "示例站", BaseURL: "https://skin.example.com"}),
-		appearance.NewEngine(opts, reg))
+		appearance.NewEngine(opts, reg),
+		func(context.Context) landingData {
+			return landingData{SiteName: "示例站", Users: 3, Players: 4, Textures: 5,
+				Featured: []landingTexture{{TID: 7, Name: "测试皮"}}}
+		})
 
-	for _, path := range []string{"/", "/index.html", "/register", "/profile/Steve"} {
+	for _, path := range []string{"/index.html", "/register", "/profile/Steve"} {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		body := rec.Body.String()
@@ -104,8 +108,12 @@ func TestSpaHandlerInjectsEveryHTMLPath(t *testing.T) {
 				t.Fatalf("GET %s: marker %s left unreplaced: %s", path, marker, body)
 			}
 		}
-		if !strings.Contains(body, "<title>示例站</title>") {
-			t.Fatalf("GET %s: SEO head not injected: %s", path, body)
+		wantTitle := "<title>示例站</title>"
+		if path == "/profile/Steve" {
+			wantTitle = "<title>Steve - 示例站</title>" // per-route meta
+		}
+		if !strings.Contains(body, wantTitle) {
+			t.Fatalf("GET %s: SEO head not injected (want %s): %s", path, wantTitle, body)
 		}
 		if !strings.Contains(body, "skin-custom-css") || !strings.Contains(body, ".card{border-radius:20px}") {
 			t.Fatalf("GET %s: custom CSS not injected: %s", path, body)
@@ -121,5 +129,45 @@ func TestSpaHandlerInjectsEveryHTMLPath(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/assets/app.js", nil))
 	if got := rec.Body.String(); got != "console.log(1)" {
 		t.Fatalf("asset file must be served raw, got %q", got)
+	}
+}
+
+// The exact root path serves the server-rendered public landing page (visitor
+// exposure), still through the SEO + appearance injection layers.
+func TestSpaHandlerServesLandingAtRoot(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html><head><!--skin-seo--></head><body><div id=\"app\"></div></body></html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	opts := &fakeOpts{kv: map[string]string{"custom_css": ".card{border-radius:20px}"}}
+	reg, err := theme.NewRegistry(t.TempDir(), "0.1.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := spaHandler(dir,
+		seo.NewEngine(opts, seo.Defaults{SiteName: "示例站", BaseURL: "https://skin.example.com"}),
+		appearance.NewEngine(opts, reg),
+		func(context.Context) landingData {
+			return landingData{SiteName: "示例站", Users: 3, Players: 4, Textures: 5,
+				Featured: []landingTexture{{TID: 7, Name: "测试皮"}}}
+		})
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	body := rec.Body.String()
+	for _, want := range []string{
+		"hero",                 // landing markup
+		"注册账号", "登录",      // CTAs
+		"/preview/7", "测试皮", // featured library cards
+		"skin-custom-css", // appearance injection still applies
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("landing missing %q: %s", want, body)
+		}
+	}
+	for _, bad := range []string{"<!--skin-seo-->", "<!--skin-theme-->", `id="app"`} {
+		if strings.Contains(body, bad) {
+			t.Fatalf("landing must not carry %q: %s", bad, body)
+		}
 	}
 }

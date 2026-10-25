@@ -156,33 +156,60 @@ func defaultRobots(canonical string, sitemapOn, noIndex bool) string {
 	return sb.String()
 }
 
+// PageMeta carries per-page overrides for RenderHeadWith.
+type PageMeta struct {
+	TitleSuffix string // appended as "<suffix> - <site title>" when set
+	Description string // "" = keep the site-wide description
+	Path        string // canonical path below the site base ("/profile/steve")
+}
+
 // RenderHead replaces the SEO placeholders in the SPA index.html template.
 // The template carries markers <!--skin-seo--> so injection is a pure string
 // replace — no HTML parsing dependency.
 func (e *Engine) RenderHead(ctx context.Context, indexHTML string) string {
+	return e.RenderHeadWith(ctx, indexHTML, PageMeta{})
+}
+
+// RenderHeadWith is RenderHead with per-page overrides so the landing page
+// and player pages carry distinct titles/descriptions/canonicals.
+func (e *Engine) RenderHeadWith(ctx context.Context, indexHTML string, pm PageMeta) string {
 	s := e.Settings(ctx)
 	if s.NoIndex {
 		s.Robots = defaultRobots(s.Canonical, s.SitemapOn, true)
 	}
+	title := s.Title
+	if pm.TitleSuffix != "" {
+		title = pm.TitleSuffix + " - " + s.Title
+	}
+	desc := s.Description
+	if pm.Description != "" {
+		desc = pm.Description
+	}
+	canonical := strings.TrimRight(s.Canonical, "/")
+	if pm.Path != "" {
+		canonical += "/" + strings.TrimPrefix(pm.Path, "/")
+	} else {
+		canonical += "/"
+	}
 	var sb strings.Builder
-	sb.WriteString("<title>" + esc(s.Title) + "</title>\n")
-	if s.Description != "" {
-		sb.WriteString(`<meta name="description" content="` + esc(s.Description) + `">` + "\n")
+	sb.WriteString("<title>" + esc(title) + "</title>\n")
+	if desc != "" {
+		sb.WriteString(`<meta name="description" content="` + esc(desc) + `">` + "\n")
 	}
 	if s.Keywords != "" {
 		sb.WriteString(`<meta name="keywords" content="` + esc(s.Keywords) + `">` + "\n")
 	}
 	sb.WriteString(`<meta name="robots" content="` + robotsContent(s) + `">` + "\n")
-	if s.Canonical != "" {
-		sb.WriteString(`<link rel="canonical" href="` + esc(s.Canonical) + `/">` + "\n")
+	if canonical != "" {
+		sb.WriteString(`<link rel="canonical" href="` + esc(canonical) + `">` + "\n")
 	}
-	sb.WriteString(`<meta property="og:title" content="` + esc(s.Title) + `">` + "\n")
+	sb.WriteString(`<meta property="og:title" content="` + esc(title) + `">` + "\n")
 	sb.WriteString(`<meta property="og:type" content="website">` + "\n")
-	if s.Canonical != "" {
-		sb.WriteString(`<meta property="og:url" content="` + esc(s.Canonical) + `/">` + "\n")
+	if canonical != "" {
+		sb.WriteString(`<meta property="og:url" content="` + esc(canonical) + `">` + "\n")
 	}
-	if s.Description != "" {
-		sb.WriteString(`<meta property="og:description" content="` + esc(s.Description) + `">` + "\n")
+	if desc != "" {
+		sb.WriteString(`<meta property="og:description" content="` + esc(desc) + `">` + "\n")
 	}
 	if s.OGImage != "" {
 		sb.WriteString(`<meta property="og:image" content="` + esc(s.OGImage) + `">` + "\n")
