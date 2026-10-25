@@ -43,9 +43,7 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!DOCTYPE html>
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<!--skin-seo-->
-<!--skin-theme-->
-<!--skin-custom-head-->
+{{.HeadAnchors}}
 <style>
   :root { color-scheme: dark; }
   body { margin: 0; font-family: system-ui, -apple-serif, "Segoe UI", sans-serif;
@@ -107,7 +105,7 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!DOCTYPE html>
       · © {{.Year}} {{.SiteName}}
     </footer>
   </div>
-  <!--skin-custom-body-->
+  {{.BodyAnchor}}
 </body>
 </html>
 `))
@@ -124,13 +122,33 @@ func pageMetaFor(p string) seo.PageMeta {
 	return seo.PageMeta{}
 }
 
+// Injection anchors are passed as trusted template.HTML data: html/template
+// strips HTML comments written in template source, which silently deleted the
+// <!--skin-*--> markers and left the SEO/theme/custom blocks unanchored
+// (2026-10-25 production regression, reproduced in tests).
+const (
+	landingHeadAnchors = "<!--skin-seo-->\n<!--skin-theme-->\n<!--skin-custom-head-->"
+	landingBodyAnchor  = "<!--skin-custom-body-->"
+)
+
+type landingView struct {
+	landingData
+	HeadAnchors template.HTML
+	BodyAnchor  template.HTML
+}
+
 // renderLanding renders the landing page through the same SEO + appearance
 // injection layers as the SPA shell.
 func renderLanding(ctx context.Context, seoEng *seo.Engine, appearEng *appearance.Engine, d landingData) string {
 	d.Year = time.Now().Year()
 	d.Intro = landingIntro
 	var sb strings.Builder
-	if err := landingTmpl.Execute(&sb, d); err != nil {
+	v := landingView{
+		landingData: d,
+		HeadAnchors: template.HTML(landingHeadAnchors),
+		BodyAnchor:  template.HTML(landingBodyAnchor),
+	}
+	if err := landingTmpl.Execute(&sb, v); err != nil {
 		return "<!DOCTYPE html><html><body><h1>landing render error</h1></body></html>"
 	}
 	html := seoEng.RenderHeadWith(ctx, sb.String(), seo.PageMeta{Description: landingIntro})

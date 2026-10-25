@@ -8,6 +8,7 @@
 - **逐页 SEO meta**：`seo.RenderHeadWith(PageMeta)` 落地，`/profile/{name}` 逐页标题（`<角色名> - <站名>`）与逐页 canonical——sitemap 条目不再千篇一律；首页 description 用站点简介兜底。
 - **`/register` 深链识别**：SPA 启动按路径直达注册卡（sitemap 早已收录 `/register`，此前落到登录卡）。
 - 回归测试：landing 渲染（CTA/统计/精选/注入/转义）、profile 逐页 meta、注入覆盖与级联顺序断言保持全绿。
+- **上线即抓即修**：html/template 会剥离模板源里的 HTML 注释，`<!--skin-*-->` 锚点在 landing 渲染时被整体吃掉（SEO/主题/自定义三块全部失去锚点、首页无 title）——锚点改为 `template.HTML` 受信值从数据侧注入，并新增「head 必须含 title/canonical」回归断言。
 
 ## 2026-10-25（UI 自定义体系修复 + 贡献指南）
 

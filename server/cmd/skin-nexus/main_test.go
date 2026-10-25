@@ -160,6 +160,7 @@ func TestSpaHandlerServesLandingAtRoot(t *testing.T) {
 		"注册账号", "登录",      // CTAs
 		"/preview/7", "测试皮", // featured library cards
 		"skin-custom-css", // appearance injection still applies
+		"<title>", "canonical", // SEO head block must survive html/template
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("landing missing %q: %s", want, body)
