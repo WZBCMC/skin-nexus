@@ -47,6 +47,7 @@
 | B5 | `/v2/capabilities` 互操作发现 + 公开权限目录 | element-skin `httpapi/discovery.go` | 生态向，单站收益低 |
 | B6 | webhook-worker 独立进程队列（lease claim/指数退避+抖动/死信/SSRF 防护/投递前权限复核，HMAC-SHA256 `v1=` 签名头） | element-skin `service/webhook/worker.go`、`cmd/webhook-worker/main.go` | 设计优秀但对当前规模过度工程；将来做开放平台时直接参考 |
 | B7 | Python SDK | element-skin `python-sdk/` | 生态向 |
+| B8 | **Microsoft 正版绑定**（AuthSource 实装，`auth.microsoft.enabled`） | 两家竞品均主打；我们仅 `server/internal/auth/authsource.go` 接口占位（phase-2 规划位）——skin-nexus-competitor-analysis 技能「已实证缺口」清单项，本轮 A/B 清单漏录，2026-10-26 补记 | 量级大（MS OAuth 注册/回调/安全审查/角色关联），需独立拍板与分段实施，不宜尾随本轮 |
 
 ### 明确不做
 
