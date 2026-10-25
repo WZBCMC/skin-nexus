@@ -36,7 +36,7 @@ var testTables = []string{
 	"oidc_auth_requests", "oidc_clients",
 	"union_kv", "web_sessions", "audit_log", "options",
 	"ygg_join_sessions", "ygg_tokens", "uuid_map", "textures", "players", "users",
-	"invitation_codes", "user_closet", "schema_migrations",
+	"invitation_codes", "user_closet", "password_reset_tokens", "schema_migrations",
 	"legacy_users", "legacy_players", "legacy_textures", "legacy_uuid",
 	"legacy_options", "legacy_user_closet", "legacy_invitation_codes",
 }

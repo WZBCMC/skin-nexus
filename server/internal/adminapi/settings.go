@@ -59,6 +59,13 @@ var settingsWhitelist = []struct {
 	{"union_queryemail_mode", true, "Union 查询邮箱模式：full/off（重启后生效）"},
 	{"union_oauth2_sig_private_key", true, "Union OAuth2 用户信息签名私钥（PEM；留空首启自动生成，重启后生效）"},
 	{"union_oauth2_sig_public_key", true, "Union OAuth2 用户信息签名公钥（PEM；留空首启自动生成，重启后生效）"},
+	// A1 找回密码（2026-10-26）：SMTP 热配置 —— 发信时逐键读取，保存即生效，
+	// 无重启概念。配置后用登录页「忘记密码」给自己发一封即可自测。
+	{"smtp_host", false, "SMTP 服务器地址（留空=关闭邮件功能；立即生效）"},
+	{"smtp_port", false, "SMTP 端口（465=隐式 TLS 直连；其它端口自动 STARTTLS 升级；默认 465）"},
+	{"smtp_user", false, "SMTP 用户名（多数服务商填完整邮箱地址）"},
+	{"smtp_pass", false, "SMTP 密码/授权码（QQ/163 等填授权码，不是登录密码）"},
+	{"smtp_from", false, "发件人（留空=用 smtp_user；可写 Name <a@b.c> 形式）"},
 }
 
 func (b *Backend) settingValue(ctx context.Context, key, def string) string {
@@ -206,7 +213,7 @@ func (b *Backend) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	// sig private key signs user-info; their VALUES stay in the options row.)
 	auditVal := val
 	switch req.Key {
-	case "union_member_key", "union_oauth2_sig_private_key":
+	case "union_member_key", "union_oauth2_sig_private_key", "smtp_pass":
 		auditVal = "<redacted>"
 	}
 	b.Store.InsertAudit(r.Context(), actorUID(r), "settings_update", map[string]any{

@@ -1,11 +1,24 @@
 package webapi
 
 import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
 
 	"skin-nexus/server/internal/auth"
+	"skin-nexus/server/internal/mailer"
+	"skin-nexus/server/internal/store"
+	"skin-nexus/server/internal/ygg"
 )
 
 // sessionCookieValue returns the caller's raw session token ("" if none).
@@ -87,5 +100,191 @@ func (b *Backend) handlePasswordChange(w http.ResponseWriter, r *http.Request) {
 	if err := b.Store.DeleteUserSessionsExcept(r.Context(), uid, sessionCookieValue(r)); err != nil {
 		b.Store.InsertAudit(r.Context(), uid, "password_change_session_purge_failed", map[string]any{"error": err.Error()})
 	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+// ---- A1 找回密码 (2026-10-26): forgot / reset pair ----
+//
+// Threat-model decisions:
+//   - No enumeration: forgot answers the same {"ok":true} for known and
+//     unknown emails; abuse control is rate limiting, not honesty.
+//   - No state oracle: reset collapses unknown / expired / already-used
+//     into one 400 message.
+//   - Tokens: 32 bytes of crypto/rand, hex-encoded; only the SHA-256 digest
+//     is stored; 30-minute TTL on the DB clock; single-use atomic consume;
+//     a new forgot request invalidates the user's previous tokens.
+//   - A successful reset mirrors handlePasswordChange revocation exactly:
+//     yggdrasil tokens die, OIDC/launcher grants die (OnPasswordChange),
+//     every web session except the caller's own dies.
+
+const resetTokenTTL = 30 * time.Minute
+
+// smtpConfig resolves the SMTP account per request: panel option wins over
+// the env-derived default (same precedence as every other settings key).
+// Hot by design — save on the settings panel and the next forgot-password
+// already uses it; no restart.
+func (b *Backend) smtpConfig(ctx context.Context) *mailer.Config {
+	get := func(key string) string {
+		if v, ok, err := b.Store.GetOption(ctx, key); err == nil && ok {
+			return v
+		}
+		return b.SMTPDefaults[key]
+	}
+	host := strings.TrimSpace(get("smtp_host"))
+	if host == "" {
+		return nil
+	}
+	port := 465
+	if p, err := strconv.Atoi(strings.TrimSpace(get("smtp_port"))); err == nil && p > 0 && p < 65536 {
+		port = p
+	}
+	return &mailer.Config{
+		Host:     host,
+		Port:     port,
+		User:     strings.TrimSpace(get("smtp_user")),
+		Pass:     get("smtp_pass"),
+		From:     strings.TrimSpace(get("smtp_from")),
+		SiteName: b.SiteName,
+	}
+}
+
+// handleForgotPassword: POST /api/v1/password/forgot {email}
+func (b *Backend) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := jsonDecode(r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	req.Email = strings.TrimSpace(req.Email)
+	if req.Email == "" || !mailRe.MatchString(req.Email) {
+		writeErr(w, http.StatusBadRequest, "邮箱格式不正确")
+		return
+	}
+	// Sliding-window limits in the shared limiter's key space: per IP stops
+	// one host spraying many addresses, per address stops one target being
+	// mailed repeatedly. (Allow only — Fail/lockout is for login guessing.)
+	if b.Limiter != nil {
+		if !b.Limiter.Allow("pwf-ip:"+ygg.ClientIP(r)) ||
+			!b.Limiter.Allow("pwf-mail:"+strings.ToLower(req.Email)) {
+			writeErr(w, http.StatusTooManyRequests, "请求过于频繁，请稍后再试")
+			return
+		}
+	}
+	// Config state, not user data: an unconfigured site must say so instead
+	// of pretending a mail went out. Identical for every address.
+	cfg := b.smtpConfig(r.Context())
+	if cfg == nil {
+		writeErr(w, http.StatusServiceUnavailable, "站点未配置邮件服务，请联系管理员")
+		return
+	}
+	uid, err := b.Store.UserByEmail(r.Context(), req.Email)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		writeErr(w, http.StatusInternalServerError, "服务暂时不可用，请稍后再试")
+		return
+	}
+	if errors.Is(err, store.ErrNotFound) {
+		// Unknown address: identical shape, no mail, no hint.
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		return
+	}
+	var raw [32]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		writeErr(w, http.StatusInternalServerError, "服务暂时不可用，请稍后再试")
+		return
+	}
+	token := hex.EncodeToString(raw[:])
+	digest := sha256.Sum256([]byte(token))
+	if err := b.Store.CreatePasswordResetToken(r.Context(), uid, hex.EncodeToString(digest[:]), resetTokenTTL); err != nil {
+		writeErr(w, http.StatusInternalServerError, "服务暂时不可用，请稍后再试")
+		return
+	}
+	link := strings.TrimRight(b.BaseURL, "/") + "/reset-password?token=" + url.QueryEscape(token)
+	subject := fmt.Sprintf("%s 密码重置", cfg.SiteName)
+	body := fmt.Sprintf(
+		"你正在重置 %s 的账号密码。\n\n请在 30 分钟内打开以下链接完成重置：\n%s\n\n若非本人操作，请忽略本邮件——你的密码不会发生任何变化。",
+		cfg.SiteName, link)
+	// A send failure must NOT change the response shape (it would turn SMTP
+	// hiccups into an existence oracle). The user retries; the log carries
+	// the diagnostic for the operator.
+	if err := cfg.Send(req.Email, subject, body); err != nil {
+		log.Printf("password-reset mail to %s: %v", req.Email, err)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleResetPassword: POST /api/v1/password/reset {token, newPassword}
+func (b *Backend) handleResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token    string `json:"token"`
+		Password string `json:"password"`
+	}
+	if err := jsonDecode(r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	// Cheap pre-filter only — every failure below collapses to the SAME
+	// message so the endpoint never says which check failed.
+	badLink := "重置链接无效或已过期，请重新申请。"
+	if len(req.Token) != 64 {
+		writeErr(w, http.StatusBadRequest, badLink)
+		return
+	}
+	if _, err := hex.DecodeString(req.Token); err != nil {
+		writeErr(w, http.StatusBadRequest, badLink)
+		return
+	}
+	// Password policy mirrors register/change (never trimmed: spaces are
+	// legal credential characters).
+	if len(req.Password) < 8 {
+		writeErr(w, http.StatusBadRequest, "密码至少 8 位")
+		return
+	}
+	if b.Limiter != nil && !b.Limiter.Allow("pwr-ip:"+ygg.ClientIP(r)) {
+		writeErr(w, http.StatusTooManyRequests, "请求过于频繁，请稍后再试")
+		return
+	}
+	digest := sha256.Sum256([]byte(req.Token))
+	uid, err := b.Store.ConsumePasswordResetToken(r.Context(), hex.EncodeToString(digest[:]))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusBadRequest, badLink)
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "服务暂时不可用，请稍后再试")
+		return
+	}
+	hash, err := auth.HashArgon2id(req.Password)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "hash error")
+		return
+	}
+	// SetPasswordHash writes UNCONDITIONALLY (same P0 guard as change).
+	if err := b.Store.SetPasswordHash(r.Context(), uid, hash); err != nil {
+		writeErr(w, http.StatusInternalServerError, "update failed")
+		return
+	}
+	// Revocation mirrors handlePasswordChange, minus "keep my session": the
+	// reset caller is typically not logged in, and a hijacked password must
+	// not keep a foothold. A session cookie present here still survives
+	// (same hygiene rule as change).
+	if err := b.Store.InvalidateUserTokens(r.Context(), uid); err != nil {
+		b.Store.InsertAudit(r.Context(), uid, "password_reset_token_revoke_failed", map[string]any{"error": err.Error()})
+	}
+	if b.OnPasswordChange != nil {
+		func() {
+			defer func() {
+				if rec := recover(); rec != nil {
+					b.Store.InsertAudit(r.Context(), uid, "password_reset_hook_panic", map[string]any{"panic": fmt.Sprint(rec)})
+				}
+			}()
+			b.OnPasswordChange(uid)
+		}()
+	}
+	if err := b.Store.DeleteUserSessionsExcept(r.Context(), uid, sessionCookieValue(r)); err != nil {
+		b.Store.InsertAudit(r.Context(), uid, "password_reset_session_purge_failed", map[string]any{"error": err.Error()})
+	}
+	b.Store.InsertAudit(r.Context(), uid, "password_reset", map[string]any{"ip": ygg.ClientIP(r)})
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }

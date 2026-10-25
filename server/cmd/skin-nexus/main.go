@@ -227,6 +227,17 @@ func main() {
 	})
 	backend := webapi.New(st, ts, yggSvc)
 	backend.RequireInvite = cfg.RequireInvite
+	// A1 找回密码: reset-link base + mail subject + env fallbacks for the
+	// panel's SMTP keys (option wins per request, see smtpConfig).
+	backend.BaseURL = cfg.BaseURL
+	backend.SiteName = cfg.SiteName
+	backend.SMTPDefaults = map[string]string{
+		"smtp_host": os.Getenv("SKIN_SMTP_HOST"),
+		"smtp_port": envOr("SKIN_SMTP_PORT", "465"),
+		"smtp_user": os.Getenv("SKIN_SMTP_USER"),
+		"smtp_pass": os.Getenv("SKIN_SMTP_PASS"),
+		"smtp_from": os.Getenv("SKIN_SMTP_FROM"),
+	}
 	backend.OnPasswordChange = func(uid int64) {
 		if oidcProvider != nil {
 			if err := oidcProvider.RevokeUserAllTokens(context.Background(), uid); err != nil {
@@ -369,6 +380,12 @@ func main() {
 		"union_queryemail_mode": cfg.UnionQueryEmailMode,
 		"union_oauth2_sig_private_key": "",
 		"union_oauth2_sig_public_key":  "",
+		// A1 找回密码: SMTP env fallbacks shown as panel placeholders
+		"smtp_host": os.Getenv("SKIN_SMTP_HOST"),
+		"smtp_port": envOr("SKIN_SMTP_PORT", "465"),
+		"smtp_user": os.Getenv("SKIN_SMTP_USER"),
+		"smtp_pass": os.Getenv("SKIN_SMTP_PASS"),
+		"smtp_from": os.Getenv("SKIN_SMTP_FROM"),
 	}
 	// Admin user management shares the credential-change revoke semantics.
 	admin.OnUserCredentialChange = func(uid int64) {
@@ -632,6 +649,14 @@ func isHTTPBaseURL(v string) bool {
 // base_url → env fallback (the passed envDef). Non-http(s) option values
 // are rejected (kept envDef) — garbage from a direct DB write must not
 // burn into texture URLs / OIDC issuer / sitemap.
+// envOr reads an env var with a fallback default (SMTP port etc.).
+func envOr(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
+
 func resolveBaseURL(getOpt func(key string) (string, bool), envDef string) string {
 	if v, ok := getOpt("site_url"); ok && isHTTPBaseURL(v) {
 		return strings.TrimRight(v, "/")

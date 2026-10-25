@@ -66,7 +66,19 @@
     "pwChanged": "Password changed — all launcher authorizations were revoked; sign in again next launch.",
     "pwHint": "Changing the password revokes every Yggdrasil token and launcher grant (including refresh); this session stays signed in.",
     "toRegister": "Sign up",
-    "toLogin": "Back to sign in"
+    "toLogin": "Back to sign in",
+    "forgotLink": "Forgot password?",
+    "forgotTitle": "Reset password",
+    "forgotEmail": "Registered email",
+    "forgotSubmit": "Send reset email",
+    "forgotSent": "If that address is registered, a reset email is on its way — check inbox and spam. The link expires in 30 minutes.",
+    "resetTitle": "Set a new password",
+    "resetNew": "New password (min 8 chars)",
+    "resetConfirm": "Confirm new password",
+    "resetSubmit": "Reset password",
+    "resetDone": "Password reset — all launcher authorizations were revoked; sign in with the new password.",
+    "resetInvalid": "This reset link is invalid or expired — request a new one.",
+    "resetMismatch": "The two passwords do not match"
   },
   "dashboard": {
     "uploadTitle": "Upload texture",

@@ -50,6 +50,15 @@ type Backend struct {
 	Ygg      *ygg.Service
 	MaxChars int // per-user player limit
 
+	// A1 找回密码 (2026-10-26): mail transport + link base. SMTPDefaults
+	// carries env-derived fallbacks for the panel keys (option wins per
+	// request — smtpConfig reads both); empty smtp_host anywhere = feature
+	// off. BaseURL builds the emailed /reset-password link; SiteName the
+	// mail subject.
+	SMTPDefaults map[string]string
+	BaseURL      string
+	SiteName     string
+
 	// union is the MUA Union hub client (nil or disabled -> no /api/v1/union/*
 	// routes exist at all: zero surface for non-alliance deployments).
 	union    *union.Outbound
@@ -85,6 +94,10 @@ func (b *Backend) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/v1/me/players/{id}/skin", b.handleSetSkin)
 	mux.HandleFunc("PUT /api/v1/me/players/{id}/cape", b.handleSetCape)
 	mux.HandleFunc("POST /api/v1/me/password", b.handlePasswordChange)
+	// A1 找回密码: forgot is enumeration-safe (always 200 when configured);
+	// reset consumes the single-use token and mirrors change's revocation.
+	mux.HandleFunc("POST /api/v1/password/forgot", b.handleForgotPassword)
+	mux.HandleFunc("POST /api/v1/password/reset", b.handleResetPassword)
 	// User-center self-service (A 级批次): profile edit / account delete /
 	// avatar / own-player rename+delete — ownership-gated, blessing parity.
 	mux.HandleFunc("PUT /api/v1/me/profile", b.handleProfileUpdate)

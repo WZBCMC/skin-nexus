@@ -34,6 +34,13 @@ const password = ref('')
 const email = ref('')
 const nickname = ref('')
 const invitationCode = ref('')
+// A1 找回密码: forgot card state + /reset-password?token=… reset card state
+const forgotEmail = ref('')
+const forgotSent = ref(false)
+const resetToken = ref('')
+const resetPw1 = ref('')
+const resetPw2 = ref('')
+const resetDone = ref(false)
 
 // Sidebar nav (blessing parity: 用户中心/管理 两组；浏览组随 skinlib B 级后置).
 // device/apps/union are user-center entries too — kept out of the sidebar to
@@ -93,6 +100,13 @@ async function boot() {
     user.value = null
   }
   if (isDevice) view.value = 'device'
+  // A1 找回密码: /reset-password?token=… comes back from the mail as a real
+  // URL; /forgot-password is the shareable form of the login-card link.
+  else if (location.pathname === '/reset-password') {
+    resetToken.value = new URLSearchParams(location.search).get('token') || ''
+    view.value = 'reset'
+  }
+  else if (location.pathname === '/forgot-password') view.value = 'forgot'
   else if (!user.value && location.pathname === '/register') view.value = 'register' // landing CTA deep link
   else if (legacyRoutes[location.pathname]) {
     // launcher deep link: logged in → straight there; logged out → login card,
@@ -136,6 +150,25 @@ async function doRegister() {
   view.value = 'dashboard'
 }
 
+// A1 找回密码: forgot always shows the same sent-state (server is
+// enumeration-safe); reset validates the two fields client-side first.
+async function doForgot() {
+  authErr.value = ''
+  try {
+    await api.forgotPassword(forgotEmail.value.trim())
+    forgotSent.value = true
+  } catch (e) { authErr.value = e.message }
+}
+
+async function doReset() {
+  authErr.value = ''
+  if (resetPw1.value !== resetPw2.value) { authErr.value = t('auth.resetMismatch'); return }
+  try {
+    await api.resetPassword(resetToken.value, resetPw1.value)
+    resetDone.value = true
+  } catch (e) { authErr.value = e.message }
+}
+
 async function doLogout() {
   try {
     await api.logout()
@@ -176,6 +209,9 @@ onMounted(boot)
       <input v-model="identifier" autocomplete="username" />
       <label>{{ t('auth.password') }}</label>
       <input v-model="password" type="password" autocomplete="current-password" @keyup.enter="doLogin" />
+      <div style="margin-top: 6px; text-align: right;">
+        <a href="/forgot-password" class="muted" @click.prevent="forgotSent = false; view = 'forgot'">{{ t('auth.forgotLink') }}</a>
+      </div>
       <div class="error" v-if="authErr">{{ authErr }}</div>
       <div class="row" style="margin-top: 14px;">
         <button @click="doLogin">{{ t('common.login') }}</button>
@@ -199,6 +235,55 @@ onMounted(boot)
         <button @click="doRegister">{{ t('common.register') }}</button>
         <button class="secondary" @click="view = 'login'">{{ t('auth.toLogin') }}</button>
       </div>
+    </div>
+
+    <!-- FORGOT PASSWORD (A1 找回密码) -->
+    <div v-else-if="view === 'forgot'" class="card" style="max-width: 420px;">
+      <h2>{{ t('auth.forgotTitle') }}</h2>
+      <template v-if="!forgotSent">
+        <label>{{ t('auth.forgotEmail') }}</label>
+        <input v-model="forgotEmail" type="email" autocomplete="email" @keyup.enter="doForgot" />
+        <div class="error" v-if="authErr">{{ authErr }}</div>
+        <div class="row" style="margin-top: 14px;">
+          <button @click="doForgot">{{ t('auth.forgotSubmit') }}</button>
+          <button class="secondary" @click="view = 'login'">{{ t('auth.toLogin') }}</button>
+        </div>
+      </template>
+      <template v-else>
+        <p class="muted">{{ t('auth.forgotSent') }}</p>
+        <div class="row" style="margin-top: 14px;">
+          <button class="secondary" @click="view = 'login'">{{ t('auth.toLogin') }}</button>
+        </div>
+      </template>
+    </div>
+
+    <!-- RESET PASSWORD (A1, /reset-password?token=…) -->
+    <div v-else-if="view === 'reset'" class="card" style="max-width: 420px;">
+      <h2>{{ t('auth.resetTitle') }}</h2>
+      <template v-if="resetDone">
+        <p class="muted">{{ t('auth.resetDone') }}</p>
+        <div class="row" style="margin-top: 14px;">
+          <button @click="view = 'login'">{{ t('common.login') }}</button>
+        </div>
+      </template>
+      <template v-else-if="resetToken">
+        <label>{{ t('auth.resetNew') }}</label>
+        <input v-model="resetPw1" type="password" autocomplete="new-password" />
+        <label>{{ t('auth.resetConfirm') }}</label>
+        <input v-model="resetPw2" type="password" autocomplete="new-password" @keyup.enter="doReset" />
+        <div class="error" v-if="authErr">{{ authErr }}</div>
+        <div class="row" style="margin-top: 14px;">
+          <button @click="doReset">{{ t('auth.resetSubmit') }}</button>
+          <button class="secondary" @click="view = 'login'">{{ t('auth.toLogin') }}</button>
+        </div>
+      </template>
+      <template v-else>
+        <p class="error">{{ t('auth.resetInvalid') }}</p>
+        <div class="row" style="margin-top: 14px;">
+          <button @click="forgotSent = false; view = 'forgot'">{{ t('auth.forgotSubmit') }}</button>
+          <button class="secondary" @click="view = 'login'">{{ t('auth.toLogin') }}</button>
+        </div>
+      </template>
     </div>
 
     <!-- SETUP wizard (first run) -->

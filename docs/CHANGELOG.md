@@ -2,6 +2,17 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
+## 2026-10-26（A1 找回密码：SMTP 邮件流 + 忘记/重置密码全链路）
+
+- **背景**：竞品评估（docs/competitor-analysis.md）确认「无密码找回、全站无 SMTP」是两家竞品与本站在易用性上的共同硬缺口——`verification_token` 列早已有之但邮件流从未实现。本轮补齐端到端。
+- **邮件传输 `internal/mailer`**（纯标准库 net/smtp，零第三方依赖——数据主权/最小依赖红线）：465 隐式 TLS 直连、其它端口自动 STARTTLS 升级；PLAIN 认证由 stdlib 强制「非 TLS 不发凭据」；发件人支持 `Name <a@b.c>` 形式；主题 RFC2047 编码、正文 base64（76 列折行）；整会话 30s 硬 deadline 防黑洞服务器吊死请求；地址 CR/LF 注入直接拒绝（信封与头双重校验）。
+- **重置令牌语义**（`store/password_reset.go` + 迁移 `0010_password_reset.sql`）：32 字节 crypto/rand 原文**永不落盘**，只存 SHA-256 摘要（库泄露≠可用水滴链接）；30 分钟 TTL 写入与校验同用 DB 时钟（`DATE_ADD(NOW(3))`/`NOW(3)`，Go 与 MySQL 时钟漂移无法延寿）；**单次使用**靠原子 UPDATE（`used_at IS NULL`）——重放双击/泄露链接二次使用直接找不到；再次申请自动作废旧令牌（最新邮件生效）；过期/已用行顺手清理，表有界无需 cron。
+- **防枚举与限流**：`POST /api/v1/password/forgot` 已知/未知邮箱同形恒 200（发信失败也保持同形，SMTP 故障不变成存在性预言机）；未配置 SMTP 返回 503 明示配置态（非用户数据）；共享 Limiter 新键空间 `pwf-ip:`/`pwf-mail:`/`pwr-ip:` 滑窗限流（IP+地址双维度）。`reset` 端点 unknown/expired/used 三种失败**坍缩为同一条 400 文案**，不泄露状态。
+- **重置成功 = 镜像改密吊销链**：`SetPasswordHash` 无条件写（chain-trace P0 守卫沿用）→ `InvalidateUserTokens` 杀全部 Yggdrasil 令牌 → `OnPasswordChange` panic 屏障杀 OIDC/启动器授权 → `DeleteUserSessionsExcept` 清全部网页会话（带本会话 cookie 则保留，与改密同规则）→ 审计 `password_reset` 行。
+- **设置面板 SMTP 热配置**：`smtp_host/port/user/pass/from` 五键入白名单（发信时逐键读取，option 覆盖 env 默认，**保存即生效无重启**）；`smtp_pass` 审计脱敏（与 union_member_key 同列）；env `SKIN_SMTP_*` 作面板占位默认。
+- **前端**：登录卡「忘记密码？」→ 找回卡（输入邮箱→统一「已发送」文案）；`/reset-password?token=…` 真实 URL（邮件里回跳，boot 按路径识别，与 /device 同款探法）→ 重置卡（双输密码前端校验→成功态→去登录）；`/forgot-password` 可分享直链；中英 i18n 全键。
+- **回归测试**：mailer 进程内假 SMTP 会话端到端（信封去显示名/主题 RFC2047/base64 正文回环/CRLF-only）、注入拒绝（收件人 CRLF 不拨号）、禁用态/nil 接收者、envelope 解析表、隐式 TLS 端口判定；store 集成（单次消费/重放拒绝/未知摘要/过期回拨/最新邮件胜出/UserByEmail 大小写与「昵称不是邮箱」）；前端 `vite build` 通过。
+
 ## 2026-10-25（站点 Logo：SVG 矢量标识接入 + 访客首页入场编舞）
 
 - **官方标识定稿**：「像素枢纽 N」——圆角玻璃底板 + 蓝→绿渐变块面 N + 枢纽节点电路纹理（SVG 矢量为唯一事实源，AI 位图不入库）；16px 眯眼测试、单色可复现、白/深双底兼容、双色渐变均验证通过。

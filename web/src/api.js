@@ -24,6 +24,10 @@ export const api = {
   register: (email, nickname, password, invitationCode) => req('POST', '/api/v1/register', { email, nickname, password, invitationCode }),
   logout: () => req('POST', '/api/v1/logout'),
   changePassword: (currentPassword, newPassword) => req('POST', '/api/v1/me/password', { currentPassword, newPassword }),
+  // A1 找回密码: forgot 恒 200（防邮箱枚举，未配置邮件时 503）；reset 消费
+  // 单次令牌，失败统一「链接无效或已过期」。
+  forgotPassword: (email) => req('POST', '/api/v1/password/forgot', { email }),
+  resetPassword: (token, password) => req('POST', '/api/v1/password/reset', { token, password }),
   closet: () => req('GET', '/api/v1/me/closet'),
   closetAdd: (textureId, itemName = '') => req('POST', '/api/v1/me/closet', { textureId, itemName }),
   closetRename: (id, itemName) => req('PUT', `/api/v1/me/closet/${id}`, { itemName }),
