@@ -13,6 +13,9 @@
   - Union 入站：`requireUnion` 包装捕获状态码（模块禁用时的调用也记——misconfig 信号）；出站：`doJSON`/`doProxy` 单点包裹（method/path/status/耗时）。
 - **面板**：新增「访问日志」页（类型下拉 + who/IP/详情子串搜索 + 分页 + 彩色结局徽章）；admin API `GET /api/admin/v1/access-logs?kind=&q=&page=`。
 - **测试**：accesslog 包单元测试（nil 安全/rune 对齐截断/sink 失败吞/断连留痕）；ygg 处理器级四测（profile/hasJoined 三来源、authenticate 结局、join 三因、无 logger 不变）；store 集成测试（插入/类型筛选/子串搜索/分页序/uid 回传/过期清理）。全仓 `go test` 绿、`vite build` 通过。
+- **上线即测即修（用户看图反馈）**：① UA/详情列 `word-break: break-all` 被自动表格布局压成一字一行（行高爆表）→ `table-layout: fixed` 定宽列预算 + 单行省略 + hover title 看全文 + 全单元格统一防溢出，时间列加宽 160px 防截秒；② 时间显示偏 8 小时——DSN 无 `loc=`，驱动把 DB 墙钟数字标成 UTC，前端 `Date()` 按 Z 重解读 → 改为面板惯例直显数字（不重解读时区）。
+- **部署实况修正（取证）**：`/opt/skin-nexus` 无 `.git`，compose 为 `image: ghcr.io/yimingzhanshen/skin-nexus:latest`——真链路是 **CI 推镜像 → 部署机 `docker compose pull && up -d`**（deploy.md 一直如此写）；此前各轮脚本的 `git pull | tail` 失败被管道吞掉、实际部署一直由 `up -d` 隐式 pull 完成。本轮起脚本改 pull 语义，阶段拆分防任务过期丢证据。
+- **线上验证（2026-10-26 01:47 真实输出）**：迁移水位 `0011_access_logs.sql`；真实流量四类入表——`web_login/fail/c1r2-nobody/C1R2-Firefox` + `ygg_hasjoined/miss/Notch/Paper-1.20.4/src=none` + `ygg_profile/miss/HMCL/3.9` + **`union_out/ok/GET /blacklist/query status=200 dur=39ms`（真 hub 出站自动入账）**；kind 筛选 total=2；landing/metadata/skinlib 全 200；累计 24 行；容器 healthy；时间显示实钟（01:47:21，修复前为 +8h 的 09:47）。
 
 ## 2026-10-26（A2 Mojang 官方兜底：profile/hasJoined 本地未命中 → 官方 sessionserver）
 
