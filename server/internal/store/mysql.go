@@ -106,7 +106,7 @@ func (m *Mysql) credentials(ctx context.Context, uid int64) (hash, algo string, 
 // self-describing digests (imported $2y$ bcrypt / argon2 rows) verify via the
 // PHC path even when the legacy salt chain is not mounted (SKIN_LEGACY_ENV) —
 // the chain only matters for positional-salt formats (migrate importer marks
-// them `legacy:bcrypt` etc; see docs/migration-import-design.md).
+// them `legacy:bcrypt` etc).
 func (m *Mysql) VerifyPassword(ctx context.Context, uid int64, password string) (bool, error) {
 	hash, algo, err := m.credentials(ctx, uid)
 	if err != nil {

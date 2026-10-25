@@ -8,6 +8,7 @@
 ```
 server/         Go 后端（模块 skin-nexus/server）
   cmd/skin-nexus/     入口：路由组装（yggdrasil / oidc / union / api/v1 / admin / public / textures / avatar / preview / SPA）
+  internal/config     运行时配置（全部 SKIN_* 环境变量的唯一入口）
   internal/ygg        Yggdrasil 协议核心（models/service/http/signer）—— 兼容面冻结区
   internal/oidc       yggc/OIDC 免密登录内置（zitadel/oidc 内核 + 自持 discovery/userinfo/device 页 + JWT token 双态）
   internal/union      MUA Union 成员站模块（可开关：三头验签 / 入站出站 / OAuth2 grant / UnionSigner）—— wire 契约冻结区
@@ -33,7 +34,7 @@ docs/           蓝图 / 规范 / 构建 / 部署 / 迁移 / 兼容矩阵 / 主�
                 开发过程文档在上级 docs/（本地，永不入库）
 ```
 
-## 铁律（docs/phase1-dev-plan.md §0 拍板）
+## 铁律（拍板记录在私有工作区 `docs/phase1-dev-plan.md` §0，该文件不入库）
 
 1. **`/api/yggdrasil` 全路径原语义不可破**：204 清单、错误体 `{error,errorMessage}`、textures 空对象 `{}`、毫秒时间戳、PEM 严格格式——改动必须先跑 `go test ./internal/ygg/` 且不动契约断言。
 2. **UUID 零漂移**：`OfflineUUID` 逐字节复刻旧公式；改名不重算。

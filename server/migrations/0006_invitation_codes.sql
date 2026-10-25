@@ -1,7 +1,7 @@
 -- invitation-codes (data-compat rule 7: 1:1 with the live blessing plugin
 -- schema — callbacks.php creates id/code/generated_at/used_by/used_at and
 -- adds description via Schema::table; description carries the legacy
--- "姓名+学号" convention consumed by the old /code/ query page).
+-- human-readable note convention consumed by the old /code/ query page).
 -- IF NOT EXISTS: legacy-migrated databases may already carry the table.
 CREATE TABLE IF NOT EXISTS invitation_codes (
   id           INT UNSIGNED NOT NULL AUTO_INCREMENT,

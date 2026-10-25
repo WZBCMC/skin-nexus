@@ -19,7 +19,7 @@ SkinNexus / 肤枢 由 **YMZS（[GitHub @YimingZhanshen](https://github.com/Yimi
 ## 贡献者认可
 
 - 所有合并贡献进入 `git shortlog` 永久记录；
-- 重大贡献者在 README「贡献者」区致谢；
+- 重大贡献者在 README「作者与署名」区与 `docs/CHANGELOG.md` 中致谢；
 - 项目对外引用格式见 `CITATION.cff`。
 
 ## 与社团的关系

@@ -74,7 +74,7 @@ docker build -t skin-nexus:latest .   # 本地源码构建（离线/内网场景
 | integration | MySQL 8 service 容器跑 `-tags integration` 存储层往返 |
 | poc | 插件运行时 PoC 测试 |
 | web | `npm ci && npm run build` |
-| docker | 多阶段镜像推 GHCR：`ghcr.io/yimingzhanshen/skin-nexus:latest` 与 `:sha-<commit>`（GHA 缓存） |
+| docker | 多阶段镜像推 GHCR：`ghcr.io/yimingzhanshen/skin-nexus:latest` 与 `:sha-<commit>`（GHA 缓存；仅 push main 触发推送，PR 构建不推镜像） |
 
 **部署机推荐只拉不编**（compose 已默认 `pull_policy: always`）：
 
@@ -108,7 +108,7 @@ cd web && npm run dev
 | `go: go.mod requires go >= 1.26` | 本机 Go 太旧且 `GOTOOLCHAIN=local`；升级 Go 或放开 `GOTOOLCHAIN=auto` |
 | 页面显示 “web/dist not built yet” | 后端工作目录下没有 `web/dist`；先构建前端或改用 Docker 镜像（内含产物） |
 | 启动即报 migration 失败 | `SKIN_MIGRATIONS_DIR` 指不到 DDL 目录；从仓库根启动时指向 `server/migrations` |
-| `npm ci` 报 engine 不匹配 | Node < 22；升级 Node（nvm/fnm 皆可） |
+| `npm run build` 中途报 Vite 语法/特性错误 | Node < 22（package.json 未设 `engines`，`npm ci` 不会提前拦截）；升级 Node 22（nvm/fnm 皆可） |
 | `go test -race` 报无法使用 | 无 CGO 环境不支持 `-race`；改普通 `go test` + 并发测试（PoC 池模式） |
 
 ## 八、给 AI agent 的最短路径

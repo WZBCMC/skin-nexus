@@ -33,7 +33,7 @@ func NewInvitationCodeValue() string {
 
 // CreateInvitationCodes generates n codes. description is optional and
 // normally empty here — the live admin flow generates single codes carrying
-// a description (e.g. the legacy "姓名+学号" convention).
+// a description (a human-readable note in the legacy convention).
 func (m *Mysql) CreateInvitationCodes(ctx context.Context, n int, description string) ([]InvitationCode, error) {
 	if n < 1 {
 		n = 1

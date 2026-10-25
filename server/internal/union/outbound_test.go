@@ -140,7 +140,7 @@ func TestOutboundDataPulls(t *testing.T) {
 		switch call.path {
 		case "/serverlist":
 			jsonRespond(w, 200, map[string]any{
-				"servers": []map[string]any{{"code": "WZB", "name": "WZBC", "bs_root": "https://skin.example/"}},
+				"servers": []map[string]any{{"code": "EXMP", "name": "Example", "bs_root": "https://skin.example/"}},
 				"version": "7",
 			})
 		case "/privatekey":
@@ -148,7 +148,7 @@ func TestOutboundDataPulls(t *testing.T) {
 		case "/oauth2/backend":
 			jsonRespond(w, 200, map[string]any{"publicKey": "HUBPEM"})
 		case "/code":
-			jsonRespond(w, 200, map[string]any{"code": "WZB"})
+			jsonRespond(w, 200, map[string]any{"code": "EXMP"})
 		case "/diagnose":
 			jsonRespond(w, 200, []any{map[string]any{"nonce": "x"}, map[string]any{"timestamp": 1.5}})
 		}
@@ -161,7 +161,7 @@ func TestOutboundDataPulls(t *testing.T) {
 		t.Fatalf("ServerList: %v", err)
 	}
 	if list.Version != "7" || len(list.Servers) != 1 ||
-		list.Servers[0].Code != "WZB" || list.Servers[0].Name != "WZBC" || list.Servers[0].BSRoot != "https://skin.example/" {
+		list.Servers[0].Code != "EXMP" || list.Servers[0].Name != "Example" || list.Servers[0].BSRoot != "https://skin.example/" {
 		t.Fatalf("ServerList decoded wrong: %+v", list)
 	}
 
@@ -185,7 +185,7 @@ func TestOutboundDataPulls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ServerCode: %v", err)
 	}
-	if code.Code != "WZB" {
+	if code.Code != "EXMP" {
 		t.Fatalf("ServerCode decoded wrong: %+v", code)
 	}
 
@@ -232,8 +232,8 @@ func TestOutboundBindingFamily(t *testing.T) {
 			jsonRespond(w, 200, []map[string]any{{"internal_id": 5, "uuid": "u", "name": "Steve A"}})
 		case "/profile/detail/uuid-1":
 			jsonRespond(w, 200, map[string]any{
-				"internal_id": 5, "bind": []any{}, "bind_mapped_name": "Steve@WZB",
-				"uuid": "uuid-1", "mapped_uuid": "uuid-9", "bind_status": 0, "backend": "WZB",
+				"internal_id": 5, "bind": []any{}, "bind_mapped_name": "Steve@EXMP",
+				"uuid": "uuid-1", "mapped_uuid": "uuid-9", "bind_status": 0, "backend": "EXMP",
 			})
 		}
 	})
@@ -258,7 +258,7 @@ func TestOutboundBindingFamily(t *testing.T) {
 		t.Fatalf("UnmappedByName = %+v, %v", unmapped, err)
 	}
 	detail, err := o.DetailByUUID(ctx, "uuid-1")
-	if err != nil || detail.UUID != "uuid-1" || detail.MappedUUID != "uuid-9" || detail.BindMappedName != "Steve@WZB" {
+	if err != nil || detail.UUID != "uuid-1" || detail.MappedUUID != "uuid-9" || detail.BindMappedName != "Steve@EXMP" {
 		t.Fatalf("DetailByUUID = %+v, %v", detail, err)
 	}
 

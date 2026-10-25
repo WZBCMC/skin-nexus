@@ -18,14 +18,14 @@ import (
 // RunCLI implements the `skin-nexus migrate` subcommands:
 //
 //	migrate preflight --env legacy.env [--textures DIR] [--dump hashes.txt]
-//	migrate uuid --rows uuid.tsv --players players.tsv [--out report.txt]
+//	migrate uuid --rows uuid.tsv --players players.tsv
 //	migrate import --source-dsn DSN --target-dsn DSN --source-prefix PFX [--textures-src DIR --textures-dst DIR] [--dry-run]
 //
 // preflight = 部署执行序第 1 步（phase1-dev-plan §5）: parse legacy .env,
 // print positional method/salt table (salts masked), hash distribution when a
 // dump is provided, and texture-tree audit when a dir is given.
 // uuid = dry-run of the five-step cleaning over exported TSV snapshots.
-// import = the APPLY path (docs/migration-import-design.md): DB->DB copy
+// import = the APPLY path: DB->DB copy
 // with ID preservation, uuid cleaning, options/closet/invitation carry,
 // byte-exact texture file copy; --dry-run reports without writing.
 func RunCLI(args []string, out io.Writer) error {

@@ -1,7 +1,7 @@
 # SkinNexus multi-stage image: web build -> go build -> minimal runtime.
 #   docker build -t skin-nexus .
 # Data (textures/keys/themes) lives in the /data volume — upgrades never
-# touch it. Schema bootstrap happens at boot when SKIN_AUTO_MIGRATE=1.
+# touch it. Schema bootstrap happens at boot when SKIN_AUTO_MIGRATE=true.
 
 # ---- stage 1: web ----
 FROM node:22-alpine AS web

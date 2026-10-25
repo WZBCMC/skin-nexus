@@ -1,4 +1,4 @@
--- SkinNexus initial schema (MySQL 8).
+-- SkinNexus initial schema (MySQL 5.7+ / 8.0).
 -- Field mapping from blessing-skin-server: analysis/blessing-skin-server.md §2.
 -- Conventions: UTC DATETIME(3); utf8mb4; InnoDB.
 

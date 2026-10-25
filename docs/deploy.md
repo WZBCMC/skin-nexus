@@ -26,24 +26,35 @@ mkdir -p /opt/skin-nexus && cd /opt/skin-nexus
 
 ```yaml
 image: ghcr.io/yimingzhanshen/skin-nexus:latest   # CI 自动构建，部署机只拉不编
-# 需要固定版本时改用 :sha-<commit> 标签（GHCR 同步保留每 commit 镜像，回滚=改回旧 sha 再 up -d）
+# 需要固定版本时改用 :sha-<commit> 标签，回滚=改回旧 sha 再 up -d
 # 离线/内网环境可源码构建：把 image 行改回 build: . 后 docker compose up -d --build
 ```
 
+- `:latest` = main 分支最近一次构建；`:sha-<commit>` 为 40 位完整 commit sha，
+  **只有 CI 构建过的 commit 有镜像**（一次 push 多个 commit 时只有 push 的 HEAD 有）。
+  可用镜像清单：GitHub 仓库 Packages 页，或 `docker buildx imagetools inspect ghcr.io/yimingzhanshen/skin-nexus`。
+- 首次部署前确认 GHCR 包为 **public**（匿名可 pull）；若包是 private，
+  先 `docker login ghcr.io`（PAT 带 `read:packages`）再 `docker compose pull`。
+- `pull_policy: always` 需要支持该字段的 Docker Compose v2（compose v1 不识别）；
+  不确定时升级前手动 `docker compose pull` 即可绕过。
+
 ### 2.2 选择数据库模式（同一份文件二选一）
 
-**模式 1：内置 MySQL（默认，全新站点最省心）**
+**模式 1：内置 MySQL（默认，全新站点最省心；镜像为 `mysql:8.0`，需要 5.7 请走模式 2 外部库）**
 
-保留 `db` 服务与 `depends_on` 不动，改三个密码即可：
+保留 `db` 服务与 `depends_on` 不动，共改 **3 处数据库密码占位 + 1 个管理 token**：
 
 ```yaml
 db:
   environment:
     MYSQL_DATABASE: skin_nexus
     MYSQL_USER: skin
-    MYSQL_PASSWORD: CHANGE_ME          # <- 改掉
-    MYSQL_ROOT_PASSWORD: CHANGE_ME_ROOT # <- 改掉
+    MYSQL_PASSWORD: CHANGE_ME          # <- 改掉（①）
+    MYSQL_ROOT_PASSWORD: CHANGE_ME_ROOT # <- 改掉（②）
 ```
+
+③ `SKIN_DATABASE_DSN` 里的 `CHANGE_ME` **必须与 ① MYSQL_PASSWORD 一致**（漏改 → access denied →
+容器反复重启）；④ `SKIN_ADMIN_TOKEN` 按 §2.3 生成。即 compose 里共动 4 处。
 
 **模式 2：外部 MySQL（已有老 blessing 库 / 迁移目标库 / 面板机库）**
 
@@ -52,7 +63,7 @@ db:
 ```yaml
 environment:
   SKIN_DATABASE_DSN: 'skin:PASS@tcp(127.0.0.1:3306)/skin_nexus?parseTime=true&charset=utf8mb4'
-# 容器要访问宿主机上的 MySQL（如宝塔 127.0.0.1:3306）时，二选一：
+# 容器要访问宿主机上的外部 MySQL（宿主机 127.0.0.1:3306）时，二选一：
 #   network_mode: host        # 整容器走主机网络（此时 ports 段删除；SKIN_LISTEN 建议 127.0.0.1:8080）
 #   或 DSN 用宿主机内网 IP / docker 网桥网段（172.17.0.1）
 ```
@@ -64,15 +75,15 @@ environment:
 
 | 变量 | 说明 |
 |---|---|
-| `SKIN_BASE_URL` | 站点公开地址，如 `https://skin.example.com`（纹理 URL / ALI 头依赖它，**必须与玩家访问地址一致**） |
-| `SKIN_DATABASE_DSN` | 外部库模式必改；内置库模式保持默认 |
-| `SKIN_ADMIN_TOKEN` | `openssl rand -hex 32` 生成；机器/API 调用管理接口的回退凭据（管理面板本身用管理员账号登录即可，无需此 token） |
+| `SKIN_BASE_URL` | 站点公开地址，如 `https://skin.example.com`。**必须在首次 `up -d` 之前改定为最终访问地址**：纹理 URL 在启动时按它快照、yggc/OIDC 的 issuer 也只认它（`SKIN_OIDC_ISSUER` 默认跟它）——事后在管理面板改 `site_url` 无法完全修正。ALI 响应头与此无关（按请求 Host + `X-Forwarded-Proto` 现算） |
+| `SKIN_DATABASE_DSN` | 外部库模式必改；内置库模式保持默认。**必须带 `parseTime=true`**（缺失直接启动失败） |
+| `SKIN_ADMIN_TOKEN` | `openssl rand -hex 32` 生成；机器/API 调用管理接口的回退凭据（管理面板本身用管理员账号登录即可，无需此 token；留空 = 机器 token 通道关闭） |
 
 其余可选变量（默认值即可跑通）：
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `SKIN_LISTEN` | `:8080` | 容器内监听；反代场景建议 `127.0.0.1:8080` + ports 映射 |
+| `SKIN_LISTEN` | `:8080` | 容器内监听，**保持 `:8080` 即可**。bridge 网络下不要改成 `127.0.0.1:8080`（进程只绑容器环回 → 端口映射 connection refused，而 healthcheck 仍报 healthy，极难排查）；反代场景想只对本机开放就改 ports 绑定为 `127.0.0.1:8080:8080`；仅 `network_mode: host` 时才建议 `127.0.0.1:8080`。注意镜像 HEALTHCHECK 固定探 `127.0.0.1:8080`，改端口需同步改 healthcheck |
 | `SKIN_SERVER_NAME` / `SKIN_SITE_NAME` | `SkinNexus` | Yggdrasil 元数据显示名 / 站点名（也可在管理面板改） |
 | `SKIN_SKIN_DOMAINS` | 空 | 皮肤域白名单；不接联盟填本站域名，接入 MUA Union 以联盟公布清单为准（改动会破坏联盟互认） |
 | `SKIN_DATA_DIR` | `/data`（镜像内） | 统一数据根：textures/、签名钥、themes/ 都在它下面 |
@@ -82,10 +93,17 @@ environment:
 | `SKIN_RATE_LIMIT_AUTH` / `SKIN_LOGIN_FAIL_LIMIT` | `120` / `5` | 认证限流：每 IP 10 分钟滑动窗口 / 连续失败锁定次数 |
 | `SKIN_OIDC_ENABLED` | `false` | 启动器免密登录（yggc/OIDC）；`SKIN_OIDC_ISSUER` 默认跟 `SKIN_BASE_URL` |
 | `SKIN_UNION_ENABLED` | `false` | MUA Union 联盟模块；未接入保持关 = 零路由零表面 |
+| `SKIN_LEGACY_ENV` | 无 | **从老站迁移且用户密码非 bcrypt/argon2 PHC 格式时必设**：指向挂载进容器的老站 `.env`（盐链来源），否则这些存量用户无法登录（见 [migration.md](migration.md)） |
+
+路径/密钥类变量默认值即可，一般无需改动：`SKIN_TEXTURES_DIR`（`<data>/textures`）、`SKIN_SIGN_KEY`（`<data>/sign-key.pem`）、`SKIN_OIDC_SIGN_KEY`（`<data>/oidc-key.pem`）、`SKIN_THEMES_DIR`（`<data>/themes`）、`SKIN_MIGRATIONS_DIR`（镜像内 `/app/migrations`）、`SKIN_OIDC_SHARED_CLIENT_ID`（`2`）。
+Union 七键（`SKIN_UNION_API_ROOT` / `SKIN_UNION_MEMBER_KEY` / `SKIN_UNION_HOST_PUBKEY` / `SKIN_UNION_ALLOW_UPDATEBACKENDKEY` / `SKIN_UNION_QUERYEMAIL_MODE` / `SKIN_UNION_OAUTH2_SIG_KEY` / `SKIN_UNION_HUB_ORIGIN`）走管理面板配置，env 仅作初始值/回退；完整变量清单以 `server/internal/config/config.go` 为准。
 
 > **站点类设置大多已迁管理 UI**（「管理 → 站点设置」：站点名/皮肤域/邀请码/验证门/ygg 五键/Union 八键），
-> `options` 表值优先于 env；`union_enabled`/`union_api_root`/`union_member_key` 热切换立即生效，其余重启生效。
-> 凭据类（DSN、admin token）只走环境变量。
+> 但**优先级分键**，别想当然：`site_url` option 优先于 env（不过**纹理 URL 只认启动时的
+> `SKIN_BASE_URL` 快照**，面板改 site_url 不会改纹理 URL）；`site_name`/`server_name`/
+> `skin_domains` 则是**显式 env 优先**——想在面板改这三项，就不要在 compose 里设对应 env
+> （compose 默认已不设）。`union_enabled`/`union_api_root`/`union_member_key` 热切换立即生效，
+> 其余重启生效。凭据类（DSN、admin token）只走环境变量。
 
 ### 2.4 启动与验收
 
@@ -96,12 +114,23 @@ curl -s http://127.0.0.1:8080/api/yggdrasil/ | head -c 300   # 元数据 JSON
 # 浏览器打开 SKIN_BASE_URL → 首访自动进 /setup 安装向导
 ```
 
+首启链路（空库）：自动迁移建表（`SKIN_AUTO_MIGRATE=true`）→ 首访 `/setup` 向导
+（建管理员/站点名/皮肤域）→ **向导是一次性门**：完成后永久 404，向导里建的账号即管理员。
+若目标库已有用户（如迁移导入后），向导自动跳过（users>0 即视为已初始化），此时管理员
+需在导入前用向导创建，或导入后用 SQL/管理接口补建——顺序详见 [migration.md](migration.md)。
+
+> 端口收敛建议：8080 只对反代放开（ports 写 `127.0.0.1:8080:8080` 或防火墙收敛）——
+> 同宿主/同网桥的其它容器处于 XFF 信任区，可伪造最后一跳绕过限流。
+
 ### 2.5 升级
 
 ```bash
 docker compose pull && docker compose up -d    # 只换容器，卷不动，数据零丢失
 # 新版会自动补齐新 DDL（追踪式迁移）；回滚 = image 改回旧 :sha-* 再执行同命令
 ```
+
+> **回滚只换代码、不回滚 schema**：迁移引擎只进不退，新 DDL 已落库且旧镜像会继续用它
+> （加列无感，但删列/改语义的迁移会让旧代码出错）——破坏性变更前先做 §2.6 备份。
 
 ### 2.6 备份与恢复
 
@@ -124,8 +153,9 @@ docker compose exec db sh -c 'exec mysqldump -uskin -p"$MYSQL_PASSWORD" skin_nex
 # 恢复：停站 → 解包回卷 / 导入 SQL → 起站
 ```
 
-> `sign-key.pem` 是纹理签名私钥，建议额外**加密后异地**备份一份；
-> `oidc-key.pem` 与它分离（免密登录 token 专用，首启自动生成），同样纳入备份，两钥互不代替。
+> `sign-key.pem` 是纹理签名私钥（**首次启动自动生成**，RSA-4096），建议额外**加密后异地**备份一份；
+> `oidc-key.pem` 与它分离（免密登录 token 专用），**仅在 `SKIN_OIDC_ENABLED=true` 时生成**——
+> OIDC 关闭时文件不存在属正常，开启后首启自动生成。两钥互不代替，都纳入备份。
 
 ### 2.7 日志与排错
 
@@ -166,6 +196,8 @@ location / {
 > 都会记成同一个值（切流后追溯困难）。服务端只在对端处于 loopback/RFC1918
 > 信任区时才采信 XFF 的**最后一跳**（防伪造绕限流），所以反代必须用
 > `$proxy_add_x_forwarded_for` 或 `$remote_addr` 追加真实地址，不要透传客户端原样头。
+>
+> `X-Real-IP` 服务端并不读取（只认 `X-Forwarded-For` / `X-Forwarded-Proto`），保留无妨。
 
 ## 四、从老站迁移
 
@@ -174,16 +206,24 @@ location / {
 
 ```bash
 # 迁移 CLI 直接用镜像跑（不需要在服务器上装 Go）：
-docker compose exec skin-nexus /app/skin-nexus migrate preflight --env /data/legacy.env --textures /data/textures
-# legacy.env 放进数据卷，或 -v ./legacy.env:/data/legacy.env:ro 临时挂载
+docker compose exec skin-nexus /app/skin-nexus migrate preflight \
+  --env /data/legacy.env --textures /data/legacy-textures
+# --textures 指向【老站】纹理目录（审计对象是老站的纹理树，不是新站数据卷）；
+# legacy.env 与老站纹理目录可放进数据卷，或在 compose 临时加只读挂载：
+#   - ./legacy.env:/data/legacy.env:ro
+#   - /老站/storage/textures:/data/legacy-textures:ro
 ```
 
 ## 五、备选：源码构建 + systemd（无 Docker 环境）
 
 构建步骤见 [build.md](build.md) §二/§三；产物为单二进制 + `web/dist/` + `migrations/`。
-systemd 单元要点（完整示例见 git 历史或按此模式编写）：
+systemd 单元完整示例：
 
 ```ini
+[Unit]
+Description=SkinNexus
+After=network.target mysql.service
+
 [Service]
 WorkingDirectory=/opt/skin-nexus
 Environment=SKIN_LISTEN=127.0.0.1:8080
@@ -191,9 +231,13 @@ Environment=SKIN_BASE_URL=https://skin.example.com
 Environment=SKIN_DATABASE_DSN=skin:PASS@tcp(127.0.0.1:3306)/skin_nexus?parseTime=true&charset=utf8mb4
 Environment=SKIN_DATA_DIR=/opt/skin-nexus/data
 Environment=SKIN_MIGRATIONS_DIR=/opt/skin-nexus/migrations
+Environment=SKIN_AUTO_MIGRATE=true
 Environment=SKIN_ADMIN_TOKEN=<openssl rand -hex 32>
 ExecStart=/opt/skin-nexus/skin-nexus
 Restart=always
+
+[Install]
+WantedBy=multi-user.target
 ```
 
 要点：工作目录须能读到 `web/dist` 与 `migrations/`（或用 `SKIN_MIGRATIONS_DIR` 指定）；

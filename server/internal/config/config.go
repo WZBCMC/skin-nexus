@@ -1,5 +1,5 @@
 // Package config loads SkinNexus runtime configuration from environment
-// variables (12-factor, .env-friendly for 宝塔 deployments).
+// variables (12-factor, .env-friendly for container / hosting-panel setups).
 package config
 
 import (
@@ -38,7 +38,7 @@ type Config struct {
 	// (0 disables the window layer). LoginFailLimit = consecutive failures
 	// per identifier before a 15-minute lockout (0 disables). Both tunable
 	// from the admin settings panel (boot-read with env fallback).
-	// Default 120 (chain-trace P1 2026-10-23): 20 tripped campus/NAT exits
+	// Default 120 (chain-trace P1 2026-10-23): 20 shared/NAT exits tripped
 	// within minutes — register + web login + ygg auth + refresh share one
 	// bucket per IP, so shared exits got collective 429s.
 	RateLimitAuth  int // SKIN_RATE_LIMIT_AUTH (default 120)

@@ -187,7 +187,7 @@ func TestAuthGapSameUsernameOnly(t *testing.T) {
 	if ok, wait := f.svc.AuthGapAllow(ctx, "steve"); ok || wait <= 0 {
 		t.Fatalf("second immediate attempt must be gated (ok=%v wait=%v)", ok, wait)
 	}
-	// a DIFFERENT username is unaffected (campus NAT: classmates share an IP
+	// a DIFFERENT username is unaffected (shared NAT: many users share an IP
 	// but not a username — upstream keys the throttle on username)
 	if ok, _ := f.svc.AuthGapAllow(ctx, "alex"); !ok {
 		t.Fatal("different username must not be gated")

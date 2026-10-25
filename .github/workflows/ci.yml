@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.26'
       - name: Build
         run: go build ./...
       - name: Vet
@@ -23,12 +23,17 @@ jobs:
       - name: Test
         run: go test ./...
 
-  # MySQL round-trip suite for the 0003/0004 schemas (build tag `integration`).
+  # MySQL round-trip suite over the full 0001-0009 schema (build tag `integration`).
+  # 5.7 + 8.0 matrix: two production incidents were 5.7-only SQL issues that
+  # the 8.0-only suite could not catch (login COLLATE / prepared 1267).
   integration:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        mysql: ['8.0', '5.7']
     services:
       mysql:
-        image: mysql:8.0
+        image: mysql:${{ matrix.mysql }}
         env:
           MYSQL_ROOT_PASSWORD: root
           MYSQL_DATABASE: skin_nexus_test
@@ -45,7 +50,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.26'
       - name: Integration test
         run: go test -tags integration ./internal/store/
 
@@ -58,7 +63,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.26'
       - name: Test
         run: go test ./...
 
@@ -81,8 +86,10 @@ jobs:
 
   # Build the production image (multi-stage Dockerfile) and push to GHCR
   # (:latest + :sha-*). Deploy hosts pull ghcr.io directly.
+  # Push on `push` events only — PR builds must never touch :latest.
   docker:
     runs-on: ubuntu-latest
+    if: github.event_name == 'push'
     permissions:
       packages: write   # ghcr push
     steps:

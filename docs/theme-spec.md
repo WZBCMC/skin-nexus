@@ -52,23 +52,23 @@ SkinNexus 暴露如下 CSS 自定义属性；**主题应优先覆盖变量**，�
 
 ```css
 :root {
-  --bg: #0f172a;          /* 页面背景 */
-  --fg: #e2e8f0;          /* 主文字 */
-  --card-bg: #1e293b;     /* 卡片背景 */
-  --primary: #6366f1;     /* 主题色（按钮/链接） */
-  --border: #334155;      /* 边框 */
-  --danger: #ef4444;      /* 错误/危险 */
-  --success: #22c55e;     /* 成功 */
-  --radius: 12px;         /* 圆角 */
-  --font-sans: system-ui, sans-serif;  /* 字体 */
+  --bg: #0f1115;          /* 页面背景 */
+  --panel: #171a21;       /* 面板/卡片背景 */
+  --border: #262b36;      /* 边框 */
+  --text: #d7dae0;        /* 主文字 */
+  --muted: #8b93a1;       /* 次要文字 */
+  --accent: #4f8cff;      /* 主题色（按钮/链接/高亮） */
+  --danger: #e5534b;      /* 错误/危险 */
 }
 ```
 
-变量集以 `web/src/style.css` 的实际定义为准（AI 生成前请对照最新版）。
+另有两个局部消费点（带 fallback，可一并覆盖）：`--fg`（局部文字色）、
+`--text-dim`（弱化文字色）。变量集以 `web/src/style.css` 的实际定义为准
+（AI 生成前请对照最新版）。
 
 ## 4. 选择器稳定区（安全区）
 
-✅ **允许**：基于语义类名与 data 属性样式化——`.card`、`.btn`、`.secondary`、`.badge`、`.muted`、`.error`、`.success`、`table`、`input`、`select`。
+✅ **允许**：基于语义类名与 data 属性样式化——`.card`、`.badge`、`.muted`、`.error`、`.success`、`button`（含 `button.secondary`、`button.danger`）、`.ghost`、`.danger-outline`、`table`、`input`、`select`。
 ❌ **禁止**：依赖 Vite 构建生成的 hash class（如 `index-BlotKZVo`）——它们随构建变化，主题会碎。
 
 ## 5. 插槽协议（P2 预留）
@@ -99,9 +99,11 @@ SkinNexus 暴露如下 CSS 自定义属性；**主题应优先覆盖变量**，�
 
 2. style.css —— 纯 CSS，无需编译。规则：
    - 优先覆盖 CSS 变量，不要硬编码颜色到具体选择器：
-     --bg（页面背景）、--fg（文字）、--card-bg（卡片）、--primary（主题色）、
-     --border（边框）、--danger、--success、--radius（圆角）、--font-sans（字体）
-   - 只使用语义选择器：.card、.btn、.secondary、.badge、.muted、.error、.success、
+     --bg（页面背景）、--panel（面板/卡片背景）、--border（边框）、--text（主文字）、
+     --muted（次要文字）、--accent（主题色）、--danger（错误/危险）；
+     局部变量 --fg、--text-dim 可选覆盖
+   - 只使用语义选择器：.card、.badge、.muted、.error、.success、
+     button（含 button.secondary、button.danger）、.ghost、.danger-outline、
      table、input、select、a、h1/h2。禁止使用构建生成的 hash class。
    - 风格描述：<把你的需求写这里，例如「暗紫色赛博朋克风、大圆角、柔和阴影」>
    - 保持可读性：正文对比度不低于 4.5:1。

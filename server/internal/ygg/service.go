@@ -167,8 +167,8 @@ func (s *Service) SetTokenWindowsResolver(f func(ctx context.Context) TokenWindo
 
 // gapGuard enforces ygg_rate_limit: upstream Throttle.php:15 keeps a
 // per-username minimum interval (ms) between authenticate/signout calls,
-// keyed by the REQUEST username. Same-username only — shared-IP classmates
-// (the campus use case!) are unaffected, unlike a per-IP window.
+// keyed by the REQUEST username. Same-username only — shared-IP users
+// (the shared-NAT use case!) are unaffected, unlike a per-IP window.
 type gapGuard struct {
 	mu   sync.Mutex
 	last map[string]time.Time

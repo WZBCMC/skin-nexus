@@ -52,7 +52,7 @@ onMounted(load)
     <!-- generate form on top (blessing layout) -->
     <div class="row">
       <input v-model.number="invNew.amount" type="number" min="1" max="1000" placeholder="数量" style="max-width: 100px;" />
-      <input v-model="invNew.description" placeholder="备注（description，如 姓名+学号，选填）" style="max-width: 320px;" />
+      <input v-model="invNew.description" placeholder="备注（description，人可读标识，选填）" style="max-width: 320px;" />
       <button @click="invGenerate">生成</button>
     </div>
     <div class="error" v-if="invError">{{ invError }}</div>

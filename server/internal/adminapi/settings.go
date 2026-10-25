@@ -34,7 +34,7 @@ var settingsWhitelist = []struct {
 	{"rate_limit_auth", true, "认证端点每 IP 每 10 分钟请求数上限（0=关闭；重启后生效）"},
 	{"login_fail_limit", true, "同账号连续失败锁定阈值（0=关闭；重启后生效）"},
 	// B4 (blessing 原名 — 迁移导入器原样搬运生产 options，改名会让存量值成死键)
-	{"site_url", true, "站点地址（http(s) 绝对地址；纹理 URL/OIDC issuer/sitemap 基址，重启后生效）"},
+	{"site_url", true, "站点地址（http(s) 绝对地址；页面链接/sitemap 基址，重启后生效。注意：纹理 URL 与 OIDC issuer 由环境变量 SKIN_BASE_URL/SKIN_OIDC_ISSUER 决定，此处不改它们）"},
 	{"announcement", false, "站点公告（Markdown，支持标题/粗体/链接/列表；双层消毒渲染，留空隐藏）"},
 	{"regs_per_ip", false, "每 IP 可注册账号数上限（0=不限制，立即生效）"},
 	{"max_upload_file_size", false, "材质上传大小上限（KB，不超过服务端硬顶，立即生效）"},

@@ -1,6 +1,6 @@
 # SkinNexus / 肤枢 — 项目立项蓝图（v0.1 草稿）
 
-> 状态：**立项准备阶段**。本文为蓝图初稿，可行性分析结论、Yggdrasil 兼容清单、数据迁移映射表待 `analysis/` 三份报告回填。
+> 状态：**立项蓝图（历史决策记录）**。可行性分析三份报告已全部回填（见 §2）；文中「建议/草案/待定」为立项期原貌，实施现状以 README 与 `docs/CHANGELOG.md` 为准。
 > 生成日期：2026-10-22。
 
 ---
@@ -10,7 +10,7 @@
 - **英文名**：SkinNexus
 - **中文名**：肤枢
 - **命名释义**：Nexus（中枢/连接点）——皮肤、身份、联合认证三线汇聚的中枢；皮肤站不再只是贴图托管，而是皮肤 + 外置登录 + 联合认证 + 社区扩展的控制点。
-- **仓库名建议**：`skin-nexus`（组织下），核心服务 `skin-nexus-server`、迁移工具 `skin-nexus-migrate`、插件 SDK `skin-nexus-plugin-sdk`。
+- **仓库形态**（立项期草案 → 实际落定）：单仓 `YimingZhanshen/skin-nexus`、单二进制 `skin-nexus`（`migrate` 为子命令）；立项期设想的 `skin-nexus-migrate` 独立仓库与 `skin-nexus-plugin-sdk` 未采用。
 - **替代使命**：替换年久失修的 blessing-skin-server（PHP 8.1 已出官方维护期），保留其数据资产与 Yggdrasil 生态兼容性。
 
 ## 1. 目标与需求基线（已拍板 2026-10-22）
@@ -23,13 +23,13 @@
 | 4 | 插件式社区扩展 | 形态待评析（见 §4 多路线对比，交多 AI 评审） |
 | 5 | 正版账号绑定，正版/皮肤站双登录开关切换 | **暂不做，仅留开关**：架构上预留认证源（auth source）抽象与 feature flag，二期实现 |
 
-一期功能范围：**最小核心**——账号/皮肤/披风/角色 + Yggdrasil 外置登录 + 迁移工具 + 插件框架 + 对外数据接口。数据库已定：**MySQL 8**。开源协议已定：**AGPL-3.0**。
+一期功能范围：**最小核心**——账号/皮肤/披风/角色 + Yggdrasil 外置登录 + 迁移工具 + 插件框架 + 对外数据接口。数据库已定：**MySQL 8**（实施期放宽为 5.7 / 8.0 双支持，5.7.44 实测通过，见 `docs/deploy.md`）。开源协议已定：**AGPL-3.0**。
 
 ---
 
 ## 2. 可行性分析（三份分析报告已全部回填，2026-10-22）
 
-> 依据 `analysis/blessing-skin-server.md`、`analysis/yggdrasil-connect.md`、`analysis/authlib-injector.md`（全部结论带 文件:行号 证据，推断项已标注）。回填位置：
+> 依据 `analysis/blessing-skin-server.md`、`analysis/yggdrasil-connect.md`、`analysis/authlib-injector.md`（**私有工作区文档，不入库**；全部结论带 文件:行号 证据，推断项已标注）。回填位置：
 
 - 2.1 blessing-skin-server 技术栈与数据模型摘要 → 迁移可行性结论 ✅ 已回填（详见 analysis/blessing-skin-server.md）
 - 2.2 Yggdrasil API 兼容面 ✅ 已回填（详见 analysis/authlib-injector.md，P0 15 条 / P1 11 条）
@@ -39,7 +39,7 @@
 
 ### 2.5 Janus 与 Yggdrasil Connect 免密登录（分析结论，2026-10-22）
 
-**结论：无需部署 Janus 或任何额外项目，OAuth2/OIDC 免密登录内置进 SkinNexus 即可**。Janus（NestJS + panva/oidc-provider）只是 blessing 生态因「Laravel 缺 OIDC 服务端库」而生的外挂补丁（`refs/janus/README.md:5`），与皮肤站共享 MySQL 以授权码交接认证结果。新栈四条候选路线均有成熟 OIDC Provider 库，单体内置后：会话 → 直接签发 token，胶水层消失。SkinNexus = **blessing + yggdrasil-connect + janus 三合一**。
+**结论：无需部署 Janus 或任何额外项目，OAuth2/OIDC 免密登录内置进 SkinNexus 即可**。Janus（NestJS + panva/oidc-provider）只是 blessing 生态因「Laravel 缺 OIDC 服务端库」而生的外挂补丁（`refs/janus/README.md:5`，私有工作区），与皮肤站共享 MySQL 以授权码交接认证结果。新栈四条候选路线均有成熟 OIDC Provider 库，单体内置后：会话 → 直接签发 token，胶水层消失。SkinNexus = **blessing + yggdrasil-connect + janus 三合一**。
 
 1. 免密登录链路（内置后）：启动器 → SkinNexus `/authorize`（OIDC）→ 站内登录（免密码外传）→ 选角（`Yggdrasil.PlayerProfiles.Select` scope）→ 签发 ID/Access Token → `yggc/userinfo`。
 2. 须保持的 Janus 行为兼容：OIDC discovery 元数据齐全；authorization_code + implicit + refresh_token + **device_code**（公共客户端）；`client_secret_post`；scope 语义与 yggdrasil-connect 一致。
@@ -94,7 +94,7 @@
 | yggdrasil-connect | **MIT**（Copyright LittleSkin） | ✅ 无碍：Union 协议实现可参考甚至移植代码，保留版权声明即可；一期按 clean-room 重写协议层更稳（代码质量原因，非许可原因） |
 | authlib-injector | **AGPLv3+ 附 AUTHLIB-INJECTOR 例外**；wiki 文本 CC BY-SA 4.0 | ✅ 无碍：HTTP API 交互不受传染；SkinNexus 本就 AGPL-3.0，即便参考其代码也兼容，但**协议文档引用 wiki 需署名**（LICENSE-THIRD-PARTY 或文档脚注） |
 
-**总判定**：AGPL-3.0 选型成立，无许可冲突。「仅迁数据不搬代码」的保守策略可以放宽为「可复用 MIT 代码但保留声明、authlib-injector 按协议文档实现不抄 Java」。最终以 `analysis/` 三份报告的许可章节为准。
+**总判定**：AGPL-3.0 选型成立，无许可冲突。「仅迁数据不搬代码」的保守策略可以放宽为「可复用 MIT 代码但保留声明、authlib-injector 按协议文档实现不抄 Java」。最终以 `analysis/` 三份报告（私有工作区）的许可章节为准。
 
 ---
 
@@ -105,7 +105,7 @@
 | 维度 | A. Go + Vue 3 | B. TS NestJS + Vue 3 | C. .NET 8 + Vue 3 | D. Rust + Vue 3 |
 |---|---|---|---|---|
 | 与现有技能栈（C++/Go/Vue）契合 | ★★★★★ | ★★★ | ★★ | ★★ |
-| 单二进制/低依赖部署（N100/宝塔） | ★★★★★ | ★★（Node 运行时 + 依赖链） | ★★（.NET 运行时） | ★★★★★ |
+| 单二进制/低依赖部署（低配主机/主机面板） | ★★★★★ | ★★（Node 运行时 + 依赖链） | ★★（.NET 运行时） | ★★★★★ |
 | Yggdrasil/OAuth 生态成熟度 | ★★★★（goth 等） | ★★★★★ | ★★★★ | ★★★ |
 | 插件系统可行性 | ★★★（Yaegi/插件进程） | ★★★★★（JS 沙箱天然契合） | ★★★（Roslyn 脚本） | ★★（dylib/WASM） |
 | 长期内存/CPU 占用 | ★★★★★ | ★★★ | ★★★★ | ★★★★★ |
@@ -115,8 +115,8 @@
 
 ### 3.2 各路线要点
 
-- **A. Go + Vue 3**：后端 `chi`/`gin` + `sqlc`/`ent` + `goth`（Microsoft OAuth 预留）；纹理处理用 `golang.org/x/image`；Yggdrasil API 手写路由（协议面小，见 §2.2 清单）。部署一个二进制 + 一个前端静态目录，宝塔可托管。插件走「进程外 + 内置 Lua/JS 解释器」混合（见 §4）。
-- **B. TypeScript NestJS + Vue 3**：全栈同语言；插件系统可用 `isolated-vm`/QuickJS 做 JS 沙箱，社区插件门槛最低；NestJS 模块化对「认证源抽象/插件宿主」友好；代价是 Node 依赖链与内存占用，N100 上多服务并存需压测。
+- **A. Go + Vue 3**：后端 `chi`/`gin` + `sqlc`/`ent` + `goth`（Microsoft OAuth 预留）；纹理处理用 `golang.org/x/image`；Yggdrasil API 手写路由（协议面小，见 §2.2 清单）。部署一个二进制 + 一个前端静态目录，常见主机面板可托管。插件走「进程外 + 内置 Lua/JS 解释器」混合（见 §4）。
+- **B. TypeScript NestJS + Vue 3**：全栈同语言；插件系统可用 `isolated-vm`/QuickJS 做 JS 沙箱，社区插件门槛最低；NestJS 模块化对「认证源抽象/插件宿主」友好；代价是 Node 依赖链与内存占用，低配机上多服务并存需压测。
 - **C. .NET 8 + Vue 3**：ASP.NET Core Identity + EF Core，认证/授权最省心；NativeAOT 可减小部署体积；插件用 Roslyn 脚本或进程外；对 YMZS 技术栈是新增语言面。
 - **D. Rust + Vue 3**：axum + sqlx；性能与内存安全最优，纹理处理与签名逻辑放心写；但开发速度与协作门槛最高，社区贡献者面窄。
 
@@ -125,7 +125,7 @@
 1. 迁移工具与 MySQL 8 配合度（20%）
 2. Yggdrasil API + 签名/纹理链路实现风险（20%）
 3. 插件系统与所选插件形态的契合度（15%）
-4. N100/宝塔部署与长期运维成本（15%）
+4. 低配主机/主机面板部署与长期运维成本（15%）
 5. 与 YMZS 现有技能栈（C++/Go/Vue）契合、可持续维护（15%）
 6. 社区/多 AI 协作开发的文档与门槛（10%）
 7. 二期正版绑定（Microsoft OAuth）实现难度（5%）
@@ -194,8 +194,8 @@
 
 ## 6. 数据迁移方案（骨架，映射表待 analysis 回填）
 
-- 迁移工具独立仓库 `skin-nexus-migrate`，CLI 形态，支持 `--dry-run`。
-- 步骤：① 只读扫描旧库（表结构以 `analysis/blessing-skin-server.md` 为准）→ ② 生成迁移映射表（users/players/textures/options）→ ③ 密码哈希策略决策（**待分析确认 blessing 哈希算法后定**：同算法直迁 vs 强制重置 vs 双哈希过渡）→ ④ 纹理文件迁移/校验（hash 校验）→ ⑤ UUID 与角色绑定迁移 → ⑥ 新旧并行双跑可选（增量同步，二期）。
+- 迁移工具（立项期设想独立仓库 `skin-nexus-migrate`；实际落地为 `skin-nexus migrate` 子命令），CLI 形态，支持 `--dry-run`。
+- 步骤：① 只读扫描旧库（表结构以 `analysis/blessing-skin-server.md`，私有工作区，为准）→ ② 生成迁移映射表（users/players/textures/options）→ ③ 密码哈希策略决策（已定：同族 verify + 惰性重哈希，见 §2.1）→ ④ 纹理文件迁移/校验（hash 校验）→ ⑤ UUID 与角色绑定迁移 → ⑥ 新旧并行双跑可选（增量同步，二期）。
 - 验收：迁移后抽查用户可登录、皮肤/披风渲染一致、Yggdrasil hasJoined 返回与旧站一致。
 
 ## 7. 里程碑（草案）
@@ -206,14 +206,14 @@
 | M1 骨架 | 仓库/CI/核心域模型/登录/皮肤上传渲染 | 新用户可注册上传皮肤并展示 |
 | M2 Yggdrasil | 内置 API + authlib-injector 端到端联调 | 皮肤站登录 → 客户端进服皮肤一致 |
 | M3 迁移 | migrate 工具 + 一次性迁移演练 | 旧站数据全量校验通过 |
-| M4 插件 | 插件宿主 + SDK + 示例插件 | 第三方示例插件跑通 3 个扩展点 |
+| M4 插件 | 插件宿主 + SDK + 示例插件 | 第三方示例插件跑通 3 个扩展点（实际按 M0 PoC 裁决口径收官：goja 选型 + hook 合约冻结；宿主运行时后置，见 README 路线图） |
 | M5 发布 | 文档站 + 上线 + 旧站下线评估 | 生产切换，回滚预案在手 |
 
 ## 8. 协作开发规范
 
 - **分支模型**：trunk-based，`main` 保护分支 + 短生命周期 feature 分支（`feat/<scope>-<desc>`），PR 合并前必须过 CI + 至少一人（或指定 agent）评审。
 - **提交规范**：Conventional Commits（`feat|fix|docs|refactor|test|chore`），scope 用模块名（`auth`/`texture`/`ygg`/`plugin`/`migrate`）。
-- **代码质量**：格式化与 lint 强制（Go: golangci-lint；TS: eslint+prettier；Rust: rustfmt+clippy——随技术栈定）；单测覆盖率门槛核心域 ≥70%；CI 矩阵 = lint + test + build。
+- **代码质量**（目标规范；lint 工具链尚未引入，当前 CI = go build/vet/test + 集成测试 + 前端构建 + Docker）：格式化与 lint（Go: golangci-lint；TS: eslint+prettier——随技术栈定）；单测覆盖率门槛核心域 ≥70%，落地后 CI 矩阵补 lint 项。
 - **PR 要求**：模板含「动机/改动/测试/迁移影响」；涉及 DB 的 PR 必须附迁移脚本；涉及 Yggdrasil 协议的 PR 必须附兼容性验证记录（对照 §2.2 清单）。
 - **文档先行**：协议/接口变更先改 `docs/` 再改代码；ADR（架构决策记录）存 `docs/adr/`，编号递增。
 - **安全**：依赖锁定 + 定期审计；密钥不进仓库；对外动作（发版、切库）先示内容再执行。
@@ -225,16 +225,16 @@
 - **证据铁律**：结论标注出处（文件:行号或命令输出）；「不存在」类结论必须穷尽检索；不确定标「待验证」。
 - **验证门**：每步贴真实命令输出，失败即停、最多重试 1 次；不编造输出。
 - **分工边界**：重逆向/重分析（三仓库分析）走独立子代理并落盘 `analysis/`；实现 agent 不改他人 write scope 内文件。
-- **AI 可读契约**：API 变更同步更新 OpenAPI schema（`docs/openapi.yaml`）——agent 以 schema 为接口事实源；插件 hook 清单同理版本化。
+- **AI 可读契约**：API 变更同步更新 OpenAPI schema（`docs/openapi.yaml`，规划中、尚未落地，落地前以源码路由 + 契约测试为事实源）——agent 以 schema 为接口事实源；插件 hook 清单同理版本化。
 - **复盘沉淀**：每完成一个里程碑，把踩坑与有效流程沉淀为技能/ADR，不重复交学费。
 
 ## 10. 开源协议
 
 - **选定：AGPL-3.0**（需求已拍板）。
 - 理由：网络服务条款（§13）防止闭源云服务白嫖部署 SkinNexus 而不回馈，与数据主权/自托管信条一致；自用/社区自托管不受影响。
-- 注意事项（待 §2.4 分析确认）：
-  - 仅迁移 blessing-skin-server 的**数据**（不搬代码）→ 无 GPL 传染问题；
-  - 若迁移工具或兼容层**参考/搬运**了 blessing-skin-server（GPL-3.0）代码，传染性与 AGPL-3.0 是否兼容需在 §2.4 给出结论；风险高则做 clean-room 重写迁移逻辑；
+- 注意事项（结论见 §2.4）：
+  - 仅迁移 blessing-skin-server 的**数据**（不搬代码）→ 无许可问题；
+  - 若迁移工具或兼容层**参考/搬运**了 blessing-skin-server（**MIT**，见 §2.4）代码，保留其版权声明即可，无传染问题；
   - authlib-injector / yggdrasil-connect 的许可（待分析报告确认）决定「内置实现」能否直接复用其代码；不行则只实现协议（协议本身不受版权保护）不抄代码；
   - 第三方依赖的许可清单进 `LICENSE-THIRD-PARTY`。
 
@@ -243,10 +243,10 @@
 | 项 | 说明 | 状态 |
 |---|---|---|
 | MUA Union 联合认证协议细节 | 二期已实现可开关成员站模块（`server/internal/union`，wire 契约冻结 + 偏差备案 6 项）；hub 侧五问（keyId 轮换等）联调校准 | ✅ 核心已实现，联调待做 |
-| blessing 密码哈希算法 | PWD_METHOD+SALT 全站一套、无 per-user 标记；迁移读旧 .env + 同族 verify + 惰性重哈希（§2.1） | 策略已定，待旧库抽样验证分布 |
+| blessing 密码哈希算法 | PWD_METHOD+SALT 全站一套、无 per-user 标记；迁移读旧 .env + 同族 verify + 惰性重哈希（§2.1） | ✅ 已实测：66/66 `$2y$` 直迁直验、惰性重哈希上线（2026-10-23/24） |
 | 纹理签名链路 | 已明确：仅 hasJoined 与 unsigned=false 必须签，SHA1withRSA，密钥=元数据 signaturePublickey（§2.2/§2.3 互证） | ✅ 已闭合 |
 | 技术栈终选 | 多 AI 评析后拍板 | ✅ 已冻结：Go + Vue 3 + goja（2026-10-22，M0 PoC 裁决） |
 | 插件形态终选 | 多 AI 评析后拍板 | ✅ 已冻结：goja 内嵌 + hook 合约（P0 15–20 个），宿主运行时后置 |
 | 域名/部署目标 | 自有 Linux 服务器 + MySQL + 反代域名 | ✅ 已确认（2026-10-22，见 docs/deploy.md） |
-| 旧站下线与回滚 | 双跑期时长与回滚触发条件 | ✅ 触发条件已定（docs/deploy.md §四），切流窗口待排期 |
+| 旧站下线与回滚 | 双跑期时长与回滚触发条件 | ✅ 触发条件已定（docs/migration.md §五），切流已完成（2026-10-25） |
 | authlib-injector 版本覆盖 | 推断 1.7.10～最新，待验证；「恒等名」语义（non_email_login 或 meta.serverName）待确认 | 待 YMZS 确认 |

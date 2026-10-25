@@ -11,7 +11,7 @@
 
 ### 代码质量
 
-- 格式化与 lint 强制（Go: golangci-lint；前端: eslint + prettier）；核心域单测覆盖率 ≥ 70%；CI 矩阵 = lint + test + build。
+- 目标规范（lint 工具链尚未引入，当前 CI = go build/vet/test + 集成测试 + 前端构建 + Docker）：格式化与 lint（Go: golangci-lint；前端: eslint + prettier）、核心域单测覆盖率 ≥ 70%；落地后 CI 矩阵补 lint 项。
 
 ### PR 要求
 
@@ -24,7 +24,7 @@
 
 - 协议/接口变更先改 `docs/` 再改代码；
 - 架构决策记录（ADR）存 `docs/adr/`，编号递增；
-- 对外契约以 OpenAPI schema 为接口事实源，变更同步更新。
+- 对外契约当前以源码路由与契约为准；OpenAPI schema（`docs/openapi.yaml`）为规划中的接口事实源，落地前接口变更以 `cmd/skin-nexus/main.go` 路由组装 + 契约测试同步。
 
 ### 安全
 
