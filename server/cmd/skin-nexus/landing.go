@@ -19,10 +19,14 @@ import (
 	"skin-nexus/server/internal/seo"
 )
 
-// landingTexture is one featured library card (preview rendered server-side).
+// landingTexture is one featured library card. URL follows the skinlib UI
+// rule (SkinlibPage.vue): skins get the server-rendered body preview, capes
+// get the flat texture image (/preview of a cape through the body renderer
+// is garbage, hence 404 there).
 type landingTexture struct {
 	TID  int64
 	Name string
+	URL  string
 }
 
 // landingData feeds the landing template.
@@ -66,7 +70,7 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!DOCTYPE html>
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
   .grid figure { margin: 0; padding: 10px; border-radius: 10px; text-align: center;
                  background: var(--panel, #171a21); border: 1px solid var(--border, #262b36); }
-  .grid img { width: 96px; height: 96px; image-rendering: pixelated; }
+  .grid img { max-width: 96px; max-height: 96px; image-rendering: pixelated; }
   .grid figcaption { font-size: 12px; color: var(--muted, #8b93a1); margin-top: 6px;
                      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   footer { margin-top: 40px; text-align: center; font-size: 12px; color: var(--muted, #8b93a1); }
@@ -95,7 +99,7 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!DOCTYPE html>
       <h2>皮肤库精选</h2>
       <div class="grid">
         {{range .Featured}}
-        <figure><img src="/preview/{{.TID}}" alt="{{.Name}}" loading="lazy" /><figcaption>{{.Name}}</figcaption></figure>
+        <figure><img src="{{.URL}}" alt="{{.Name}}" loading="lazy" /><figcaption>{{.Name}}</figcaption></figure>
         {{end}}
       </div>
     </section>

@@ -553,9 +553,16 @@ func main() {
 		}
 		if rows, _, err := st.SkinlibList(ctx, store.SkinlibOpts{Sort: "likes", Page: 1, PerPage: 8}); err == nil {
 			for _, r := range rows {
-				if r.Public {
-					d.Featured = append(d.Featured, landingTexture{TID: r.TID, Name: r.Name})
+				if !r.Public {
+					continue
 				}
+				// Same split as the skinlib UI: skins preview rendered, capes
+				// flat texture (a cape through the body renderer 404s).
+				u := "/preview/" + strconv.FormatInt(r.TID, 10)
+				if r.Type == "cape" {
+					u = "/textures/" + r.Hash
+				}
+				d.Featured = append(d.Featured, landingTexture{TID: r.TID, Name: r.Name, URL: u})
 			}
 		}
 		return d

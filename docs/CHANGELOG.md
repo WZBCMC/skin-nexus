@@ -9,6 +9,7 @@
 - **`/register` 深链识别**：SPA 启动按路径直达注册卡（sitemap 早已收录 `/register`，此前落到登录卡）。
 - 回归测试：landing 渲染（CTA/统计/精选/注入/转义）、profile 逐页 meta、注入覆盖与级联顺序断言保持全绿。
 - **上线即抓即修**：html/template 会剥离模板源里的 HTML 注释，`<!--skin-*-->` 锚点在 landing 渲染时被整体吃掉（SEO/主题/自定义三块全部失去锚点、首页无 title）——锚点改为 `template.HTML` 受信值从数据侧注入，并新增「head 必须含 title/canonical」回归断言。
+- **精选卡片披风破图修复**（线上截图取证：`/preview/{id}` 对 cape 一律 404——该端点故意拒披风过全身渲染器）：landing 按 skinlib UI 同款分流——skin 走 `/preview/{tid}` 渲染图、cape 走 `/textures/{hash}` 平铺纹理，卡片图改等比缩放。
 
 ## 2026-10-25（UI 自定义体系修复 + 贡献指南）
 

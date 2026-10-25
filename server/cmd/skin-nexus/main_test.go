@@ -96,7 +96,10 @@ func TestSpaHandlerInjectsEveryHTMLPath(t *testing.T) {
 		appearance.NewEngine(opts, reg),
 		func(context.Context) landingData {
 			return landingData{SiteName: "示例站", Users: 3, Players: 4, Textures: 5,
-				Featured: []landingTexture{{TID: 7, Name: "测试皮"}}}
+				Featured: []landingTexture{
+					{TID: 7, Name: "测试皮", URL: "/preview/7"},
+					{TID: 8, Name: "测试披风", URL: "/textures/abc"},
+				}}
 		})
 
 	for _, path := range []string{"/index.html", "/register", "/profile/Steve"} {
@@ -149,7 +152,10 @@ func TestSpaHandlerServesLandingAtRoot(t *testing.T) {
 		appearance.NewEngine(opts, reg),
 		func(context.Context) landingData {
 			return landingData{SiteName: "示例站", Users: 3, Players: 4, Textures: 5,
-				Featured: []landingTexture{{TID: 7, Name: "测试皮"}}}
+				Featured: []landingTexture{
+					{TID: 7, Name: "测试皮", URL: "/preview/7"},
+					{TID: 8, Name: "测试披风", URL: "/textures/abc"},
+				}}
 		})
 
 	rec := httptest.NewRecorder()
@@ -158,7 +164,8 @@ func TestSpaHandlerServesLandingAtRoot(t *testing.T) {
 	for _, want := range []string{
 		"hero",                 // landing markup
 		"注册账号", "登录",      // CTAs
-		"/preview/7", "测试皮", // featured library cards
+		"/preview/7", "测试皮", // featured skin card
+		"/textures/abc", "测试披风", // featured cape card (flat texture URL)
 		"skin-custom-css", // appearance injection still applies
 		"<title>", "canonical", // SEO head block must survive html/template
 	} {
