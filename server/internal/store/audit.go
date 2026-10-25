@@ -45,7 +45,7 @@ func (m *Mysql) EmailByPlayerName(ctx context.Context, name string) (string, boo
 	var email sql.NullString
 	err := m.db.QueryRowContext(ctx,
 		`SELECT u.email FROM players p JOIN users u ON u.id = p.uid
-		 WHERE p.name = ? COLLATE utf8mb4_general_ci LIMIT 1`, name).
+		 WHERE p.name COLLATE utf8mb4_general_ci = ? LIMIT 1`, name).
 		Scan(&email)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", false, nil

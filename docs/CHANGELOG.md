@@ -6,7 +6,7 @@
 
 - **三路静态审计**（部署构建 / 迁移 / 全文档噪音）对照源码逐条复核，修复文档硬伤：迁移手册签名钥导出 SQL 列名（老站 options 列为 `option_name/option_value`）、`--source-prefix` 必填语义、`skipped>0` 归因与处置（email/nickname CI 唯一键撞车、空邮箱→NULL）、纹理问题文件**不拷贝需人工补拷**、手动建表两处必炸（0009 重叠 ALTER 需 `--force`、import 强查 0008 记标）、`SKIN_LEGACY_ENV` 盐链挂载全流程补写（弱哈希用户登录的前置条件）、dry-run 通过标准改以 WARN 为信号、实跑后对账 SQL 与告警词典、`migrate uuid` 子命令入档、派生列/不迁列语义表。
 - **部署文档**：SKIN_LISTEN 在 bridge 网络下的正确语义、模式一 4 处秘密同步、`SKIN_BASE_URL` 首启快照语义（纹理 URL/OIDC issuer 事后改不动）、env/option 分键优先级、GHCR 可见性与 `:sha-` 标签口径、回滚不回滚 schema 警示、两把密钥的生成时机条件、`/setup` 一次性门与迁移场景顺序、内置库 MySQL 8.0 标注、XFF 信任区与端口收敛、`X-Real-IP` 不被读取说明、systemd 完整单元。
-- **CI**：PR 构建不再推 `:latest`（docker job push-only）；集成测试加 MySQL **5.7/8.0 双矩阵**（此前两起 5.7 专属 SQL 事故无门禁）；Go 版本钉 1.26 对齐 go.mod。
+- **CI**：PR 构建不再推 `:latest`（docker job push-only）；集成测试加 MySQL **5.7/8.0 双矩阵**（此前两起 5.7 专属 SQL 事故无门禁）；Go 版本钉 1.26 对齐 go.mod。**5.7 矩阵首战即抓两处**：`EmailByPlayerName` 的 `? COLLATE` 参数侧写法（5.7 prepared 协议 Error 1253）修到列侧、迁移 import 影子表 DDL 补 `utf8mb4`（5.7 默认 latin1 塞不下中文夹具）。
 - **主题规范对齐真实 CSS 契约**（7 个设计令牌 + 稳定选择器，按模板生成主题真正生效）；blueprint / standards / GOVERNANCE 过时项清零（openapi.yaml 标注规划中、M4 里程碑口径注记、blessing 许可修正为 MIT、回滚出处改指 migration.md 等）。
 - **隐私清尾**：文档与测试夹具中残留的院校缩写、主机面板名、硬件型号、校园语境注释全部泛化；面板 `site_url` 描述与代码行为对齐。
 - **英文 README**（`README.en.md`）上线，与中文 README 互链。
