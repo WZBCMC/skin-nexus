@@ -169,6 +169,7 @@ func TestSpaHandlerServesLandingAtRoot(t *testing.T) {
 		"skin-custom-css", // appearance injection still applies
 		"<title>", "canonical", // SEO head block must survive html/template
 		"/favicon.svg", "manifest.webmanifest", // site logo / PWA links on the landing head too
+		"brandmark", "p2m-stage", "p2m-wipe", // hero logo reveal choreography is wired
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("landing missing %q: %s", want, body)

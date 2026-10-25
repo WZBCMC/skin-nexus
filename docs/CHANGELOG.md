@@ -2,12 +2,13 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
-## 2026-10-25（站点 Logo：SVG 矢量标识接入）
+## 2026-10-25（站点 Logo：SVG 矢量标识接入 + 访客首页入场编舞）
 
 - **官方标识定稿**：「像素枢纽 N」——圆角玻璃底板 + 蓝→绿渐变块面 N + 枢纽节点电路纹理（SVG 矢量为唯一事实源，AI 位图不入库）；16px 眯眼测试、单色可复现、白/深双底兼容、双色渐变均验证通过。
 - **全链接入**：`web/public/favicon.svg`（现代浏览器主图标）+ `favicon.ico`（16/32/48 兼容回退）+ `apple-touch-icon.png` + PWA `manifest.webmanifest`（192/512 图标、theme_color）——栅格兼容件全部从 SVG 几何直接绘制派生（`logo/render_icon.py`，8× 超采样），非位图描摹。
 - `web/index.html` 接入 icon/manifest/theme-color 链接；README（中英）首页横幅挂 `docs/assets/logo.svg`。
-- 服务侧无需改动：spaHandler 按 `os.Stat` 对 dist 既有文件原样放行，favicon/manifest 均直达。
+- 服务侧无需改动：spaHandler 按 `os.Stat` 对 dist 既有文件原样放行，favicon/manifest 均直达；landing head 同步补齐图标/manifest 链接（SPA 壳与访客首页双覆盖）。
+- **访客首页 logo 入场编舞**（pixel2motion 工序产出移植）：hero 区内嵌动效标识——底板淡入→N 块面 mask 擦除→电路线 draw-on→枢纽节点 stagger pop→整体收束，1600ms 共此时钟（黄金比 20/50/30、字面缓动值防 Chromium `var()` 静默降级、draw-on 用 butt cap 防起点墨点）；`prefers-reduced-motion` 直接终态；动画 SVG/CSS 零依赖内联，主题仍可经自定义 CSS 覆盖。
 
 ## 2026-10-25（访客首页 + 逐页 SEO meta）
 
