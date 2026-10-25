@@ -59,6 +59,23 @@ const navGroups = computed(() => {
 // Session-drop handler: pages call notifyUnauthorized() on 401 → back to login.
 setUnauthorizedHandler(() => { user.value = null; view.value = 'login' })
 
+// Launcher deep links (blessing route parity): PCL derives the skin-management
+// and profile pages by swapping the API root's yggdrasil path for
+// `user/closet` / `user/profile` (PageLoginProfileSkin.xaml.cs:151,
+// ProfileUi.cs:291) — the SPA must honor those URLs or the launcher's "换皮肤 /
+// 修改密码" buttons land on the dashboard. Same for HMCL's yggdrasil convention.
+const legacyRoutes = {
+  '/user/closet': 'closet',
+  '/user/profile': 'profile',
+  '/user/players': 'players',
+  '/user/skinlib': 'skinlib',
+  '/user/dashboard': 'dashboard',
+  '/skinlib': 'skinlib',
+}
+// Deep-linked view held for after login (open /user/closet logged-out → login
+// card first, then drop straight into the closet).
+const pendingView = ref('')
+
 async function boot() {
   // Fresh install: the wizard takes over before anything else (empty-DB init).
   try {
@@ -77,6 +94,12 @@ async function boot() {
   }
   if (isDevice) view.value = 'device'
   else if (!user.value && location.pathname === '/register') view.value = 'register' // landing CTA deep link
+  else if (legacyRoutes[location.pathname]) {
+    // launcher deep link: logged in → straight there; logged out → login card,
+    // resume into the target view after authentication
+    if (user.value) view.value = legacyRoutes[location.pathname]
+    else pendingView.value = legacyRoutes[location.pathname]
+  }
   else view.value = user.value ? 'dashboard' : 'login'
 }
 
@@ -98,8 +121,11 @@ async function doLogin() {
     // (admin-entry gating) — refresh so the entry appears without a reload.
     try { user.value = await api.me() } catch { /* keep login payload */ }
   } catch (e) { authErr.value = e.message; return }
-  // returning from login initiated on the device page keeps the flow alive
-  view.value = location.pathname === '/device' ? 'device' : 'dashboard'
+  // returning from login initiated on the device page keeps the flow alive;
+  // a launcher deep link resumes into its target view after authentication
+  if (location.pathname === '/device') view.value = 'device'
+  else if (pendingView.value) { view.value = pendingView.value; pendingView.value = '' }
+  else view.value = 'dashboard'
 }
 
 async function doRegister() {
