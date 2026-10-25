@@ -12,6 +12,7 @@
 - **landing footer 移出 `.wrap`**：footer 原窝在内容容器里，wrap 底距垫在全出血页脚带下方成死角留空——挪为 body 级元素（语义也更对），并加结构回归断言（footer 必须闭合于最后一个 `</div>` 之后）。
 - **修复「拖到启动器」拖拽载荷**：原按钮是裸 `<a href>` 拖拽（text/uri-list 裸 URL），HMCL/PCL2 均不认——按 authlib-injector《启动器技术规范》「通过拖拽设置」改为 `dragstart` 写 `text/plain` = `authlib-injector:yggdrasil-server:{encodeURIComponent(API根)}`、`dropEffect=copy`（与老站 yggc `dnd.ts` 同款；PCL2 `FormMain_Drop` 取 DataFormats.Text 前缀匹配后 `WebUtility.UrlDecode`）。
 - **超管显示与保护修复**：用户管理表 `permission=2`（SUPER_ADMIN）因下拉无 2 选项显示为空白——改为「超级管理员」徽标（中英 i18n 补 `perm2`）；同时补两个服务端守卫洞——① `DELETE /users/{id}` 原只护 uid 1（迁移库中 uid 1 是普通用户、真超管是别的 uid，等于超管可被任意管理员删除）→ 改为 permission≥2 一律不可删 + `inlineGuard`（禁自删/只能操作严格低于自己的）；② `PUT /users/{id}/password` 原无守卫（普通管理员可重置超管密码=接管）→ 同挂 `inlineGuard`。UI 删除按钮对 uid 1 / permission=2 隐藏。
+- **修复启动器深链 `/user/closet`、`/user/profile`**：PCL 由 API 根替换 `api/yggdrasil/authserver` → `user/closet`/`user/profile` 构造跳转（`PageLoginProfileSkin.xaml.cs:151`、`ProfileUi.cs:291`，blessing 路由约定），而 SPA `boot()` 只认 `/device`/`/register`——启动器「换皮肤/修改密码」按钮落到仪表盘而非衣柜/资料页。现按路径直达对应视图；未登录深链先出登录卡、登录后直落目标页。`/user/players`、`/user/skinlib`、`/user/dashboard` 同映射。
 
 ## 2026-10-25（访客首页 + 逐页 SEO meta）
 
