@@ -46,11 +46,16 @@ function turnPage(delta) {
 }
 const pageMax = () => Math.max(1, Math.ceil(total.value / pageSize))
 
-// createdAt arrives RFC3339 (UTC); render in the operator's locale.
+// createdAt digits are the DB's wall-clock time (the driver tags them Z
+// but carries no loc=); every other panel table shows these strings raw.
+// Display the digits as-is instead of letting Date() re-interpret the
+// (aspirational) zone — otherwise rows render +8h off on this deployment.
 function fmtTime(s) {
   if (!s) return '—'
-  const d = new Date(s)
-  return Number.isNaN(d.getTime()) ? s : d.toLocaleString()
+  const iso = String(s)
+  const t = iso.indexOf('T')
+  return (t >= 0 ? iso.slice(0, t) + ' ' + iso.slice(t + 1) : iso)
+    .replace(/\.\d.*$/, '').replace(/[Zz]$|[+-]\d\d:\d\d$/, '')
 }
 
 // Outcome badge tone: ok green, miss muted, denied amber, fail/error red.
@@ -89,8 +94,8 @@ onMounted(load)
         <td class="nowrap"><span class="oc" :class="outcomeClass(row.outcome)">{{ t(`admin.outcome.${row.outcome}`) }}</span></td>
         <td class="nowrap who">{{ row.who || '—' }} <span class="muted" v-if="row.uid">#{{ row.uid }}</span></td>
         <td class="nowrap"><code class="ip">{{ row.ip || '—' }}</code></td>
-        <td class="ua">{{ row.ua || '—' }}</td>
-        <td class="detail">{{ row.detail || '—' }}</td>
+        <td class="ua" :title="row.ua || ''">{{ row.ua || '—' }}</td>
+        <td class="detail" :title="row.detail || ''">{{ row.detail || '—' }}</td>
       </tr>
     </table>
     </div>
@@ -106,18 +111,28 @@ onMounted(load)
 <style scoped>
 /* narrow viewports scroll the table instead of crushing columns */
 .table-scroll { overflow-x: auto; }
-.logs-table { min-width: 960px; }
-.logs-table th:nth-child(1), .logs-table td:nth-child(1) { width: 150px; }
-.logs-table th:nth-child(2), .logs-table td:nth-child(2) { width: 110px; }
-.logs-table th:nth-child(3), .logs-table td:nth-child(3) { width: 70px; }
-.logs-table th:nth-child(4), .logs-table td:nth-child(4) { width: 140px; }
-.logs-table th:nth-child(5), .logs-table td:nth-child(5) { width: 120px; }
-.logs-table th:nth-child(6), .logs-table td:nth-child(6) { max-width: 220px; }
+/* UA/detail are single-line ellipsis cells with hover title: a raw
+   word-break let auto-layout starve the UA column to ~1 char per line
+   (rows grew screen-tall). Fixed column budget = stable geometry. */
+.logs-table { min-width: 960px; width: 100%; table-layout: fixed; }
+.logs-table th:nth-child(1), .logs-table td:nth-child(1) { width: 148px; }
+.logs-table th:nth-child(2), .logs-table td:nth-child(2) { width: 96px; }
+.logs-table th:nth-child(3), .logs-table td:nth-child(3) { width: 62px; }
+.logs-table th:nth-child(4), .logs-table td:nth-child(4) { width: 138px; }
+.logs-table th:nth-child(5), .logs-table td:nth-child(5) { width: 112px; }
+.logs-table th:nth-child(6), .logs-table td:nth-child(6) { width: 210px; }
+/* col7 (detail) takes the remainder of the fixed layout */
 .logs-table td.detail { font-family: var(--mono, monospace); font-size: 12px; }
 .nowrap { white-space: nowrap; }
-.who { font-weight: 600; }
+.who { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 .ip { font-size: 12px; }
-.ua { font-size: 12px; word-break: break-all; }
+.ua, .logs-table td.detail {
+  max-width: 0; /* with table-layout:fixed + width, this enables ellipsis */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ua { font-size: 12px; }
 .oc { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; border: 1px solid transparent; }
 .oc-ok { color: #2e9e5b; border-color: #2e9e5b66; }
 .oc-miss { color: var(--muted, #8b93a1); border-color: #8884; }
