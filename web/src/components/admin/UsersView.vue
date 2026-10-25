@@ -169,7 +169,12 @@ onMounted(load)
         <td><input class="cell-input cell-email" v-model="u.email" placeholder="—" @blur="saveEmail(u)"
                    @keyup.escape="load()" /></td>
         <td>
-          <select class="cell-input cell-perm" :value="String(u.permission)" @change="changePermission(u, $event)"
+          <!-- SUPER_ADMIN (permission=2) has no select option on purpose
+               (never grantable/demotable from the UI); render its label as a
+               badge — an optionless select displayed as a blank dropdown. -->
+          <span v-if="Number(u.permission) === 2" class="badge"
+                style="border-color: var(--accent); color: var(--accent);">{{ t('admin.perm2') }}</span>
+          <select v-else class="cell-input cell-perm" :value="String(u.permission)" @change="changePermission(u, $event)"
                   :disabled="u.id === 1">
             <option value="-1">{{ t('admin.perm-1') }}</option>
             <option value="0">{{ t('admin.perm0') }}</option>
@@ -185,7 +190,7 @@ onMounted(load)
         <td class="muted nowrap">{{ (u.createdAt || '').slice(0, 10) }}</td>
         <td class="nowrap">
           <button class="secondary" @click="adminResetPassword(u)">{{ t('admin.resetPw') }}</button>
-          <button class="secondary danger-outline" v-if="u.id !== 1" @click="adminDeleteUser(u)" style="margin-left: 6px;">{{ t('admin.delete') }}</button>
+          <button class="secondary danger-outline" v-if="u.id !== 1 && Number(u.permission) !== 2" @click="adminDeleteUser(u)" style="margin-left: 6px;">{{ t('admin.delete') }}</button>
         </td>
       </tr>
     </table>

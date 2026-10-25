@@ -11,6 +11,7 @@
 - **访客首页 logo 入场编舞**（pixel2motion 工序产出移植）：hero 区内嵌动效标识——底板淡入→N 块面 mask 擦除→电路线 draw-on→枢纽节点 stagger pop→整体收束，1600ms 共此时钟（黄金比 20/50/30、字面缓动值防 Chromium `var()` 静默降级、draw-on 用 butt cap 防起点墨点）；`prefers-reduced-motion` 直接终态；动画 SVG/CSS 零依赖内联，主题仍可经自定义 CSS 覆盖。
 - **landing footer 移出 `.wrap`**：footer 原窝在内容容器里，wrap 底距垫在全出血页脚带下方成死角留空——挪为 body 级元素（语义也更对），并加结构回归断言（footer 必须闭合于最后一个 `</div>` 之后）。
 - **修复「拖到启动器」拖拽载荷**：原按钮是裸 `<a href>` 拖拽（text/uri-list 裸 URL），HMCL/PCL2 均不认——按 authlib-injector《启动器技术规范》「通过拖拽设置」改为 `dragstart` 写 `text/plain` = `authlib-injector:yggdrasil-server:{encodeURIComponent(API根)}`、`dropEffect=copy`（与老站 yggc `dnd.ts` 同款；PCL2 `FormMain_Drop` 取 DataFormats.Text 前缀匹配后 `WebUtility.UrlDecode`）。
+- **超管显示与保护修复**：用户管理表 `permission=2`（SUPER_ADMIN）因下拉无 2 选项显示为空白——改为「超级管理员」徽标（中英 i18n 补 `perm2`）；同时补两个服务端守卫洞——① `DELETE /users/{id}` 原只护 uid 1（迁移库中 uid 1 是普通用户、真超管是别的 uid，等于超管可被任意管理员删除）→ 改为 permission≥2 一律不可删 + `inlineGuard`（禁自删/只能操作严格低于自己的）；② `PUT /users/{id}/password` 原无守卫（普通管理员可重置超管密码=接管）→ 同挂 `inlineGuard`。UI 删除按钮对 uid 1 / permission=2 隐藏。
 
 ## 2026-10-25（访客首页 + 逐页 SEO meta）
 

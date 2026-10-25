@@ -252,6 +252,7 @@
     "perm-1": "Banned",
     "perm0": "Normal",
     "perm1": "Admin",
+    "perm2": "Super Admin",
     "permChangeConfirm": "Change {name} (uid {id}) permission from \"{from}\" to \"{to}\"?",
     "resetPw": "Reset PW",
     "resetPwPrompt": "Set a new password for {name} (uid {id}) (min 8 chars):",

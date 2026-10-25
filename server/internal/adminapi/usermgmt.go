@@ -90,6 +90,12 @@ func (b *Backend) handleUserSetPassword(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON"})
 		return
 	}
+	// Same blessing guards as the inline edits: without this, any admin could
+	// reset a SUPER_ADMIN's password and take over the account.
+	if msg := b.inlineGuard(r, id); msg != "" {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": msg})
+		return
+	}
 	req.Password = strings.TrimSpace(req.Password)
 	if len(req.Password) < 8 {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "密码至少 8 位"})
@@ -117,7 +123,12 @@ func (b *Backend) handleUserSetPassword(w http.ResponseWriter, r *http.Request) 
 
 // DELETE /api/admin/v1/users/{id} — remove a user and their working
 // credentials (transaction in store.DeleteUser; textures/audit kept).
-// uid 1 (the operator account) is never deletable.
+// Protection is permission-based first: SUPER_ADMIN (permission >= 2)
+// accounts are never deletable — migrated databases do NOT have the operator
+// at uid 1 (here uid 1 is a legacy regular user), so the old uid==1-only
+// guard left the real super admin deletable by any admin. uid 1 stays
+// undeletable too (blessing parity, belt and suspenders). inlineGuard applies:
+// no self-delete, only strictly-lower-permission targets.
 func (b *Backend) handleUserDelete(w http.ResponseWriter, r *http.Request) {
 	id, ok := idParam(r)
 	if !ok {
@@ -126,6 +137,21 @@ func (b *Backend) handleUserDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	if id == 1 {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "uid 1（管理员账号）不可删除"})
+		return
+	}
+	if targetPerm, err := b.Store.UserPermission(r.Context(), id); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "用户不存在"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "权限校验失败"})
+		return
+	} else if targetPerm >= 2 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "超级管理员账号不可删除"})
+		return
+	}
+	if msg := b.inlineGuard(r, id); msg != "" {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": msg})
 		return
 	}
 	// Union profile lifecycle: the (uuid, name) pairs must be captured BEFORE
