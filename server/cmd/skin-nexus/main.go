@@ -129,7 +129,7 @@ func main() {
 
 	// Phase 3: SEO + appearance (theme packs, custom CSS/JS).
 	seoEng := seo.NewEngine(st, seo.Defaults{SiteName: cfg.SiteName, BaseURL: cfg.BaseURL})
-	themeReg, err := theme.NewRegistry(cfg.ThemesDir)
+	themeReg, err := theme.NewRegistry(cfg.ThemesDir, version)
 	if err != nil {
 		log.Fatalf("themes: %v", err)
 	}
@@ -539,7 +539,7 @@ func main() {
 	root.Handle("GET /sitemap.xml", sitemapHandler(seoEng, st, cfg.BaseURL))
 	root.Handle("GET /robots.txt", robotsHandler(seoEng))
 	root.Handle("GET /theme-assets/{id}/{file}", themeAssetHandler(themeReg))
-	spa := spaHandler(seoEng, appearEng)
+	spa := spaHandler("web/dist", seoEng, appearEng)
 	if oidcProvider != nil {
 		spa = oidcProvider.Wrap(spa)
 	}
@@ -626,16 +626,24 @@ func textureHandler(ts *texture.Store) http.HandlerFunc {
 	}
 }
 
-// spaHandler serves web/dist if present, else a placeholder page. index.html
-// passes through the SEO + appearance injection layers (phase 3).
-func spaHandler(seoEng *seo.Engine, appearEng *appearance.Engine) http.Handler {
-	dir := "web/dist"
+// spaHandler serves web/dist if present, else a placeholder page. Every HTML
+// serve passes through the SEO + appearance injection layers (phase 3).
+// Only concrete asset files are served raw: os.Stat on "" resolves to the dist
+// directory itself, so "exists on disk" must not mean "static file" — root and
+// /index.html need the injected index.html too (2026-10-25 fix: "/" was served
+// raw and skipped SEO/theme/custom injection entirely).
+func spaHandler(dir string, seoEng *seo.Engine, appearEng *appearance.Engine) http.Handler {
 	if st, err := os.Stat(dir); err == nil && st.IsDir() {
 		fs := http.FileServer(http.Dir(dir))
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// SPA fallback: unknown paths -> index.html
 			p := strings.TrimPrefix(r.URL.Path, "/")
-			if _, err := os.Stat(dir + "/" + p); err != nil && !strings.HasPrefix(p, "api/") {
+			inject := !strings.HasPrefix(p, "api/")
+			if inject {
+				if fi, err := os.Stat(dir + "/" + p); err == nil && !fi.IsDir() && p != "index.html" {
+					inject = false // real asset file
+				}
+			}
+			if inject {
 				raw, err := os.ReadFile(dir + "/index.html")
 				if err != nil {
 					http.Error(w, "index missing", http.StatusInternalServerError)

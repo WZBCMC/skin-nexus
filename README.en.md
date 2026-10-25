@@ -55,6 +55,7 @@ Most detailed documentation is currently in Chinese:
 - [`docs/compat-matrix.md`](docs/compat-matrix.md) — blessing / yggdrasil-connect compatibility matrix (measured baseline)
 - [`docs/theme-spec.md`](docs/theme-spec.md) — theme pack spec
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — per-round change log
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution guide: translations, theme packs, code & docs
 - [`AGENTS.md`](AGENTS.md) — repo map and the seven compatibility iron rules (start here for AI agents)
 
 ## Compatibility contracts (must not break)

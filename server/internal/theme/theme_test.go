@@ -37,7 +37,7 @@ func TestRegistryScanAndValidate(t *testing.T) {
 	// bad: no manifest -> ignored
 	writePack(t, root, "empty", "", nil)
 
-	r, err := NewRegistry(root)
+	r, err := NewRegistry(root, "0.1.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestResolveAssetRejectsEscapes(t *testing.T) {
 		"style.css":    "body{}",
 		"preview.png":  "png",
 	})
-	r, err := NewRegistry(root)
+	r, err := NewRegistry(root, "0.1.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestResolveAssetRejectsEscapes(t *testing.T) {
 func TestHeadHTML(t *testing.T) {
 	root := t.TempDir()
 	writePack(t, root, "dark", okManifest, map[string]string{"style.css": "body{}"})
-	r, err := NewRegistry(root)
+	r, err := NewRegistry(root, "0.1.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,11 +96,26 @@ func TestHeadHTML(t *testing.T) {
 }
 
 func TestMissingDirIsNotError(t *testing.T) {
-	r, err := NewRegistry(filepath.Join(t.TempDir(), "nope"))
+	r, err := NewRegistry(filepath.Join(t.TempDir(), "nope"), "0.1.0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(r.List()) != 0 {
 		t.Fatal("expected empty registry")
+	}
+}
+
+func TestRequiresGate(t *testing.T) {
+	root := t.TempDir()
+	writePack(t, root, "too-new", `{"id":"too-new","name":"TooNew","version":"1.0.0","inject":{"css":["style.css"]},"requires":{"skin_nexus":">=9.9"}}`, map[string]string{"style.css": "body{}"})
+	writePack(t, root, "ok", `{"id":"ok","name":"OK","version":"1.0.0","inject":{"css":["style.css"]},"requires":{"skin_nexus":">=0.1"}}`, map[string]string{"style.css": "body{}"})
+	writePack(t, root, "broken-constraint", `{"id":"broken-constraint","name":"B","version":"1.0.0","inject":{"css":["style.css"]},"requires":{"skin_nexus":"~1"}}`, map[string]string{"style.css": "body{}"})
+	r, err := NewRegistry(root, "0.1.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	list := r.List()
+	if len(list) != 1 || list[0].ID != "ok" {
+		t.Fatalf("requires gate wrong: %+v", list)
 	}
 }

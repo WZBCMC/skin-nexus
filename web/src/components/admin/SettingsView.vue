@@ -224,14 +224,15 @@ onMounted(load)
         <option v-for="th in themes" :key="th.id" :value="th.id">{{ th.name }}（{{ th.version }}）</option>
       </select>
       <div class="muted" v-if="!themes.length" style="font-size: 12px;">
-        将主题包放入 data/themes/&lt;id&gt;/（含 theme.json），刷新即识别。
+        将主题包放入 data/themes/&lt;id&gt;/（含 theme.json），重启服务后在此识别（新增/删除主题包需重启）。规范见 docs/theme-spec.md。
       </div>
-      <label style="margin-top: 10px;">自定义 CSS</label>
+      <label style="margin-top: 10px;">自定义 CSS（约 64KB 上限）</label>
       <textarea v-model="appearance.custom_css" rows="5" placeholder=".card { border-radius: 16px; }"></textarea>
-      <label>自定义 JS</label>
-      <textarea v-model="appearance.custom_js" rows="4" placeholder="console.log('hello')"></textarea>
+      <label>自定义 JS（约 64KB 上限）</label>
+      <textarea v-model="appearance.custom_js" rows="4" placeholder="document.addEventListener('DOMContentLoaded', () => { /* ... */ })"></textarea>
       <div class="muted" style="font-size: 12px; margin-top: 6px;">
         ⚠️ 自定义 JS 与主题 JS 以管理员信任面原样注入（与 blessing 行为一致）——请只粘贴自己信任的代码。
+        JS 在 Vue 挂载前执行，操作界面 DOM 请包在 DOMContentLoaded 回调里。
       </div>
       <div class="row" style="margin-top: 10px;">
         <button @click="appearSave">保存外观</button>

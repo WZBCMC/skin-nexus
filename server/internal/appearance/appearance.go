@@ -100,6 +100,13 @@ func (e *Engine) Save(ctx context.Context, s Settings) error {
 }
 
 // Render fills the injection markers in the SPA index.html.
+//
+// The theme block and custom head block are emitted right before </head> so
+// they land AFTER the Vite-built stylesheet link: cascade order decides ties,
+// and injecting before the app CSS made theme :root overrides lose against the
+// app's own :root definitions (2026-10-25 fix). Theme CSS comes first, custom
+// CSS second (custom wins). The <!--skin-theme-->/<!--skin-custom-head-->
+// markers are kept in templates as anchors and are removed on render.
 func (e *Engine) Render(ctx context.Context, indexHTML string) string {
 	s := e.Settings(ctx)
 
@@ -110,17 +117,21 @@ func (e *Engine) Render(ctx context.Context, indexHTML string) string {
 			themeHTML = t.HeadHTML()
 		}
 	}
-	indexHTML = strings.Replace(indexHTML, "<!--skin-theme-->", themeHTML, 1)
 
 	// custom head: <style> + raw head snippets
 	var head strings.Builder
+	head.WriteString(themeHTML)
 	if s.CustomCSS != "" {
 		head.WriteString(`<style id="skin-custom-css">` + "\n" + s.CustomCSS + "\n</style>\n")
 	}
 	if s.CustomHead != "" {
 		head.WriteString(s.CustomHead + "\n")
 	}
-	indexHTML = strings.Replace(indexHTML, "<!--skin-custom-head-->", head.String(), 1)
+	indexHTML = strings.ReplaceAll(indexHTML, "<!--skin-theme-->", "")
+	indexHTML = strings.ReplaceAll(indexHTML, "<!--skin-custom-head-->", "")
+	if i := strings.LastIndex(indexHTML, "</head>"); i >= 0 {
+		indexHTML = indexHTML[:i] + head.String() + indexHTML[i:]
+	}
 
 	// custom body: JS before </body>
 	var body strings.Builder

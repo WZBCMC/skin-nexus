@@ -15,10 +15,13 @@ package theme
 import (
 	"encoding/json"
 	"errors"
+	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -67,15 +70,18 @@ var (
 
 // Registry is the in-memory catalog of installed packs.
 type Registry struct {
-	dir string
+	dir     string
+	hostVer string
 
 	mu     sync.RWMutex
 	themes map[string]*Theme
 }
 
-// NewRegistry scans dir. A missing directory is not an error (no themes yet).
-func NewRegistry(dir string) (*Registry, error) {
-	r := &Registry{dir: dir, themes: map[string]*Theme{}}
+// NewRegistry scans dir for packs compatible with the host version
+// (requires.skin_nexus, ">=x.y" form). A missing directory is not an error
+// (no themes yet).
+func NewRegistry(dir, hostVersion string) (*Registry, error) {
+	r := &Registry{dir: dir, hostVer: hostVersion, themes: map[string]*Theme{}}
 	if err := r.Rescan(); err != nil {
 		return nil, err
 	}
@@ -85,7 +91,8 @@ func NewRegistry(dir string) (*Registry, error) {
 // Dir returns the themes root directory.
 func (r *Registry) Dir() string { return r.dir }
 
-// Rescan re-reads the themes directory (called at boot and after installs).
+// Rescan re-reads the themes directory (called at boot; new/removed packs need
+// a service restart). Every skip is logged so a broken pack is diagnosable.
 func (r *Registry) Rescan() error {
 	entries, err := os.ReadDir(r.dir)
 	if err != nil {
@@ -99,20 +106,37 @@ func (r *Registry) Rescan() error {
 	}
 	found := map[string]*Theme{}
 	for _, e := range entries {
-		if !e.IsDir() || !idRe.MatchString(e.Name()) {
+		if !e.IsDir() {
+			continue
+		}
+		if !idRe.MatchString(e.Name()) {
+			log.Printf("theme: skip %q: id must match %s", e.Name(), idRe)
 			continue // unknown ids are skipped, never trusted
 		}
 		base := filepath.Join(r.dir, e.Name())
 		raw, err := os.ReadFile(filepath.Join(base, "theme.json"))
 		if err != nil {
+			log.Printf("theme: skip %s: no theme.json (%v)", e.Name(), err)
 			continue // packs without a manifest are ignored
 		}
 		var m Manifest
-		if json.Unmarshal(raw, &m) != nil {
+		if err := json.Unmarshal(raw, &m); err != nil {
+			log.Printf("theme: skip %s: bad theme.json (%v)", e.Name(), err)
 			continue
 		}
 		// manifest id must match the directory name (no aliasing surprises)
 		if m.ID != e.Name() {
+			log.Printf("theme: skip %s: theme.json id %q != directory name", e.Name(), m.ID)
+			continue
+		}
+		// required fields (theme-spec §2): name, version, inject
+		if m.Name == "" || m.Version == "" || (len(m.Inject.CSS) == 0 && len(m.Inject.JS) == 0) {
+			log.Printf("theme: skip %s: name/version/inject are required", e.Name())
+			continue
+		}
+		if !satisfiesRequires(m.Requires.SkinNexus, r.hostVer) {
+			log.Printf("theme: skip %s: requires.skin_nexus %q not met by host %s",
+				e.Name(), m.Requires.SkinNexus, r.hostVer)
 			continue
 		}
 		found[m.ID] = &Theme{Manifest: m, BaseDir: base}
@@ -121,6 +145,42 @@ func (r *Registry) Rescan() error {
 	r.themes = found
 	r.mu.Unlock()
 	return nil
+}
+
+// satisfiesRequires checks the only constraint form the spec defines:
+// ">=x.y" (optional patch). Empty constraint passes; unparseable constraints
+// fail closed so a typo never silently widens compatibility.
+func satisfiesRequires(constraint, hostVer string) bool {
+	if constraint == "" {
+		return true
+	}
+	c := strings.TrimPrefix(constraint, ">=")
+	if c == constraint { // unsupported operator
+		return false
+	}
+	return cmpVersion(hostVer, c) >= 0
+}
+
+// cmpVersion compares dotted numeric versions (missing parts count as 0).
+// Non-numeric parts compare as 0, keeping "0.1" == "0.1.0".
+func cmpVersion(a, b string) int {
+	pa, pb := strings.Split(a, "."), strings.Split(b, ".")
+	for i := 0; i < len(pa) || i < len(pb); i++ {
+		na, nb := 0, 0
+		if i < len(pa) {
+			na, _ = strconv.Atoi(strings.TrimSpace(pa[i]))
+		}
+		if i < len(pb) {
+			nb, _ = strconv.Atoi(strings.TrimSpace(pb[i]))
+		}
+		if na != nb {
+			if na < nb {
+				return -1
+			}
+			return 1
+		}
+	}
+	return 0
 }
 
 // List returns manifests sorted by id.
@@ -171,20 +231,22 @@ func (r *Registry) ResolveAsset(id, name string) (string, error) {
 }
 
 // HeadHTML renders the active theme's inject list as HTML tags, served at
-// /theme-assets/<id>/<file> with long-lived caching.
+// /theme-assets/<id>/<file> (cached for 86400s; ?v=<theme version> lets a
+// version bump bust the cache).
 func (t *Theme) HeadHTML() string {
+	v := "?v=" + url.QueryEscape(t.Manifest.Version)
 	var sb strings.Builder
 	for _, f := range t.Manifest.Inject.CSS {
 		if !fileRe.MatchString(f) {
 			continue
 		}
-		sb.WriteString(`<link rel="stylesheet" href="/theme-assets/` + t.Manifest.ID + `/` + f + `">` + "\n")
+		sb.WriteString(`<link rel="stylesheet" href="/theme-assets/` + t.Manifest.ID + `/` + f + v + `">` + "\n")
 	}
 	for _, f := range t.Manifest.Inject.JS {
 		if !fileRe.MatchString(f) {
 			continue
 		}
-		sb.WriteString(`<script src="/theme-assets/` + t.Manifest.ID + `/` + f + `"></script>` + "\n")
+		sb.WriteString(`<script src="/theme-assets/` + t.Manifest.ID + `/` + f + v + `"></script>` + "\n")
 	}
 	return sb.String()
 }

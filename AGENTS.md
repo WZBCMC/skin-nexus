@@ -76,4 +76,5 @@ SKIN_TEST_DSN='user:pass@tcp(127.0.0.1:3306)/skin_nexus_test?parseTime=true' \
 | 从 blessing-skin-server 迁数据、切流 | `docs/migration.md` |
 | 检查与老站的协议兼容缺口 | `docs/compat-matrix.md` |
 | 写/分发主题包 | `docs/theme-spec.md` |
+| 参与贡献（翻译/主题/代码） | `CONTRIBUTING.md` |
 | 了解每轮开发改了什么 | `docs/CHANGELOG.md` |

@@ -35,7 +35,7 @@ func testRegistry(t *testing.T) *theme.Registry {
 	if err := os.WriteFile(filepath.Join(dir, "theme.json"), []byte(man), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	r, err := theme.NewRegistry(root)
+	r, err := theme.NewRegistry(root, "0.1.0")
 	if err != nil {
 		t.Fatal(err)
 	}
