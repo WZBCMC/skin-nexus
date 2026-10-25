@@ -2,6 +2,13 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
+## 2026-10-26（README 竞品对照矩阵：三家源码实证差异入宣传面，双语同步）
+
+- **需求**（用户点单）：结合竞品研究文档与记忆召回，重新对比 blessing-skin-server / element-skin / vSkin 与本站差异，作为宣传点写入 README，英文版同步修改。
+- **复核取证（当日重新 grep，非转抄旧报告）**：两家新秀路由表（`element-skin/src/router/index.ts`、`vskin/src/router/index.ts`）均只有 `/skin-library` 列表、无单品路由；三家（含 blessing PHP/Blade 源码）`sitemap|robots` 零命中；element-skin 全仓 `union|Union` 零命中（Union 未实装）；element-skin 有权限审计（`permission_audit_logs`）但无访问/通信日志；blessing 封禁为权限位 + 纹理上传 403（无审计日志表）；blessing `/user/closet` 实存——PCL 深链约定发源地，对照表如实给 ✅ 不贬低。
+- **交付**：README 新增「与主流开源皮肤站的对照」12 行矩阵 + 独有领先区段（SEO/SSR、单品页、迁移链、观测面四张独有牌 + 2C/3.5GB 实测性能账）；README.en.md 同步英文矩阵，并补齐状态行（原停在 2026-10-25，缺兼容矩阵/详情页+深链/A1/A2/C1 五个里程碑）。
+- **边界**：只写我方与对方能力事实，不写对方安全弱点评价（沿用 competitor-analysis §4「内部备忘不外宣」口径）；对照结论全部可回溯到 [`docs/competitor-analysis.md`](competitor-analysis.md)。
+
 ## 2026-10-26（C1 运维观测面：访问与通信日志全链路）
 
 - **需求**（用户点单）：网页/MC 启动器登录、MC 服务器↔皮肤站、MUA Union↔皮肤站通信全部落日志，运维在管理面板前端即可了解情况（UA/IP/时间等）。

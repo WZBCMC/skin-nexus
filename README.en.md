@@ -6,7 +6,7 @@
 
 [中文文档](README.md) | **English README**
 
-**Status** (2026-10-25): Phase 1 (core) ✅ · Phase 2 (yggc/OIDC passwordless login + MUA Union module) ✅ · Phase 3 skeleton (i18n / SEO / themes / Docker / fresh-DB setup wizard) ✅ · Admin panel parity with blessing B1–B5 ✅ · Full production data migration proven (67 users / 61 textures, zero row loss, zero UUID drift) ✅ · Native-resolution HD skin rendering ✅ · Site logo (SVG identity + favicon/PWA icons) ✅ · Per-round details in [`docs/CHANGELOG.md`](docs/CHANGELOG.md) (Chinese).
+**Status** (2026-10-26): Phase 1 (core) ✅ · Phase 2 (yggc/OIDC passwordless login + MUA Union module) ✅ · Phase 3 skeleton (i18n / SEO / themes / Docker / fresh-DB setup wizard) ✅ · Admin panel parity with blessing B1–B5 ✅ · Full production data migration proven (67 users / 61 textures, zero row loss, zero UUID drift) ✅ · 36-endpoint blessing / yggdrasil-connect compatibility matrix fully aligned ✅ · Native-resolution HD skin rendering ✅ · SSR landing + per-page SEO meta ✅ · Site logo (SVG identity + favicon/PWA icons) ✅ · SSR skin detail pages (`/skinlib/{tid}`) + launcher deep links ✅ · A1 password reset (SMTP flow, enumeration-proof, single-use tokens) ✅ · A2 Mojang official fallback (hardened outbound, panel hot-switch) ✅ · C1 ops observability (login + server/union traffic logs, 90-day retention) ✅ · Competitor comparison matrix (source-verified, bilingual) ✅ · Per-round details in [`docs/CHANGELOG.md`](docs/CHANGELOG.md) (Chinese).
 
 **License**: AGPL-3.0 · **Author / Copyright holder**: YMZS
 
@@ -27,6 +27,28 @@ SkinNexus is a modern rewrite of the unmaintained [blessing-skin-server](https:/
 - **Server-side avatar & preview rendering** — `/avatar/...` and `/preview/...` output PNG; HD skins keep their native resolution
 - **Self-hosting & data sovereignty** — zero third-party accounts, local data, single control point
 - **Plugin extension (planned)** — hook contract frozen (goja runtime chosen); host runtime ships later
+
+## Comparison with mainstream open-source skin servers
+
+> Compared against [blessing-skin-server](https://github.com/bs-community/blessing-skin-server) (Laravel/PHP, upstream now maintenance-only), [element-skin](https://github.com/water2004/element-skin) (Go + PostgreSQL + Vue 3), and [vSkin](https://github.com/iJunecn/vSkin) (FastAPI + Vue 3).
+> Every cell was re-verified against the opponents' **source code** (route tables / grep, 2026-10-25–26); method and per-item evidence in [`docs/competitor-analysis.md`](docs/competitor-analysis.md) (Chinese). We credit rivals where they lead and never guess a ❌.
+
+| Capability | SkinNexus | blessing | element-skin | vSkin |
+|---|---|---|---|---|
+| Search-engine visibility (sitemap / robots / per-page meta·OG·JSON-LD) | ✅ complete | ❌ | ❌ | ❌ |
+| Server-rendered content pages (indexable, no JS required) | ✅ landing + skin detail pages | ❌ SPA shell | ❌ SPA shell | ❌ SPA shell |
+| Per-skin shareable URLs (`/skinlib/{tid}`) | ✅ | ❌ no skin library | ❌ list + modal only | ❌ list only |
+| Launcher deep links (PCL-style "change skin / change password") | ✅ `/user/closet`·`/user/profile` | ✅ origin of the convention | ❌ | ❌ |
+| Mojang official fallback (local miss → official sessionserver) | ✅ hardened outbound + panel hot-switch | ❌ | ✅ | ✅ |
+| Password reset + SMTP mail flow | ✅ enumeration-proof, single-use tokens | ✅ | ✅ | ✅ |
+| Built-in OIDC passwordless login (no Janus sidecar) | ✅ built in; all four grants incl. device_code announced | ⚠️ needs Janus + yggdrasil-connect plugin | ⚠️ shipped but discovery under-announces | ⚠️ device flow solid, OAuth details weak |
+| MUA Union federation | ✅ built-in opt-in module with outbound sync | ✅ via yggdrasil-connect plugin | ❌ absent from source | ⚠️ config shell only |
+| One-command blessing migration (ID-preserving / zero UUID drift) | ✅ preflight → dry-run → import | — (migration source) | ❌ | ❌ |
+| Ban enforcement | ✅ login / authenticate / hasJoined | ✅ permission-level ban | ✅ | ❌ hasJoined only |
+| Ops observability (login + server/union traffic logs, 90 days + audit) | ✅ full-chain, viewable in panel | ❌ | ⚠️ permission audit only | ❌ |
+| Deployment shape | Go single binary / Docker, CI-published images | PHP 8.1 + Laravel 10 (PHP 8.1 is EOL) | Go + PostgreSQL + Redis | FastAPI + SQLite |
+
+**Unique leads** (rows where SkinNexus is ✅ while all three rivals are ❌/⚠️): the SSR + per-page SEO system, per-skin shareable pages, the ID-preserving blessing migration chain, and full-chain ops observability — none of these has a counterpart anywhere in this space today. On top of that, a measured performance ledger from a **2-core / 3.5 GB production VPS**: ~600 RPS on the landing page (CPU-capped), 5182 RPS texture delivery, 2365 RPS Yggdrasil metadata, zero errors throughout (see [`docs/CHANGELOG.md`](docs/CHANGELOG.md)).
 
 ## Quick start (for operators)
 

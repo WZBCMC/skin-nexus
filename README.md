@@ -4,7 +4,7 @@
 
 > 下一代 Minecraft 皮肤站：Yggdrasil 外置登录兼容、一键迁移 blessing-skin-server、自托管优先。
 
-**状态**（每轮开发收尾同步 · 2026-10-26）：一期 M0–M5 ✅ · 二期免密登录（yggc/OIDC 内置）+ MUA Union 可开关模块 ✅ · 三期骨架（i18n / SEO / 主题 / Docker / 空库初始化）✅ · 管理面板对齐 blessing B1–B5 ✅ · 全量迁移闭环并已生产切流（67 用户 / 61 纹理零丢行、UUID 零漂移）✅ · 高清皮肤原生分辨率渲染 ✅ · 文档体系规整 + Docker 部署文档主线化 ✅ · 部署/迁移/文档三路静态审计修复 + 英文 README + **v0.1.0 首发** ✅ · UI 自定义体系审计修复（首页注入 + 级联顺序 + 主题校验）+ 贡献指南 ✅ · 访客首页（服务端渲染 landing）+ 逐页 SEO meta ✅ · 站点 Logo（SVG 矢量标识 + favicon/PWA 图标 + 访客首页入场编舞）✅ · 皮肤详情页（服务端渲染 `/skinlib/{tid}` = SEO 内容页，sitemap 切换）+ 启动器深链 `/user/closet`·`/user/profile` 修复 ✅ · A1 找回密码（SMTP 邮件流 + 忘记/重置密码全链路，防枚举/单次令牌/面板热配置）✅ · A2 Mojang 官方兜底（profile/hasJoined 未命中→官方 sessionserver，仅公网拨号/不跟随重定向/热开关）✅ · 运维观测面（网页/启动器登录 + Yggdrasil 服务器/Union 出入站通信日志，面板「访问日志」筛选分页可查，90 天保留）✅ · 逐轮变更见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)，路线图见下。
+**状态**（每轮开发收尾同步 · 2026-10-26）：一期 M0–M5 ✅ · 二期免密登录（yggc/OIDC 内置）+ MUA Union 可开关模块 ✅ · 三期骨架（i18n / SEO / 主题 / Docker / 空库初始化）✅ · 管理面板对齐 blessing B1–B5 ✅ · 全量迁移闭环并已生产切流（67 用户 / 61 纹理零丢行、UUID 零漂移）✅ · 高清皮肤原生分辨率渲染 ✅ · 文档体系规整 + Docker 部署文档主线化 ✅ · 部署/迁移/文档三路静态审计修复 + 英文 README + **v0.1.0 首发** ✅ · UI 自定义体系审计修复（首页注入 + 级联顺序 + 主题校验）+ 贡献指南 ✅ · 访客首页（服务端渲染 landing）+ 逐页 SEO meta ✅ · 站点 Logo（SVG 矢量标识 + favicon/PWA 图标 + 访客首页入场编舞）✅ · 皮肤详情页（服务端渲染 `/skinlib/{tid}` = SEO 内容页，sitemap 切换）+ 启动器深链 `/user/closet`·`/user/profile` 修复 ✅ · A1 找回密码（SMTP 邮件流 + 忘记/重置密码全链路，防枚举/单次令牌/面板热配置）✅ · A2 Mojang 官方兜底（profile/hasJoined 未命中→官方 sessionserver，仅公网拨号/不跟随重定向/热开关）✅ · 运维观测面（网页/启动器登录 + Yggdrasil 服务器/Union 出入站通信日志，面板「访问日志」筛选分页可查，90 天保留）✅ · 竞品对照矩阵（blessing / element-skin / vSkin 三家源码实证差异，双语宣传面）✅ · 逐轮变更见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)，路线图见下。
 
 **许可**：AGPL-3.0 · **发起人/著作权人**：YMZS
 
@@ -25,6 +25,28 @@ SkinNexus（肤枢）是对年久失修的 [blessing-skin-server](https://github
 - **头像与预览服务端渲染**：`/avatar/{player|user|hash|tid}`、`/preview/{tid|hash}` 输出 PNG，高清皮保留原生分辨率
 - **自托管与数据主权**：零账号依赖、本地直连、单一控制点
 - **插件扩展**：hook 合约已冻结（goja 运行时已裁决），宿主运行时后置
+
+## 与主流开源皮肤站的对照
+
+> 对照对象：[blessing-skin-server](https://github.com/bs-community/blessing-skin-server)（Laravel/PHP，上游仅剩维护性提交）、[element-skin](https://github.com/water2004/element-skin)（Go + PostgreSQL + Vue 3）、[vSkin](https://github.com/iJunecn/vSkin)（FastAPI + Vue 3）。
+> 下表每格都经对方仓库**源码复核**（路由表 / grep，2026-10-25–26），方法与逐条证据见 [`docs/competitor-analysis.md`](docs/competitor-analysis.md)——✅ 不吝于人，❌ 不凭印象。
+
+| 能力 | SkinNexus | blessing | element-skin | vSkin |
+|---|---|---|---|---|
+| 搜索引擎可见性（sitemap / robots / 逐页 meta·OG·JSON-LD） | ✅ 全量 | ❌ | ❌ | ❌ |
+| 服务端渲染内容页（免 JS 即出正文、可收录） | ✅ 首页 + 皮肤详情页 | ❌ SPA 壳 | ❌ SPA 壳 | ❌ SPA 壳 |
+| 皮肤库单品页（`/skinlib/{tid}` 可分享、可收录） | ✅ | ❌ 无皮肤库 | ❌ 仅列表+弹窗 | ❌ 仅列表 |
+| 启动器深链（PCL 系「换皮肤/改密码」直达） | ✅ `/user/closet`·`/user/profile` | ✅ 约定发源地 | ❌ | ❌ |
+| Yggdrasil 官方兜底（本地未命中 → Mojang） | ✅ 出站防护 + 面板热开关 | ❌ | ✅ | ✅ |
+| 找回密码 + SMTP 邮件流 | ✅ 防枚举 / 单次令牌 | ✅ | ✅ | ✅ |
+| OIDC 免密登录（免 Janus 外挂） | ✅ 内置，device_code 等四种 grant 全公告 | ⚠️ 需外挂 Janus + yggdrasil-connect | ⚠️ 实装但 discovery 公告不全 | ⚠️ 设备流完整，OAuth 细节弱 |
+| MUA Union 联盟接入 | ✅ 内置可开关模块，出站同步实装 | ✅ 经 yggdrasil-connect 插件 | ❌ 源码无 | ⚠️ 仅配置壳 |
+| blessing 一键迁移（ID 保全 / UUID 零漂移） | ✅ preflight → dry-run → import | —（迁移源头） | ❌ | ❌ |
+| 封禁执行面 | ✅ 登录 / 认证 / hasJoined 三层 | ✅ 权限位封禁 | ✅ | ❌ 仅挡 hasJoined |
+| 运维观测面（登录 + 服务器/联盟通信日志 90 天 + 审计） | ✅ 全链路面板可查 | ❌ | ⚠️ 仅权限审计 | ❌ |
+| 部署形态 | Go 单二进制 / Docker，CI 直出生产镜像 | PHP 8.1 + Laravel 10（PHP 8.1 已 EOL） | Go + PostgreSQL + Redis | FastAPI + SQLite |
+
+**独有领先区**（上表 ✅ 且三家对照均为 ❌/⚠️）：服务端渲染 + 逐页 SEO 体系、皮肤库单品页、blessing 一键迁移链、全链路运维观测面——四项目前在整个赛道无同类实现可对标。外加一张实测性能账：**2 核 / 3.5GB 生产 VPS 实测**，落地页 ~600 RPS（CPU 封顶）、纹理分发 5182 RPS、Yggdrasil 元数据 2365 RPS、全程零错误（压测记录见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)）。
 
 ## 快速开始（站长视角）
 
