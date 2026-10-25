@@ -12,6 +12,7 @@
 - **设置面板 SMTP 热配置**：`smtp_host/port/user/pass/from` 五键入白名单（发信时逐键读取，option 覆盖 env 默认，**保存即生效无重启**）；`smtp_pass` 审计脱敏（与 union_member_key 同列）；env `SKIN_SMTP_*` 作面板占位默认。
 - **前端**：登录卡「忘记密码？」→ 找回卡（输入邮箱→统一「已发送」文案）；`/reset-password?token=…` 真实 URL（邮件里回跳，boot 按路径识别，与 /device 同款探法）→ 重置卡（双输密码前端校验→成功态→去登录）；`/forgot-password` 可分享直链；中英 i18n 全键。
 - **回归测试**：mailer 进程内假 SMTP 会话端到端（信封去显示名/主题 RFC2047/base64 正文回环/CRLF-only）、注入拒绝（收件人 CRLF 不拨号）、禁用态/nil 接收者、envelope 解析表、隐式 TLS 端口判定；store 集成（单次消费/重放拒绝/未知摘要/过期回拨/最新邮件胜出/UserByEmail 大小写与「昵称不是邮箱」）；前端 `vite build` 通过。
+- **上线即测即修（实证驱动）**：生产翻转测试发现只配 `smtp_host` 不配发件人时，From 为空导致每次发信死于 `empty address`——但用户侧收到的是 200「已发送」**假成功**（失败只落日志）。修法：`smtpConfig` 在 `smtp_from` 与 `smtp_user` 皆空时视为未配置返回 503（配置态与地址无关，不泄露用户存在性）；面板 `smtp_host` 描述同步「须同时配发件人」。
 
 ## 2026-10-25（站点 Logo：SVG 矢量标识接入 + 访客首页入场编舞）
 

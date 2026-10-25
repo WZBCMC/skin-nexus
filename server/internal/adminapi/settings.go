@@ -61,7 +61,7 @@ var settingsWhitelist = []struct {
 	{"union_oauth2_sig_public_key", true, "Union OAuth2 用户信息签名公钥（PEM；留空首启自动生成，重启后生效）"},
 	// A1 找回密码（2026-10-26）：SMTP 热配置 —— 发信时逐键读取，保存即生效，
 	// 无重启概念。配置后用登录页「忘记密码」给自己发一封即可自测。
-	{"smtp_host", false, "SMTP 服务器地址（留空=关闭邮件功能；立即生效）"},
+	{"smtp_host", false, "SMTP 服务器地址（留空=关闭邮件功能；须同时配 smtp_user 或 smtp_from 作为发件人，否则视为未配置；立即生效）"},
 	{"smtp_port", false, "SMTP 端口（465=隐式 TLS 直连；其它端口自动 STARTTLS 升级；默认 465）"},
 	{"smtp_user", false, "SMTP 用户名（多数服务商填完整邮箱地址）"},
 	{"smtp_pass", false, "SMTP 密码/授权码（QQ/163 等填授权码，不是登录密码）"},
