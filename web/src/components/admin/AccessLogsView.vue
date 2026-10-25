@@ -115,7 +115,9 @@ onMounted(load)
    word-break let auto-layout starve the UA column to ~1 char per line
    (rows grew screen-tall). Fixed column budget = stable geometry. */
 .logs-table { min-width: 960px; width: 100%; table-layout: fixed; }
-.logs-table th:nth-child(1), .logs-table td:nth-child(1) { width: 148px; }
+/* fixed layout + every cell ellipsizes: nothing spills into a neighbour */
+.logs-table td { overflow: hidden; text-overflow: ellipsis; }
+.logs-table th:nth-child(1), .logs-table td:nth-child(1) { width: 160px; }
 .logs-table th:nth-child(2), .logs-table td:nth-child(2) { width: 96px; }
 .logs-table th:nth-child(3), .logs-table td:nth-child(3) { width: 62px; }
 .logs-table th:nth-child(4), .logs-table td:nth-child(4) { width: 138px; }
@@ -124,10 +126,9 @@ onMounted(load)
 /* col7 (detail) takes the remainder of the fixed layout */
 .logs-table td.detail { font-family: var(--mono, monospace); font-size: 12px; }
 .nowrap { white-space: nowrap; }
-.who { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.who { font-weight: 600; }
 .ip { font-size: 12px; }
 .ua, .logs-table td.detail {
-  max-width: 0; /* with table-layout:fixed + width, this enables ellipsis */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
