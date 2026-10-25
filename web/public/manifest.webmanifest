@@ -1,0 +1,14 @@
+{
+  "name": "SkinNexus 肤枢",
+  "short_name": "SkinNexus",
+  "description": "Minecraft 皮肤站：上传皮肤/披风、管理角色衣柜，配合 Yggdrasil 外置登录。",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f2f7ff",
+  "theme_color": "#2f66ff",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

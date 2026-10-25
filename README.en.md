@@ -1,10 +1,12 @@
 # SkinNexus
 
+<p align="center"><img src="docs/assets/logo.svg" width="140" alt="SkinNexus pixel-nexus N logo"></p>
+
 > A next-generation Minecraft skin hosting server: full Yggdrasil API compatibility, one-command migration from blessing-skin-server, self-hosting first.
 
 [中文文档](README.md) | **English README**
 
-**Status** (2026-10-25): Phase 1 (core) ✅ · Phase 2 (yggc/OIDC passwordless login + MUA Union module) ✅ · Phase 3 skeleton (i18n / SEO / themes / Docker / fresh-DB setup wizard) ✅ · Admin panel parity with blessing B1–B5 ✅ · Full production data migration proven (67 users / 61 textures, zero row loss, zero UUID drift) ✅ · Native-resolution HD skin rendering ✅ · Per-round details in [`docs/CHANGELOG.md`](docs/CHANGELOG.md) (Chinese).
+**Status** (2026-10-25): Phase 1 (core) ✅ · Phase 2 (yggc/OIDC passwordless login + MUA Union module) ✅ · Phase 3 skeleton (i18n / SEO / themes / Docker / fresh-DB setup wizard) ✅ · Admin panel parity with blessing B1–B5 ✅ · Full production data migration proven (67 users / 61 textures, zero row loss, zero UUID drift) ✅ · Native-resolution HD skin rendering ✅ · Site logo (SVG identity + favicon/PWA icons) ✅ · Per-round details in [`docs/CHANGELOG.md`](docs/CHANGELOG.md) (Chinese).
 
 **License**: AGPL-3.0 · **Author / Copyright holder**: YMZS
 

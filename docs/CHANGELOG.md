@@ -2,6 +2,13 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
+## 2026-10-25（站点 Logo：SVG 矢量标识接入）
+
+- **官方标识定稿**：「像素枢纽 N」——圆角玻璃底板 + 蓝→绿渐变块面 N + 枢纽节点电路纹理（SVG 矢量为唯一事实源，AI 位图不入库）；16px 眯眼测试、单色可复现、白/深双底兼容、双色渐变均验证通过。
+- **全链接入**：`web/public/favicon.svg`（现代浏览器主图标）+ `favicon.ico`（16/32/48 兼容回退）+ `apple-touch-icon.png` + PWA `manifest.webmanifest`（192/512 图标、theme_color）——栅格兼容件全部从 SVG 几何直接绘制派生（`logo/render_icon.py`，8× 超采样），非位图描摹。
+- `web/index.html` 接入 icon/manifest/theme-color 链接；README（中英）首页横幅挂 `docs/assets/logo.svg`。
+- 服务侧无需改动：spaHandler 按 `os.Stat` 对 dist 既有文件原样放行，favicon/manifest 均直达。
+
 ## 2026-10-25（访客首页 + 逐页 SEO meta）
 
 - **服务端渲染公开首页上线**（拍板：方案 B + 基础三件套 + 皮肤库精选）：根路径 `/` 由 Go 模板直出正文（不依赖 JS，爬虫/AI 抓包即完整内容）——hero + 注册/登录 CTA、实时统计（注册用户/游戏角色/皮肤材质）、站点简介、皮肤库精选（`/preview/{tid}` 服务端渲染图，按点赞取前 8 公开材质）、页脚署名。经同一套 SEO/主题/自定义 CSS-JS 注入层（设计令牌带 fallback，主题切换即整站换肤）。
