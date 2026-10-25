@@ -49,6 +49,8 @@ var settingsWhitelist = []struct {
 	{"ygg_tokens_limit", false, "每用户 ygg 令牌数上限（默认 10，0=不限）：超限淘汰最旧令牌并留审计"},
 	{"ygg_search_profile_max", false, "批量查角色单次上限（默认 5，1-100）"},
 	{"ygg_rate_limit", false, "同名认证最小间隔（毫秒，默认 1000，0=关闭）"},
+	// A2（2026-10-26）：官方 sessionserver 兜底，热开关——关=本地未命中直接 204
+	{"ygg_mojang_fallback", false, "Mojang 官方兜底（profile/hasJoined 本地未命中时向官方查询；默认开，立即生效）"},
 	// Union（blessing yggdrasil-connect 原名；union_enabled 为本项目新增键
 	// ——老站用插件启停表达，无 option 行。热切换 2026-10-24 拍板）
 	{"union_enabled", false, "Union 联盟模块开关（热切换：关=全路由 404、签名回本地密钥）"},

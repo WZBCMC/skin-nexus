@@ -2,6 +2,14 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
+## 2026-10-26（A2 Mojang 官方兜底：profile/hasJoined 本地未命中 → 官方 sessionserver）
+
+- **动机**：两家竞品都有 fallback 链，本站在「服务器指向本站 authlib-injector、玩家却用官方账号」的场景会把人踢下线（本地未命中即 204）。补最小版：`profile/{uuid}` 与 `hasJoined` 本地未命中时向 `sessionserver.mojang.com` 串行查询一次，命中即原样透传官方 JSON（字节兼容），未命中维持原 204——**只扩展原本为空的分支，本地命中路径一字未动**。
+- **威胁模型（element-skin 逃逸路径教训 + 本站证据铁律）**：目标 origin 是编译期常量；用户输入只进 path（严格 32 位小写 hex 校验——`NormalizeUUID` 只做小写去横线**不证明 hex**，URL 拼接前必须自证）或 query（`url.Values` 转义 + 用户名限制官方 `[A-Za-z0-9_]{1,16}` 字符集，站内中文名**永不出网**）；**不跟随重定向**（`ErrUseLastResponse`，被劫持的边缘无法把请求弹回内网）；**仅公网拨号**（`publicDialContext`：loopback/RFC1918/链路本地/CGNAT 100.64/10/未指定地址一律拒接——污染的解析器也打不进宿主或校内网）；响应 **1MiB 上限 + 必须是含 id/name 的 profile JSON**（ captive portal 的 HTML 死在门口）；**4s 硬超时**。任何失败一律坍缩为「无兜底」——空 204 好过错数据。
+- **热开关**：面板键 `ygg_mojang_fallback`（默认开，env `SKIN_MOJANG_FALLBACK` 可改首启默认），保存即生效；关=行为与旧版完全一致。
+- **签名策略镜像**：本地 handler 默认剥签名（`unsigned` 非 `false` 即 strip），兜底请求同样仅在 `unsigned=false` 时向官方要签名（`unsigned=true` 反向透传），客户端无感。
+- **测试**：进程内 stub 覆盖透传/路径归一化/非 hex 拒发（含 `../` 穿越）/hasJoined 参数转发与坏 IP 丢弃/中文名零出网/禁用态零请求/七种响应门（404、500、204、HTML、无 id-name JSON、超限、302 不跟随且跳转目标零命中）/公网拨号器九地址拒接表/`isPublicIP` 十四例/处理器级（本地未命中→官方200、本地命中不惊动上游、开关关→回204）。全仓 `go test` 绿。
+
 ## 2026-10-26（A1 找回密码：SMTP 邮件流 + 忘记/重置密码全链路）
 
 - **背景**：竞品评估（docs/competitor-analysis.md）确认「无密码找回、全站无 SMTP」是两家竞品与本站在易用性上的共同硬缺口——`verification_token` 列早已有之但邮件流从未实现。本轮补齐端到端。

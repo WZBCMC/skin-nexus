@@ -225,6 +225,16 @@ func main() {
 			return nil
 		},
 	})
+	// A2 Mojang 官方兜底（热开关 ygg_mojang_fallback，默认开）：profile/
+	// hasJoined 本地未命中时向官方 sessionserver 串行查询——守卫传输层
+	// （仅公网拨号/不跟随重定向/4s 硬超时/1MiB 上限，见 ygg/fallback.go）。
+	mojangFallbackDefault := envOr("SKIN_MOJANG_FALLBACK", "1") == "1"
+	yggAPI.SetFallback(ygg.NewFallback(func(ctx context.Context) bool {
+		if v, ok, err := st.GetOption(ctx, "ygg_mojang_fallback"); err == nil && ok {
+			return v == "1" || v == "true"
+		}
+		return mojangFallbackDefault
+	}))
 	backend := webapi.New(st, ts, yggSvc)
 	backend.RequireInvite = cfg.RequireInvite
 	// A1 找回密码: reset-link base + mail subject + env fallbacks for the
@@ -371,6 +381,7 @@ func main() {
 		"ygg_tokens_limit":     "10",
 		"ygg_search_profile_max": "5",
 		"ygg_rate_limit":       "1000",
+		"ygg_mojang_fallback":  boolStr(mojangFallbackDefault),
 		// Union group (2026-10-24): option-first, env fallback, blessing 原名
 		"union_enabled":        boolStr(cfg.UnionEnabled),
 		"union_api_root":       cfg.UnionAPIRoot,

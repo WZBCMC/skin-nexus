@@ -46,11 +46,18 @@ type MetadataConfig struct {
 type API struct {
 	svc *Service
 	cfg MetadataConfig
+	// A2 Mojang fallback (nil = off, the default): misses on profile and
+	// hasJoined are offered to the official sessionserver before the 204.
+	fallback *Fallback
 }
 
 func NewAPI(svc *Service, cfg MetadataConfig) *API {
 	return &API{svc: svc, cfg: cfg}
 }
+
+// SetFallback installs the official-sessionserver fallback (main wires the
+// hot `ygg_mojang_fallback` panel toggle).
+func (a *API) SetFallback(f *Fallback) { a.fallback = f }
 
 // Handler returns the route table. Routes are rooted at the /api/yggdrasil
 // prefix — the compatibility surface itself (legacy clients hardcode it).
@@ -383,6 +390,13 @@ func (a *API) handleHasJoined(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	p, err := a.svc.HasJoined(r.Context(), q.Get("username"), q.Get("serverId"), q.Get("ip"))
 	if err != nil {
+		// A2 fallback: no local join record → ask the official sessionserver
+		// before answering 204 (Mojang confirms joins it recorded itself —
+		// official-account players on authlib-injector servers).
+		if body, ok := a.fallback.hasJoined(r.Context(), q.Get("username"), q.Get("serverId"), q.Get("ip")); ok {
+			writeFallbackProfile(w, body)
+			return
+		}
 		noContent(w) // unknown / expired / mismatch: 204, never 4xx
 		return
 	}
@@ -394,6 +408,13 @@ func (a *API) handleProfile(w http.ResponseWriter, r *http.Request) {
 	withSig := r.URL.Query().Get("unsigned") == "false"
 	p, err := a.svc.ProfileByUUID(r.Context(), uuid, withSig)
 	if err != nil {
+		// A2 fallback: unknown-to-us UUID → the official sessionserver may
+		// still know it (signature policy mirrored: unsigned=true only when
+		// our own handler would have stripped signatures).
+		if body, ok := a.fallback.profile(r.Context(), uuid, withSig); ok {
+			writeFallbackProfile(w, body)
+			return
+		}
 		noContent(w) // unknown profile: empty body
 		return
 	}
@@ -403,6 +424,14 @@ func (a *API) handleProfile(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, p)
+}
+
+// writeFallbackProfile emits a validated official-sessionserver body
+// verbatim (already proven JSON with id+name by the fallback gate).
+func writeFallbackProfile(w http.ResponseWriter, body []byte) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
 }
 
 // ---- lookup ----
