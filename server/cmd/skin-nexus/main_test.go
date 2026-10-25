@@ -168,6 +168,7 @@ func TestSpaHandlerServesLandingAtRoot(t *testing.T) {
 		"/textures/abc", "测试披风", // featured cape card (flat texture URL)
 		"skin-custom-css", // appearance injection still applies
 		"<title>", "canonical", // SEO head block must survive html/template
+		"/favicon.svg", "manifest.webmanifest", // site logo / PWA links on the landing head too
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("landing missing %q: %s", want, body)
