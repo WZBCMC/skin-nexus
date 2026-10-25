@@ -20,6 +20,9 @@ async function req(method, path, body) {
 
 export const api = {
   me: () => req('GET', '/api/v1/me'),
+  // Public capability flags: invite field required-or-absent on register,
+  // email field + forgot flow available-or-hidden (A1 UX 收敛).
+  siteConfig: () => req('GET', '/api/v1/site-config'),
   login: (identifier, password) => req('POST', '/api/v1/login', { identifier, password }),
   register: (email, nickname, password, invitationCode) => req('POST', '/api/v1/register', { email, nickname, password, invitationCode }),
   logout: () => req('POST', '/api/v1/logout'),

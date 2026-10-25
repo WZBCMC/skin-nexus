@@ -2,6 +2,14 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
+## 2026-10-26（注册/找回表单按站点真实配置收敛）
+
+- **需求**（用户点单）：开启邀请码则注册页出现**必填**邀请码输入框，关闭则整个不出现（不再常驻「选填」死框）；邮箱同理——未配置邮件服务时，注册页邮箱输入与找回密码整条不可用。
+- **后端**：新增公开端点 `GET /api/v1/site-config` → `{invite_required, mail_configured}`。`invite_required` 复用 `inviteRequired()` 的面板/env 解析；`mail_configured` = `smtpConfig() != nil`，与 forgot 的判据同源（含 From/User 双缺判不可用的既有口径）。纯配置态，无用户数据泄露——两个旗标本可由 register-400 / forgot-503 行为观测到。
+- **前端**（App.vue + api.js + 双语 i18n）：boot 时拉取，失败降级 = 旧 UI 原样。注册卡：`invite_required=1` → 邀请码框带「必填」强调标签 + 提交前本地校验（免打一轮 400）；`=0` → 输入框整个不渲染。`mail_configured=0` → 注册邮箱框隐藏、登录页「忘记密码？」链接隐藏、直达 `/forgot-password` 显示「站点未配置邮件服务」不可用卡、reset 失效分支的找回按钮同步隐藏。
+- **边界**：服务端语义零变化（注册邮箱服务端仍可选；invite 门禁仍由 handleRegister 400 把守；forgot 未配置仍如实 503）——本轮只做 UI 与配置对齐。
+- **验证**：`go vet ./...` 干净、全仓 `go test ./...` 绿（webapi 包编译通过，无测试文件系仓规现状）；`vite build` 通过。
+
 ## 2026-10-26（README 竞品对照矩阵：三家源码实证差异入宣传面，双语同步）
 
 - **需求**（用户点单）：结合竞品研究文档与记忆召回，重新对比 blessing-skin-server / element-skin / vSkin 与本站差异，作为宣传点写入 README，英文版同步修改。

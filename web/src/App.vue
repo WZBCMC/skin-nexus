@@ -41,6 +41,15 @@ const resetToken = ref('')
 const resetPw1 = ref('')
 const resetPw2 = ref('')
 const resetDone = ref(false)
+// Public site capabilities (GET /api/v1/site-config): the auth forms follow
+// the deployment's real configuration — invite field required-or-absent,
+// email field + forgot flow available-or-hidden. Until the fetch resolves
+// (or if it fails) the pre-config UI stays = today's behavior.
+const siteConf = ref({ invite_required: false, mail_configured: false })
+const confLoaded = ref(false)
+const inviteFieldShown = computed(() => !confLoaded.value || siteConf.value.invite_required)
+const inviteIsRequired = computed(() => confLoaded.value && siteConf.value.invite_required)
+const mailEnabled = computed(() => !confLoaded.value || siteConf.value.mail_configured)
 
 // Sidebar nav (blessing parity: 用户中心/管理 两组；浏览组随 skinlib B 级后置).
 // device/apps/union are user-center entries too — kept out of the sidebar to
@@ -90,6 +99,9 @@ async function boot() {
     const d = await r.json()
     if (d.needs_setup) { view.value = 'setup'; return }
   } catch { /* server down or old backend — fall through */ }
+  // Site capabilities for the auth cards (best-effort: failure keeps the
+  // old always-show UI).
+  try { siteConf.value = await api.siteConfig(); confLoaded.value = true } catch { /* old UI */ }
   // Launcher verification page: /device?user_code=… is path-probed so the
   // minimal /device.html fallback and the SPA share one URL contract.
   const isDevice = location.pathname === '/device'
@@ -144,6 +156,11 @@ async function doLogin() {
 
 async function doRegister() {
   authErr.value = ''
+  // Invite required → fail fast client-side with a clear message instead of
+  // letting the server 400 the whole submission.
+  if (inviteIsRequired.value && !invitationCode.value.trim()) {
+    authErr.value = t('auth.inviteRequiredErr'); return
+  }
   try {
     user.value = await api.register(email.value, nickname.value, password.value, invitationCode.value.trim())
   } catch (e) { authErr.value = e.message; return }
@@ -209,7 +226,7 @@ onMounted(boot)
       <input v-model="identifier" autocomplete="username" />
       <label>{{ t('auth.password') }}</label>
       <input v-model="password" type="password" autocomplete="current-password" @keyup.enter="doLogin" />
-      <div style="margin-top: 6px; text-align: right;">
+      <div style="margin-top: 6px; text-align: right;" v-if="mailEnabled">
         <a href="/forgot-password" class="muted" @click.prevent="forgotSent = false; view = 'forgot'">{{ t('auth.forgotLink') }}</a>
       </div>
       <div class="error" v-if="authErr">{{ authErr }}</div>
@@ -224,12 +241,16 @@ onMounted(boot)
       <h2>{{ t('auth.registerTitle') }}</h2>
       <label>{{ t('auth.nickname') }}</label>
       <input v-model="nickname" />
-      <label>{{ t('auth.email') }}</label>
-      <input v-model="email" type="email" />
+      <template v-if="mailEnabled">
+        <label>{{ t('auth.email') }}</label>
+        <input v-model="email" type="email" />
+      </template>
       <label>{{ t('auth.passwordMin') }}</label>
       <input v-model="password" type="password" @keyup.enter="doRegister" />
-      <label>{{ t('auth.invitationCode') }}</label>
-      <input v-model="invitationCode" @keyup.enter="doRegister" />
+      <template v-if="inviteFieldShown">
+        <label :class="{ required: inviteIsRequired }">{{ inviteIsRequired ? t('auth.invitationCodeRequired') : t('auth.invitationCode') }}</label>
+        <input v-model="invitationCode" @keyup.enter="doRegister" />
+      </template>
       <div class="error" v-if="authErr">{{ authErr }}</div>
       <div class="row" style="margin-top: 14px;">
         <button @click="doRegister">{{ t('common.register') }}</button>
@@ -240,7 +261,15 @@ onMounted(boot)
     <!-- FORGOT PASSWORD (A1 找回密码) -->
     <div v-else-if="view === 'forgot'" class="card" style="max-width: 420px;">
       <h2>{{ t('auth.forgotTitle') }}</h2>
-      <template v-if="!forgotSent">
+      <!-- mail unconfigured → the flow is honestly unavailable (direct
+           navigation to /forgot-password lands here too) -->
+      <template v-if="confLoaded && !siteConf.mail_configured">
+        <p class="muted">{{ t('auth.mailDisabled') }}</p>
+        <div class="row" style="margin-top: 14px;">
+          <button class="secondary" @click="view = 'login'">{{ t('auth.toLogin') }}</button>
+        </div>
+      </template>
+      <template v-else-if="!forgotSent">
         <label>{{ t('auth.forgotEmail') }}</label>
         <input v-model="forgotEmail" type="email" autocomplete="email" @keyup.enter="doForgot" />
         <div class="error" v-if="authErr">{{ authErr }}</div>
@@ -280,7 +309,7 @@ onMounted(boot)
       <template v-else>
         <p class="error">{{ t('auth.resetInvalid') }}</p>
         <div class="row" style="margin-top: 14px;">
-          <button @click="forgotSent = false; view = 'forgot'">{{ t('auth.forgotSubmit') }}</button>
+          <button v-if="mailEnabled" @click="forgotSent = false; view = 'forgot'">{{ t('auth.forgotSubmit') }}</button>
           <button class="secondary" @click="view = 'login'">{{ t('auth.toLogin') }}</button>
         </div>
       </template>
@@ -350,6 +379,8 @@ onMounted(boot)
 }
 .nav-item:hover { border-color: var(--border); }
 .nav-item.active { border-color: var(--accent); font-weight: 600; }
+/* required invite label on the register card */
+label.required { color: var(--accent); }
 @media (max-width: 720px) {
   .user-shell { flex-direction: column; }
   .user-side { position: static; width: 100%; }

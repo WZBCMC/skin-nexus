@@ -141,6 +141,12 @@ func (b *Backend) Handler() http.Handler {
 	// Install wizard (empty-DB init): state-gated, one-way door after done.
 	mux.HandleFunc("GET /api/v1/setup/status", b.handleSetupStatus)
 	mux.HandleFunc("POST /api/v1/setup", b.handleSetup)
+	// Public site capabilities: lets the register/forgot forms follow the
+	// deployment's real configuration (invite field required vs absent,
+	// email field + forgot flow available vs hidden). Config state only —
+	// both flags were already observable from register-400 / forgot-503
+	// behavior, so this leaks nothing user-specific.
+	mux.HandleFunc("GET /api/v1/site-config", b.handleSiteConfig)
 	// Union user surface: routes are ALWAYS registered and gate per
 	// request, so `union_enabled` truly hot-toggles both ways. (Previously
 	// registration itself was gated on Enabled() at boot — a later off→on
@@ -243,6 +249,20 @@ func randomToken() string {
 }
 
 // ---- auth handlers ----
+
+// handleSiteConfig: GET /api/v1/site-config — unauthenticated capability
+// flags for the auth forms:
+//   - invite_required: true → the register card shows a REQUIRED invite
+//     field; false → the field is absent entirely (no dead "optional" box).
+//   - mail_configured: smtpConfig != nil (same resolution as forgot: panel
+//     option wins over env default). false → the register email field and
+//     the whole forgot-password flow are unavailable in the UI.
+func (b *Backend) handleSiteConfig(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"invite_required": b.inviteRequired(r.Context()),
+		"mail_configured": b.smtpConfig(r.Context()) != nil,
+	})
+}
 
 func (b *Backend) handleRegister(w http.ResponseWriter, r *http.Request) {
 	var req struct {
