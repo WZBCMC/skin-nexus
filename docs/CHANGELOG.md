@@ -2,6 +2,12 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
+## 2026-10-26（晴空琉璃 dock 真凶落定：flex-direction 缺口——三修）
+
+DevTools 实证缓存已排除（`?v=3.0.3` 200 拉取、无 custom css、样式链仅 main→theme），但 dock 仍两行。逐层取证（线上响应 grep `.user-side` 全部规则 → 样式链清点 → 截图行为比对）后定位真凶：**v3 全局 `.user-side` 是 `flex-direction: column`，而主题 §19 的 `(0,2,0)` 规则没有声明 `flex-direction`——CSS 中未声明的属性继续取全局值**，nowrap 只控制换列救不了竖排；`.user-chip` 的 `margin-left:auto` 在 column 交叉轴表现为右对齐（与截图 chip 第三行右侧完全吻合）。修复：显式 `flex-direction: row`（带注释），上传脚本自动 bump → `?v=3.0.4`，线上响应已验证含该声明。
+
+**教训固化（主题作者必读）**：覆盖结构类时必须**显式覆盖全部相关布局属性**（display/flex-direction/flex-wrap/align-items），只改其中一两个会继承全局值造成「规则明明生效却不起作用」的诡异态。
+
 ## 2026-10-26（晴空琉璃二修：dock 单行化 + 形态全明暗 + 背景断层 + 缓存版本号事故根治）
 
 - **dock 单行化**：v3.2 的 dock 仍是 wrap（用户截图两行大板）→ `nowrap + overflow-x auto` 推广到全宽度（v2 移动横滚形态），999px 胶囊条，user-chip `flex: none` 行尾。
