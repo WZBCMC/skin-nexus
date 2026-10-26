@@ -56,19 +56,42 @@ var texDetailTmpl = template.Must(template.New("texdetail").Parse(`<!DOCTYPE htm
 <link rel="icon" type="image/x-icon" href="/favicon.ico" sizes="48x48" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/manifest.webmanifest" />
-<meta name="theme-color" content="#2f66ff" />
+<meta name="theme-color" content="#16202e" />
 {{.HeadAnchors}}
 <style>
-  :root { color-scheme: dark; }
-  body { margin: 0; font-family: system-ui, -apple-serif, "Segoe UI", sans-serif;
-         background: var(--bg, #0f1115); color: var(--text, #d7dae0); }
+  /* 详情页设计语言 v3「月下仙山」（与落地页同 token 命名空间；
+     主题/custom CSS 在其后注入仍可整体覆盖，见 theme-spec v3 节） */
+  :root {
+    color-scheme: dark;
+    --font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", serif;
+    --ink: #16202e; --ink-2: #1c2839; --ink-3: #243347;
+    --line: rgba(169, 138, 95, .30);
+    --line-strong: rgba(169, 138, 95, .45);
+    --moon: #e9edf1; --moon-2: #aab6c4;
+    --cinnabar: #b0453a; --cinnabar-hi: #c25446; --on-cinnabar: #fdf3ec;
+    --jade: #67b7a0; --jade-hi: #7fcbb3;
+    --gold: #c9a06a;
+    --danger: #d9564c;
+    --sel: rgba(176, 69, 58, .35);
+    --ring-cinnabar: rgba(176, 69, 58, .18);
+    --glow-cinnabar: rgba(176, 69, 58, .6);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Segoe UI", "Inter", "PingFang SC", "HarmonyOS Sans SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+         font-size: 15px; line-height: 1.7; -webkit-font-smoothing: antialiased; line-break: strict;
+         background: var(--ink); color: var(--moon); }
+  ::selection { background: var(--sel); }
+  a { color: var(--jade); text-decoration: none; }
+  a:hover { color: var(--jade-hi); text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--jade); outline-offset: 2px; }
   .wrap { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
-  .crumb { font-size: 13px; color: var(--muted, #8b93a1); margin: 8px 0 18px; }
-  .crumb a { color: var(--accent, #4f8cff); text-decoration: none; }
-  .card { background: var(--panel, #171a21); border: 1px solid var(--border, #262b36);
-          border-radius: 12px; padding: 24px; }
-  h1 { margin: 0 0 4px; font-size: 26px; word-break: break-all; }
-  .sub { color: var(--muted, #8b93a1); font-size: 14px; margin: 0 0 20px; }
+  .crumb { font-size: 13px; color: var(--moon-2); margin: 8px 0 18px; }
+  .card { background: var(--ink-2); border: 1px solid var(--line);
+          border-radius: 10px; padding: 24px;
+          box-shadow: 0 12px 32px -18px rgba(3, 8, 16, .8); }
+  h1 { margin: 0 0 4px; font-family: var(--font-serif); font-size: 26px; font-weight: 600;
+       letter-spacing: .03em; word-break: break-all; }
+  .sub { color: var(--moon-2); font-size: 14px; margin: 0 0 20px; }
   .viewer { display: flex; justify-content: center; align-items: center;
             min-height: 300px; margin: 0 0 20px; position: relative; }
   .viewer img.static { max-height: 280px; image-rendering: pixelated; }
@@ -76,20 +99,36 @@ var texDetailTmpl = template.Must(template.New("texdetail").Parse(`<!DOCTYPE htm
   .viewer.ready img.static { display: none; }
   .viewer.ready canvas { display: block; }
   .meta { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-          gap: 10px; margin: 0 0 20px; }
-  .meta div { background: rgba(255,255,255,0.03); border: 1px solid var(--border, #262b36);
-              border-radius: 8px; padding: 10px 12px; }
-  .meta dt { font-size: 12px; color: var(--muted, #8b93a1); margin: 0 0 2px; }
-  .meta dd { margin: 0; font-size: 14px; font-weight: 600; word-break: break-all; }
-  .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-  .actions a, .actions button { display: inline-block; padding: 10px 22px; border-radius: 8px;
-        font-size: 14px; font-weight: 600; text-decoration: none; cursor: pointer; }
-  .actions .primary { background: var(--accent, #4f8cff); color: #fff; border: none; }
-  .actions .alt { border: 1px solid var(--border, #262b36); color: var(--text, #d7dae0);
+          gap: 8px; margin: 0 0 20px; }
+  .meta div { position: relative; background: var(--ink-3); border: 1px solid var(--line);
+              border-radius: 6px; padding: 10px 12px; }
+  /* 赭石回纹角饰（与落地页统计卡同款小音量） */
+  .meta div::before, .meta div::after { content: ""; position: absolute; width: 8px; height: 8px;
+              border: 1.5px solid var(--gold); opacity: .55; }
+  .meta div::before { top: 5px; left: 5px; border-right: none; border-bottom: none; }
+  .meta div::after { bottom: 5px; right: 5px; border-left: none; border-top: none; }
+  .meta dt { font-size: 12px; color: var(--moon-2); margin: 0 0 2px; }
+  .meta dd { margin: 0; font-size: 14px; font-weight: 600; word-break: break-all;
+             font-variant-numeric: tabular-nums; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .actions a, .actions button { display: inline-block; padding: 9px 20px; border-radius: 4px;
+        font-size: 14px; font-weight: 600; text-decoration: none; cursor: pointer;
+        font-family: inherit; transition: background .14s cubic-bezier(.22,1,.36,1),
+        border-color .14s cubic-bezier(.22,1,.36,1), transform .14s cubic-bezier(.22,1,.36,1),
+        box-shadow .14s cubic-bezier(.22,1,.36,1); }
+  .actions .primary { background: var(--cinnabar); color: var(--on-cinnabar); border: none; }
+  .actions .primary:hover { background: var(--cinnabar-hi); transform: translateY(-1px);
+        box-shadow: 0 6px 16px -8px var(--glow-cinnabar); text-decoration: none; }
+  .actions .primary:active { transform: translateY(0); }
+  .actions .alt { border: 1px solid var(--line-strong); color: var(--moon);
                   background: transparent; }
-  .like-btn.liked { color: #f66; border-color: #f66; }
-  footer { margin-top: 32px; text-align: center; font-size: 12px; color: var(--muted, #8b93a1); }
-  footer a { color: var(--accent, #4f8cff); text-decoration: none; }
+  .actions .alt:hover { background: var(--ink-3); border-color: var(--gold);
+                  color: var(--moon); text-decoration: none; }
+  .like-btn.liked { color: var(--danger); border-color: var(--danger); }
+  footer { position: relative; margin-top: 32px; padding-top: 16px; text-align: center;
+           font-size: 12px; color: var(--moon-2); border-top: 1px solid var(--line); }
+  footer a { color: var(--gold); }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
   @media (max-width: 560px) { h1 { font-size: 21px; } .viewer { min-height: 240px; } }
 </style>
 </head>
@@ -138,11 +177,13 @@ var texNotFoundTmpl = template.Must(template.New("tex404").Parse(`<!DOCTYPE html
 <meta name="robots" content="noindex, nofollow" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <style>
-  :root { color-scheme: dark; }
-  body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg, #0f1115);
-         color: var(--text, #d7dae0); display: grid; place-items: center; min-height: 100vh; }
+  :root { color-scheme: dark; --ink: #16202e; --moon: #e9edf1; --jade: #67b7a0;
+          --font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", serif; }
+  body { margin: 0; font-family: "Segoe UI", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
+         background: var(--ink); color: var(--moon); display: grid; place-items: center; min-height: 100vh; }
   .box { text-align: center; }
-  a { color: var(--accent, #4f8cff); }
+  .box h1 { font-family: var(--font-serif); font-size: 40px; margin: 0 0 8px; }
+  a { color: var(--jade); }
 </style>
 </head>
 <body><div class="box"><h1>404</h1><p>材质不存在，或已被设为私密。</p><p><a href="/">返回首页</a></p></div></body>
