@@ -40,7 +40,7 @@ type landingData struct {
 	Year     int
 }
 
-const landingIntro = "Minecraft 皮肤站：上传皮肤/披风、管理角色衣柜、逛皮肤库，配合 Yggdrasil 外置登录在启动器与服务器之间无缝换装。"
+const landingIntro = "Minecraft 皮肤站：上传皮肤/披风、管理角色衣柜、逛皮肤库；配合 Yggdrasil 外置登录，启动器与服务器之间直接换装。"
 
 var landingTmpl = template.Must(template.New("landing").Parse(`<!DOCTYPE html>
 <html lang="zh-CN">
@@ -51,35 +51,81 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!DOCTYPE html>
 <link rel="icon" type="image/x-icon" href="/favicon.ico" sizes="48x48" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/manifest.webmanifest" />
-<meta name="theme-color" content="#2f66ff" />
+<meta name="theme-color" content="#16202e" />
 {{.HeadAnchors}}
 <style>
-  :root { color-scheme: dark; }
-  body { margin: 0; font-family: system-ui, -apple-serif, "Segoe UI", sans-serif;
-         background: var(--bg, #0f1115); color: var(--text, #d7dae0); }
-  .wrap { max-width: 880px; margin: 0 auto; padding: 24px 16px 48px; }
-  .hero { padding: 56px 0 32px; text-align: center; }
-  .hero h1 { margin: 0 0 8px; font-size: 40px; letter-spacing: 1px; }
-  .hero .tag { color: var(--muted, #8b93a1); font-size: 16px; margin: 0 0 24px; }
-  .cta a { display: inline-block; margin: 0 8px; padding: 11px 28px; border-radius: 8px;
-           font-size: 15px; text-decoration: none; font-weight: 600; }
-  .cta .primary { background: var(--accent, #4f8cff); color: #fff; }
-  .cta .alt { border: 1px solid var(--border, #262b36); color: var(--text, #d7dae0); }
+  /* 落地页设计语言「月下仙山」（2026-10-26 用户 brief：中国古风仙侠）。
+     自有 token 命名空间：主题包/custom CSS 在其后注入，仍可整体覆盖（theme-spec §注入顺序）。
+     国画色：黛青底 / 月白字 / 朱砂只给主按钮 / 赭石纹线；无大红大紫大金。
+     签名元素 = N 字牌（保留原入场编舞，重着色）；远山云雾为唯一景。 */
+  :root {
+    color-scheme: dark;
+    --font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", serif;
+    --ink: #16202e; --ink-2: #1c2839; --ink-3: #243347;
+    --line: rgba(169, 138, 95, .30);
+    --moon: #e9edf1; --moon-2: #aab6c4;
+    --cinnabar: #b0453a; --cinnabar-hi: #c25446; --on-cinnabar: #fdf3ec;
+    --ochre: #c9a06a;
+  }
+  body { margin: 0;
+         font-family: "Segoe UI", "Inter", "PingFang SC", "HarmonyOS Sans SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+         font-size: 15px; line-height: 1.7; -webkit-font-smoothing: antialiased; line-break: strict;
+         background: var(--ink); color: var(--moon); }
+  /* 远山云雾：全页唯一景（fixed 垫在内容层后，静谧不抢内容） */
+  .scene { position: fixed; inset: auto 0 0 0; height: 44vh; min-height: 250px;
+           pointer-events: none; z-index: 0; overflow: hidden; }
+  .scene-mountains { position: absolute; inset: auto 0 0 0; width: 100%; height: 100%; display: block; }
+  .scene-fog { position: absolute; left: -60%; width: 220%; height: 110px;
+               background: radial-gradient(50% 100% at 50% 100%, rgba(233, 237, 241, .05), transparent 70%); }
+  .fog-a { bottom: 56px; animation: fogdrift 70s linear infinite; }
+  .fog-b { bottom: 150px; opacity: .7; animation: fogdrift 110s linear infinite reverse; }
+  @keyframes fogdrift { from { transform: translateX(-4%); } to { transform: translateX(4%); } }
+  .wrap { position: relative; z-index: 1; max-width: 880px; margin: 0 auto; padding: 24px 16px 48px; }
+  /* 首屏 */
+  .hero { position: relative; padding: 56px 0 32px; text-align: center; }
+  .hero > * { position: relative; }
+  .hero h1 { margin: 0 0 8px; font-family: var(--font-serif); font-size: 42px; font-weight: 600;
+             letter-spacing: .06em; line-height: 1.25; }
+  .hero .tag { color: var(--moon-2); font-size: 15px; margin: 0 0 24px; }
+  .cta a { display: inline-block; margin: 0 8px; padding: 11px 28px; border-radius: 4px;
+           font-size: 15px; text-decoration: none; font-weight: 600; transition: background .12s, border-color .12s; }
+  .cta .primary { background: var(--cinnabar); color: var(--on-cinnabar); }
+  .cta .primary:hover { background: var(--cinnabar-hi); }
+  .cta .alt { border: 1px solid var(--line); color: var(--moon); }
+  .cta .alt:hover { background: var(--ink-2); border-color: var(--ochre); }
+  .cta a:focus-visible { outline: 2px solid var(--ochre); outline-offset: 2px; }
+  /* 统计卡：赭石回纹角饰（小音量），数字用赭石（朱砂只留给主按钮） */
   .stats { display: flex; gap: 12px; margin: 28px 0; }
-  .stats div { flex: 1; text-align: center; padding: 18px 8px; border-radius: 10px;
-               background: var(--panel, #171a21); border: 1px solid var(--border, #262b36); }
-  .stats b { display: block; font-size: 26px; color: var(--accent, #4f8cff); }
-  .stats span { font-size: 13px; color: var(--muted, #8b93a1); }
-  .intro { line-height: 1.8; color: var(--text, #d7dae0); margin: 24px 0; }
-  .feat h2 { font-size: 20px; margin: 32px 0 16px; }
+  .stats div { position: relative; flex: 1; text-align: center; padding: 18px 8px; border-radius: 4px;
+               background: var(--ink-2); border: 1px solid var(--line);
+               font-variant-numeric: tabular-nums; }
+  .stats div::before, .stats div::after { content: ""; position: absolute; width: 10px; height: 10px;
+               border: 1.5px solid var(--ochre); opacity: .6; }
+  .stats div::before { top: 6px; left: 6px; border-right: none; border-bottom: none; }
+  .stats div::after { bottom: 6px; right: 6px; border-left: none; border-top: none; }
+  .stats b { display: block; font-size: 26px; color: var(--ochre); font-weight: 600; }
+  .stats span { font-size: 13px; color: var(--moon-2); }
+  /* 祥云分隔：一枝纹样 repeat-x */
+  .divider { height: 26px; margin: 4px 0 0; opacity: .55; background-repeat: repeat-x;
+             background-position: center; background-size: auto 26px;
+             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='132' height='26' viewBox='0 0 132 26'%3E%3Cpath d='M8 19c0-5 4-8 8-7 1-6 10-8 13-2 5-2 10 1 9 6 4 0 7 1 9 3' fill='none' stroke='%23c9a06a' stroke-width='1.5' stroke-linecap='round'/%3E%3Cpath d='M60 19c7 0 10-6 16-6 7 0 9 6 16 6 6 0 9-4 14-4' fill='none' stroke='%23c9a06a' stroke-width='1.2' opacity='.65'/%3E%3C/svg%3E"); }
+  .more { text-align: center; margin: 18px 0 0; }
+  .more a { color: var(--ochre); text-decoration: none; font-size: 14px; }
+  .more a:hover { text-decoration: underline; }
+  .intro { line-height: 1.8; color: var(--moon); margin: 24px 0; max-width: 34em; }
+  .feat h2 { font-family: var(--font-serif); font-size: 21px; margin: 32px 0 16px; font-weight: 600;
+             letter-spacing: .04em; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
-  .grid figure { margin: 0; padding: 10px; border-radius: 10px; text-align: center;
-                 background: var(--panel, #171a21); border: 1px solid var(--border, #262b36); }
+  .grid figure { margin: 0; padding: 10px; border-radius: 4px; text-align: center;
+                 background: var(--ink-2); border: 1px solid var(--line); transition: border-color .12s; }
+  .grid figure:hover { border-color: var(--ochre); }
   .grid img { max-width: 96px; max-height: 96px; image-rendering: pixelated; }
-  .grid figcaption { font-size: 12px; color: var(--muted, #8b93a1); margin-top: 6px;
+  .grid figcaption { font-size: 12px; color: var(--moon-2); margin-top: 6px;
                      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  footer { margin-top: 40px; text-align: center; font-size: 12px; color: var(--muted, #8b93a1); }
-  footer a { color: var(--accent, #4f8cff); text-decoration: none; }
+  footer { position: relative; z-index: 1; margin-top: 40px; padding-top: 16px; text-align: center;
+           font-size: 12px; color: var(--moon-2); border-top: 1px solid var(--line); }
+  footer a { color: var(--ochre); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
   /* 品牌标识入场编舞：1600ms 共此时钟，offset 为关键帧内百分比；
      keyframe 缓动一律字面值（var() 在 @keyframes 内会被 Chromium 静默丢弃）。 */
   .brandmark { width: 112px; height: 112px; margin: 0 auto 18px; }
@@ -142,27 +188,48 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!DOCTYPE html>
       transform: none !important;
       stroke-dashoffset: 0 !important;
     }
+    .scene-fog { animation: none !important; }
   }
   @media (max-width: 560px) { .hero h1 { font-size: 30px; } .stats { flex-wrap: wrap; } .brandmark { width: 88px; height: 88px; margin-bottom: 14px; } }
 </style>
 </head>
 <body>
+  <!-- 远山云雾（月下仙山之景，纯装饰无语义） -->
+  <div class="scene" aria-hidden="true">
+    <svg class="scene-mountains" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 320" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="scene-mist" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#16202e" stop-opacity="0"/>
+          <stop offset="1" stop-color="#16202e" stop-opacity=".55"/>
+        </linearGradient>
+      </defs>
+      <path d="M0,200 L100,162 220,190 340,128 470,172 600,118 730,164 860,108 990,158 1120,124 1260,168 1360,138 1440,162 V320 H0 Z"
+            fill="#2c3d54" opacity=".55"/>
+      <path d="M0,240 L140,206 300,236 440,190 580,230 720,186 880,226 1030,196 1180,236 1320,200 1440,226 V320 H0 Z"
+            fill="#243347" opacity=".8"/>
+      <path d="M0,280 L160,256 330,276 520,250 700,272 900,248 1090,270 1280,250 1440,268 V320 H0 Z"
+            fill="#1c2839"/>
+      <rect x="0" y="0" width="1440" height="320" fill="url(#scene-mist)"/>
+    </svg>
+    <div class="scene-fog fog-a"></div>
+    <div class="scene-fog fog-b"></div>
+  </div>
   <div class="wrap">
     <header class="hero">
       <div class="brandmark" aria-hidden="true">
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <linearGradient id="p2m-g-plate" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#eef3fb"/>
+      <stop offset="0" stop-color="#f6f1e7"/>
+      <stop offset="1" stop-color="#e8dfcc"/>
     </linearGradient>
     <linearGradient id="p2m-g-n" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2f66ff"/>
-      <stop offset="0.55" stop-color="#2a8fe0"/>
-      <stop offset="1" stop-color="#20b983"/>
+      <stop offset="0" stop-color="#c25446"/>
+      <stop offset="0.55" stop-color="#a8453a"/>
+      <stop offset="1" stop-color="#8f6a3e"/>
     </linearGradient>
     <filter id="p2m-soft" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="#2f66ff" flood-opacity="0.18"/>
+      <feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="#b0453a" flood-opacity="0.22"/>
     </filter>
     <mask id="p2m-wipe-mask">
       <rect id="p2m-wipe" x="96" y="76" width="420" height="380" fill="#ffffff"/>
@@ -170,7 +237,7 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!DOCTYPE html>
   </defs>
   <g id="p2m-stage">
     <rect id="p2m-plate" x="36" y="36" width="440" height="440" rx="96"
-          fill="url(#p2m-g-plate)" stroke="#d3def8" stroke-width="2"/>
+          fill="url(#p2m-g-plate)" stroke="#d8cbb0" stroke-width="2"/>
     <g id="p2m-mark" mask="url(#p2m-wipe-mask)" filter="url(#p2m-soft)">
       <path d="M 128 400 V 112 h 80 l 98 150 V 112 h 80 v 288 h -80 l -98 -150 v 150 z" fill="url(#p2m-g-n)"/>
       <rect x="128" y="112" width="80" height="80" fill="#ffffff" opacity="0.12"/>
@@ -181,12 +248,12 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!DOCTYPE html>
           stroke-linecap="butt" pathLength="1"/>
     <rect id="p2m-node-1" x="152" y="150" width="32" height="32" rx="6" fill="#ffffff" opacity="0.92"/>
     <rect id="p2m-node-2" x="266" y="246" width="32" height="32" rx="6" fill="#ffffff" opacity="0.92"/>
-    <rect id="p2m-node-3" x="330" y="330" width="32" height="32" rx="6" fill="#eafff6" opacity="0.92"/>
+    <rect id="p2m-node-3" x="330" y="330" width="32" height="32" rx="6" fill="#f3e8d8" opacity="0.92"/>
   </g>
 </svg>
       </div>
       <h1>{{.SiteName}}</h1>
-      <p class="tag">{{.SiteName}} — Minecraft 皮肤站 · Yggdrasil 外置登录</p>
+      <p class="tag">Minecraft 皮肤站，支持 Yggdrasil 外置登录</p>
       <div class="cta">
         <a class="primary" href="/register">注册账号</a>
         <a class="alt" href="/login">登录</a>
@@ -197,6 +264,7 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!DOCTYPE html>
       <div><b>{{.Players}}</b><span>游戏角色</span></div>
       <div><b>{{.Textures}}</b><span>皮肤材质</span></div>
     </section>
+    <div class="divider" aria-hidden="true"></div>
     <section class="intro"><p>{{.Intro}}</p></section>
     {{if .Featured}}
     <section class="feat">
@@ -206,6 +274,7 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!DOCTYPE html>
         <figure><img src="{{.URL}}" alt="{{.Name}}" loading="lazy" /><figcaption>{{.Name}}</figcaption></figure>
         {{end}}
       </div>
+      <p class="more"><a href="/skinlib">进入皮肤库</a></p>
     </section>
     {{end}}
   </div>

@@ -128,7 +128,7 @@ onMounted(async () => {
         <option value="time">{{ t('skinlib.sortTime') }}</option>
         <option value="likes">{{ t('skinlib.sortLikes') }}</option>
       </select>
-      <button class="secondary" :class="{ 'mine-on': mine }" @click="toggleMine">{{ t('skinlib.mineOnly') }}</button>
+      <button v-if="me" class="secondary" :class="{ 'mine-on': mine }" @click="toggleMine">{{ t('skinlib.mineOnly') }}</button>
     </div>
 
     <div class="error" v-if="err">{{ err }}</div>
@@ -146,7 +146,7 @@ onMounted(async () => {
         </div>
         <div class="skin-card-body">
           <div class="skin-card-name" :title="it.name">
-            <span v-if="!it.public" class="lock">🔒</span>
+            <span v-if="!it.public" class="lock">密</span>
             <a :href="'/skinlib/' + it.tid" class="skin-card-link">{{ it.name || `#${it.tid}` }}</a>
           </div>
           <div class="skin-card-meta">
@@ -179,54 +179,62 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.tabs { display: flex; gap: 6px; }
+.tabs { display: flex; gap: 8px; }
 .tabs button {
-  padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border);
-  background: transparent; color: var(--text-dim); cursor: pointer; font-size: 13px;
+  padding: 8px 12px; border-radius: var(--r-s, 4px); border: 1px solid var(--border);
+  background: transparent; color: var(--muted); cursor: pointer; font-size: var(--fs-s);
 }
-.tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tabs button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .mine-on { border-color: var(--accent) !important; color: var(--accent) !important; }
 
 .skinlib-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 14px; margin-top: 14px;
+  gap: 16px; margin-top: 16px;
+  /* 材质徽章色（scoped 令牌，供子组件样式引用） */
+  --steve-bg: rgba(47, 191, 107, .16); --steve-ink: #7ee2a8;
+  --alex-bg: rgba(224, 166, 60, .16); --alex-ink: #ecc288;
 }
 .skin-card {
-  border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--border); border-radius: var(--r-m); overflow: hidden;
   background: var(--bg); display: flex; flex-direction: column;
 }
 .skin-card-prev {
   height: 180px; display: flex; align-items: center; justify-content: center;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--panel-2);
 }
 .skin-preview-img { height: 150px; image-rendering: pixelated; object-fit: contain; }
 .cape-thumb { max-width: 90%; max-height: 150px; image-rendering: pixelated; }
-.skin-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.skin-card-body { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .skin-card-name {
-  font-weight: 600; font-size: 14px; white-space: nowrap;
+  font-weight: 600; font-size: var(--fs-s); white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis;
 }
 .skin-card-link { color: inherit; text-decoration: none; }
 .skin-card-link:hover { color: var(--accent); }
 .skin-card-prev a { display: flex; align-items: center; justify-content: center; height: 100%; }
-.lock { margin-right: 2px; }
-.skin-card-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+/* 私密标记：方块小徽章（原 emoji 锁按中文 UI 规范去图标化） */
+.lock {
+  display: inline-block; margin-right: 4px; padding: 0 4px;
+  border: 1px solid var(--gold); border-radius: var(--r-s);
+  font-size: var(--fs-xs); font-weight: 600; color: var(--gold); line-height: 1.5;
+}
+.skin-card-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .badge {
-  padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: var(--r-s, 4px); font-size: var(--fs-xs, 12px); font-weight: 600;
 }
-.badge.steve { background: rgba(0, 200, 80, 0.18); color: #6f6; }
-.badge.alex { background: rgba(255, 180, 0, 0.18); color: #fb3; }
-.uploader { color: var(--text-dim); }
-.skin-card-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.badge.steve { background: var(--steve-bg); color: var(--steve-ink); }
+.badge.alex { background: var(--alex-bg); color: var(--alex-ink); }
+.uploader { color: var(--muted); }
+.skin-card-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .like-btn {
-  border: 1px solid var(--border); background: transparent; color: var(--text-dim);
-  border-radius: 6px; padding: 3px 9px; cursor: pointer; font-size: 13px;
+  border: 1px solid var(--border); background: transparent; color: var(--muted);
+  border-radius: var(--r-s, 4px); padding: 4px 8px; cursor: pointer; font-size: var(--fs-xs, 12px);
 }
-.like-btn.liked { color: #f66; border-color: #f66; }
+.like-btn.liked { color: var(--danger); border-color: var(--danger); }
 .ghost {
-  border: none; background: transparent; color: var(--text-dim);
-  cursor: pointer; font-size: 12px; padding: 3px 4px;
+  border: none; background: transparent; color: var(--muted);
+  cursor: pointer; font-size: 12px; padding: 4px;
 }
 .ghost:hover { color: var(--accent); }
 .pager { justify-content: center; margin-top: 16px; gap: 12px; }

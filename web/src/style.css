@@ -1,19 +1,61 @@
+/* SkinNexus 全站样式 —— 「方块工作台」设计语言（2026-10-26 拍板方向）
+   方向：矿洞深板岩底；绿宝石 = 唯一「可点击/健康」信号色；钻石蓝 = 信息/选中；
+   金锭 = 警示；红石 = 错误。签名元素 = 方块：小直角圆角 + 方形徽章 + 首屏像素垫。
+   规范来源：zh-ui-design（中文排版/token 化）+ frontend-design（反模板化自查）。 */
 :root {
-  --bg: #0f1115;
-  --panel: #171a21;
-  --border: #262b36;
-  --text: #d7dae0;
-  --muted: #8b93a1;
-  --accent: #4f8cff;
-  --danger: #e5534b;
+  color-scheme: dark;
+  /* 颜色：材料语义命名 */
+  --bg: #101418;        /* 深板岩：页面底 */
+  --panel: #171c23;     /* 石面：卡片/面板 */
+  --panel-2: #1d232c;   /* 嵌套面：悬停/内嵌块 */
+  --border: #2a323d;    /* 石缝：描线 */
+  --text: #e5e9ef;      /* 主文字 */
+  --muted: #93a1b3;     /* 次文字（蓝灰，对 panel 对比 ≥4.5:1） */
+  --accent: #2fbf6b;    /* 绿宝石：主按钮/健康/可点击 */
+  --accent-hi: #37d47a; /* 绿宝石高光：hover */
+  --accent-ink: #06130b;/* 绿底上的文字（对比 ≥7:1） */
+  --gem: #45b7cd;       /* 钻石蓝：信息/链接/焦点环/选中 */
+  --gold: #e0a63c;      /* 金锭：警示（重启提示/弱哈希余量） */
+  --danger: #e5534b;    /* 红石：错误/危险 */
+  --danger-ink: #ffffff;/* 危险按钮上的字 */
+  --danger-hi: #f0655d; /* 红石高光：hover */
+  --ok: #57ab5a;        /* 成功（既有语义保留） */
+  --hover-wash: rgba(229, 233, 239, .04); /* 表格行悬停薄雾 */
+  /* 圆角：方块感，三档 */
+  --r-s: 4px;
+  --r-m: 6px;
+  --r-pill: 999px;
+  /* 阴影：极轻、带蓝调，只用于浮层语境 */
+  --shadow: 0 8px 24px -14px rgba(4, 10, 18, .55);
+  /* 字号阶（6 级，4px 网格） */
+  --fs-xs: 12px;
+  --fs-s: 14px;
+  --fs-m: 16px;
+  --fs-l: 20px;
+  --fs-xl: 24px;
+  --fs-2xl: 32px;
 }
 * { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-family: "Segoe UI", "Inter", "PingFang SC", "HarmonyOS Sans SC",
+               "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  font-size: var(--fs-m);
+  line-height: 1.7;            /* 中文正文行高下限 */
+  -webkit-font-smoothing: antialiased;
+  line-break: strict;
+  text-wrap: pretty;
 }
+h1, h2, h3 { line-height: 1.25; font-weight: 600; text-wrap: balance; letter-spacing: -0.01em; }
+h1 { font-size: var(--fs-xl); margin: 0 0 4px; }
+h2 { font-size: var(--fs-l); margin: 0 0 12px; }
+a { color: var(--gem); text-decoration: none; }
+a:hover { text-decoration: underline; }
+/* 键盘可达性：全局 focus 环（钻石蓝，偏移不遮内容） */
+:focus-visible { outline: 2px solid var(--gem); outline-offset: 2px; }
 .container { max-width: 960px; margin: 0 auto; padding: 24px; }
 /* admin panel carries 8-9 column management tables — the 960px column
    squeezed them into vertical header wrap + overflowing action buttons */
@@ -21,33 +63,40 @@ body {
 .card {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--r-m);
   padding: 20px;
   margin-bottom: 16px;
 }
-h1 { font-size: 22px; margin: 0 0 4px; }
-h2 { font-size: 16px; margin: 0 0 12px; }
-.muted { color: var(--muted); font-size: 13px; }
+.muted { color: var(--muted); font-size: var(--fs-s); }
 button {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--r-s);
   padding: 8px 16px;
+  min-height: 34px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--fs-s);
+  font-weight: 600;
+  transition: background .12s, border-color .12s;
 }
+button:hover { background: var(--accent-hi); }
 button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
-button.danger { background: var(--danger); }
+button.secondary:hover { background: var(--panel-2); border-color: var(--muted); }
+button.danger { background: var(--danger); color: var(--danger-ink); }
+button.danger:hover { background: var(--danger-hi); }
 button:disabled { opacity: .5; cursor: not-allowed; }
+button:disabled:hover { background: var(--accent); }
+button.secondary:disabled:hover, button.danger:disabled:hover { background: var(--danger); }
 input, select, textarea {
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 6px;
-  padding: 8px 10px;
-  font-size: 14px;
+  border-radius: var(--r-s);
+  padding: 8px 12px;
+  font-size: var(--fs-s);
   width: 100%;
+  transition: border-color .12s;
 }
 /* textareas are content boxes: taller, resizable, inherit the dark theme
    (previously the UA default white background clashed with the site) */
@@ -55,25 +104,31 @@ textarea {
   min-height: 88px;
   resize: vertical;
   font-family: inherit;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 textarea:focus, input:focus, select:focus {
   outline: none;
   border-color: var(--accent);
 }
-label { display: block; margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
+label { display: block; margin: 12px 0 4px; font-size: var(--fs-s); color: var(--muted); }
 .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-.error { color: var(--danger); font-size: 13px; margin-top: 8px; }
-.success { color: #57ab5a; font-size: 13px; margin-top: 8px; }
-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.error { color: var(--danger); font-size: var(--fs-s); margin-top: 8px; }
+.success { color: var(--ok); font-size: var(--fs-s); margin-top: 8px; }
+table { width: 100%; border-collapse: collapse; font-size: var(--fs-s); font-variant-numeric: tabular-nums; }
 th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); }
 /* management tables: headers never stack characters ("拥 有 者"), rows get
    hover tracking, dates/ids stay on one line */
-th { white-space: nowrap; font-size: 13px; color: var(--muted); font-weight: 600; }
+th { white-space: nowrap; font-size: var(--fs-s); color: var(--muted); font-weight: 600; }
 td { vertical-align: middle; }
 tbody tr, table tr { transition: background .12s; }
-tbody tr:hover, table tr:hover { background: rgba(255, 255, 255, .03); }
+tbody tr:hover, table tr:hover { background: var(--hover-wash); }
+/* 徽章：方块母题（小直角），非胶囊 */
 .badge {
-  display: inline-block; padding: 2px 8px; border-radius: 999px;
-  font-size: 12px; border: 1px solid var(--border); color: var(--muted);
+  display: inline-block; padding: 2px 8px; border-radius: var(--r-s);
+  font-size: var(--fs-xs); border: 1px solid var(--border); color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+/* 尊重减弱动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
 }

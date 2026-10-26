@@ -122,8 +122,11 @@ async function boot() {
   else if (!user.value && location.pathname === '/register') view.value = 'register' // landing CTA deep link
   else if (legacyRoutes[location.pathname]) {
     // launcher deep link: logged in → straight there; logged out → login card,
-    // resume into the target view after authentication
+    // resume into the target view after authentication. /skinlib is public:
+    // anonymous visitors browse directly (backend answers public textures
+    // only) — no login wall.
     if (user.value) view.value = legacyRoutes[location.pathname]
+    else if (location.pathname === '/skinlib') view.value = 'skinlib'
     else pendingView.value = legacyRoutes[location.pathname]
   }
   else view.value = user.value ? 'dashboard' : 'login'
@@ -213,6 +216,11 @@ onMounted(boot)
           <span class="badge">{{ user.nickname }}</span>
           <button class="secondary" @click="doLogout">{{ t('common.logout') }}</button>
         </template>
+        <template v-else>
+          <button class="secondary" @click="view = 'skinlib'">{{ t('nav.skinlib') }}</button>
+          <button class="secondary" @click="view = 'login'">{{ t('common.login') }}</button>
+          <button @click="view = 'register'">{{ t('common.register') }}</button>
+        </template>
       </div>
     </div>
 
@@ -226,11 +234,11 @@ onMounted(boot)
       <input v-model="identifier" autocomplete="username" />
       <label>{{ t('auth.password') }}</label>
       <input v-model="password" type="password" autocomplete="current-password" @keyup.enter="doLogin" />
-      <div style="margin-top: 6px; text-align: right;" v-if="mailEnabled">
+      <div style="margin-top: 8px; text-align: right;" v-if="mailEnabled">
         <a href="/forgot-password" class="muted" @click.prevent="forgotSent = false; view = 'forgot'">{{ t('auth.forgotLink') }}</a>
       </div>
       <div class="error" v-if="authErr">{{ authErr }}</div>
-      <div class="row" style="margin-top: 14px;">
+      <div class="row" style="margin-top: 16px;">
         <button @click="doLogin">{{ t('common.login') }}</button>
         <button class="secondary" @click="view = 'register'">{{ t('common.register') }}</button>
       </div>
@@ -252,7 +260,7 @@ onMounted(boot)
         <input v-model="invitationCode" @keyup.enter="doRegister" />
       </template>
       <div class="error" v-if="authErr">{{ authErr }}</div>
-      <div class="row" style="margin-top: 14px;">
+      <div class="row" style="margin-top: 16px;">
         <button @click="doRegister">{{ t('common.register') }}</button>
         <button class="secondary" @click="view = 'login'">{{ t('auth.toLogin') }}</button>
       </div>
@@ -265,7 +273,7 @@ onMounted(boot)
            navigation to /forgot-password lands here too) -->
       <template v-if="confLoaded && !siteConf.mail_configured">
         <p class="muted">{{ t('auth.mailDisabled') }}</p>
-        <div class="row" style="margin-top: 14px;">
+        <div class="row" style="margin-top: 16px;">
           <button class="secondary" @click="view = 'login'">{{ t('auth.toLogin') }}</button>
         </div>
       </template>
@@ -273,14 +281,14 @@ onMounted(boot)
         <label>{{ t('auth.forgotEmail') }}</label>
         <input v-model="forgotEmail" type="email" autocomplete="email" @keyup.enter="doForgot" />
         <div class="error" v-if="authErr">{{ authErr }}</div>
-        <div class="row" style="margin-top: 14px;">
+        <div class="row" style="margin-top: 16px;">
           <button @click="doForgot">{{ t('auth.forgotSubmit') }}</button>
           <button class="secondary" @click="view = 'login'">{{ t('auth.toLogin') }}</button>
         </div>
       </template>
       <template v-else>
         <p class="muted">{{ t('auth.forgotSent') }}</p>
-        <div class="row" style="margin-top: 14px;">
+        <div class="row" style="margin-top: 16px;">
           <button class="secondary" @click="view = 'login'">{{ t('auth.toLogin') }}</button>
         </div>
       </template>
@@ -291,7 +299,7 @@ onMounted(boot)
       <h2>{{ t('auth.resetTitle') }}</h2>
       <template v-if="resetDone">
         <p class="muted">{{ t('auth.resetDone') }}</p>
-        <div class="row" style="margin-top: 14px;">
+        <div class="row" style="margin-top: 16px;">
           <button @click="view = 'login'">{{ t('common.login') }}</button>
         </div>
       </template>
@@ -301,14 +309,14 @@ onMounted(boot)
         <label>{{ t('auth.resetConfirm') }}</label>
         <input v-model="resetPw2" type="password" autocomplete="new-password" @keyup.enter="doReset" />
         <div class="error" v-if="authErr">{{ authErr }}</div>
-        <div class="row" style="margin-top: 14px;">
+        <div class="row" style="margin-top: 16px;">
           <button @click="doReset">{{ t('auth.resetSubmit') }}</button>
           <button class="secondary" @click="view = 'login'">{{ t('auth.toLogin') }}</button>
         </div>
       </template>
       <template v-else>
         <p class="error">{{ t('auth.resetInvalid') }}</p>
-        <div class="row" style="margin-top: 14px;">
+        <div class="row" style="margin-top: 16px;">
           <button v-if="mailEnabled" @click="forgotSent = false; view = 'forgot'">{{ t('auth.forgotSubmit') }}</button>
           <button class="secondary" @click="view = 'login'">{{ t('auth.toLogin') }}</button>
         </div>
@@ -333,6 +341,11 @@ onMounted(boot)
           <button class="secondary" @click="backToDashboard">{{ t('nav.backToDashboard') }}</button>
         </div>
       </template>
+    </template>
+
+    <!-- public skin library: anonymous visitors browse without a session -->
+    <template v-else-if="!user && view === 'skinlib'">
+      <SkinlibPage />
     </template>
 
     <!-- logged-in shell: sidebar + page (blessing 用户中心布局) -->
@@ -364,18 +377,18 @@ onMounted(boot)
 
 <style scoped>
 .user-shell { display: flex; gap: 16px; align-items: flex-start; }
-.user-side { position: sticky; top: 16px; min-width: 170px; padding: 14px; }
+.user-side { position: sticky; top: 16px; min-width: 170px; padding: 16px; }
 .user-main { flex: 1; min-width: 0; }
-.nav-group + .nav-group { margin-top: 14px; }
+.nav-group + .nav-group { margin-top: 16px; }
 .nav-title {
   font-size: 12px; color: var(--muted); font-weight: 600;
-  margin: 0 0 6px; padding-left: 10px;
+  margin: 0 0 8px; padding-left: 12px;
 }
 .nav-item {
   display: block; width: 100%; text-align: left;
   background: none; border: 1px solid transparent;
-  padding: 8px 10px; border-radius: 8px; cursor: pointer;
-  font-size: 14px; color: inherit; margin-bottom: 2px;
+  padding: 8px 12px; border-radius: 8px; cursor: pointer;
+  font-size: var(--fs-s); color: inherit; margin-bottom: 2px;
 }
 .nav-item:hover { border-color: var(--border); }
 .nav-item.active { border-color: var(--accent); font-weight: 600; }

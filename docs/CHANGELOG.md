@@ -2,6 +2,14 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
+## 2026-10-26（前端设计体系落地：SPA token 化 + 落地页「月下仙山」+ 访客免登录逛皮肤库）
+
+- **能力底座**：装齐前端设计技能与插件（frontend-design / extract-design-system / zh-ui-design / unocss 四技能落盘 `~/.dsh/skills`；ui-ux-pro-max、dsh-zh-ui、dsh-web-review 三插件入 desktop profile——zh-ui release tgz 校验和与 README 不符，经内容级核验放行）。
+- **SPA 全站样式（`web/src/style.css` 换血）**：「方块工作台」token 体系——材料语义色（绿宝石=可点击/健康、钻石蓝=信息/焦点、金锭=警示、红石=错误）、4px 网格字号阶（12/14/16/20/24/32）、方块圆角、`tabular-nums` 表格数字、全局 `:focus-visible` 焦点环、`prefers-reduced-motion` 全局尊重；**保留全部既有类名**（组件零破坏），主题扩展机制不变。`zh_design_lint` 8 条 findings 清零。
+- **落地页「月下仙山」（用户 brief：中国古风仙侠）**：自有 token 命名空间（黛青 `--ink` / 月白 `--moon` / 朱砂 `--cinnabar` 只给主按钮 / 赭石 `--ochre` 纹线，无大红大紫大金）；签名元素 = N 字牌（保留 1600ms 入场编舞，重着色为朱砂→赭石渐变 + 暖玉底）；新增远山云雾 SVG 场景（fixed 垫底 + 两层雾带缓漂，reduced-motion 停）；统计卡赭石回纹角饰、祥云 repeat-x 分隔、宋体标题栈（系统字体，零外部加载）；theme-color → `#16202e`。注入锚点不动，主题包/custom CSS 仍可整体覆盖——theme-spec 已补「落地页 token 命名空间」节。文案清理：去「无缝」（禁用词）与「— ·」双连接符。
+- **访客免登录逛皮肤库**（用户点单）：后端 `/api/v1/skinlib` 本就匿名只读（仅公开材质），本轮拆前端登录墙——`/skinlib` 对匿名直达开放、顶栏给访客「皮肤库 / 登录 / 注册」入口、落地页精选区新增「进入皮肤库」链接；「只看我的」对访客隐藏；未登录点赞后端 401「请先登录」如实提示。登录用户仍走带侧栏布局。
+- **验证**：`go vet` 干净、全仓 `go test` 绿（landing 断言全兼容：hero/CTA/注入/编舞串保留，footer 位置约束满足）；`vite build` 通过；`zh_design_lint` 清零。
+
 ## 2026-10-26（对照表勘误：blessing 有完整皮肤库，两格就地修正）
 
 - **用户指出**：README 对照表「blessing ❌ 无皮肤库」不实。
