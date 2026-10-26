@@ -1,11 +1,11 @@
 <script setup>
 // DashboardPage (A 级批次): 仪表盘 —— 公告（Markdown 双层消毒之客户端层：
-// marked 渲染 + DOMPurify 消毒后才 v-html；服务端已 bluemonday 一层）、
+// markdown-it 渲染 + DOMPurify 消毒后才 v-html；服务端已 bluemonday 一层）、
 // 使用情况（角色 n/limit + 存储字节）、启动器快速配置（API 地址复制/
 // 可拖拽链接/HMCL PCL 引导）、上传、纹理列表。
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { marked } from 'marked'
+import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
 import { api, uploadTexture } from '../api.js'
 import { guard401 } from '../session.js'
@@ -26,12 +26,14 @@ const uploadErr = ref('')
 const uploadOk = ref('')
 
 // ---- announcement: client sanitization layer ----
-// marked renders the RAW markdown; DOMPurify then strips anything hostile.
-// The server html field exists for API consumers — the SPA renders its own
-// copy so both layers (拍板双层消毒) always run in the browser path.
+// markdown-it renders the RAW markdown (linkify: bare URLs inside CJK prose
+// become real links — 2026-10-26 批注修复；html:false + DOMPurify strips
+// anything hostile). The server html field exists for API consumers — the
+// SPA renders its own copy so both layers (拍板双层消毒) always run.
+const md = new MarkdownIt({ html: false, linkify: true, typographer: false })
 const announcementHtml = computed(() => {
   if (!announcement.value) return ''
-  const raw = marked.parse(announcement.value)
+  const raw = md.render(announcement.value)
   return DOMPurify.sanitize(raw)
 })
 
@@ -126,9 +128,9 @@ onMounted(() => { load(); loadAnnouncement() })
   <!-- usage + launcher quick config -->
   <div class="card">
     <h2>{{ t('dashboard.usageTitle') }}</h2>
-    <p style="margin: 4px 0 12px;">{{ usageText }}</p>
+    <div style="margin: 4px 0 12px;">{{ usageText }}</div>
     <h3>{{ t('dashboard.launcherTitle') }}</h3>
-    <p class="muted" style="margin: 4px 0 8px;">{{ t('dashboard.launcherHint') }}</p>
+    <div class="muted" style="margin: 4px 0 8px;">{{ t('dashboard.launcherHint') }}</div>
     <div class="row">
       <code class="ali">{{ aliUrl }}</code>
       <button class="secondary" @click="copyAli">{{ copyState === 'ok' ? t('dashboard.copied') : copyState === 'fail' ? t('dashboard.copyFail') : t('dashboard.copy') }}</button>
@@ -179,17 +181,30 @@ onMounted(() => { load(); loadAnnouncement() })
 </template>
 
 <style scoped>
-.md { margin-top: 8px; line-height: 1.65; }
-.md :deep(h1), .md :deep(h2), .md :deep(h3) { margin: 12px 0 6px; }
-.md :deep(p) { margin: 6px 0; }
-.md :deep(ul), .md :deep(ol) { margin: 6px 0; padding-left: 22px; }
-.md :deep(a) { color: var(--accent); }
-.md :deep(code) { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
-.md :deep(img) { max-width: 100%; border-radius: 6px; }
-h3 { font-size: 14px; margin: 14px 0 4px; color: var(--muted); font-weight: 600; }
-.ali { background: var(--bg); border: 1px solid var(--border); padding: 7px 10px; border-radius: 6px; font-size: 13px; user-select: all; }
+/* 公告 markdown 排版 v3「月下仙山」：宋体大标题、8px 节奏、青瓷链接、
+   赭石引用线；内容里的 emoji 属公告作者表达，不剥离。 */
+.md { margin-top: 8px; line-height: 1.75; font-size: var(--fs-m); }
+.md :deep(h1) { font-family: var(--font-serif); font-size: var(--fs-xl); letter-spacing: .03em;
+                margin: 4px 0 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.md :deep(h2) { font-size: var(--fs-l); margin: 24px 0 8px; }
+.md :deep(h3) { font-size: var(--fs-m); margin: 16px 0 4px; }
+.md :deep(p) { margin: 8px 0; }
+.md :deep(ul), .md :deep(ol) { margin: 8px 0; padding-left: 24px; }
+.md :deep(li) { margin: 4px 0; }
+.md :deep(a) { color: var(--jade); text-decoration: underline; text-underline-offset: 3px; }
+.md :deep(a:hover) { color: var(--jade-hi); }
+.md :deep(code) { background: var(--bg); padding: 2px 4px; border-radius: var(--r-s); font-size: var(--fs-xs); }
+.md :deep(img) { max-width: 100%; border-radius: var(--r-m); }
+.md :deep(blockquote) { margin: 8px 0; padding: 4px 16px; border-left: 3px solid var(--gold);
+                color: var(--muted); }
+.md :deep(strong) { color: var(--text); }
+.md :deep(hr) { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+.md :deep(table) { border-collapse: collapse; font-size: var(--fs-xs); margin: 8px 0; }
+.md :deep(th), .md :deep(td) { border: 1px solid var(--border); padding: 8px; }
+h3 { font-size: var(--fs-s); margin: 16px 0 4px; color: var(--muted); font-weight: 600; }
+.ali { background: var(--bg); border: 1px solid var(--border); padding: 8px 12px; border-radius: var(--r-m); font-size: var(--fs-xs); user-select: all; }
 .drag-btn {
-  display: inline-block; padding: 7px 14px; border: 1px dashed var(--accent);
-  color: var(--accent); border-radius: 6px; text-decoration: none; font-size: 13px;
+  display: inline-block; padding: 8px 16px; border: 1px dashed var(--accent);
+  color: var(--accent); border-radius: var(--r-m); text-decoration: none; font-size: var(--fs-xs);
 }
 </style>
