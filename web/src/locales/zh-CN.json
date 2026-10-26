@@ -289,6 +289,15 @@
     "navStatus": "运行状态",
     "navUnion": "Union",
     "navAccess": "访问日志",
+    "settingsGroup": {
+      "basic": "站点基础",
+      "register": "注册与验证",
+      "mail": "邮件服务（SMTP）",
+      "security": "安全与限流",
+      "ygg": "Yggdrasil 服务",
+      "texture": "角色与材质",
+      "union": "Union 联盟"
+    },
     "accessTitle": "访问与通信日志",
     "accessHint": "网页/启动器登录、MC 服务器 Yggdrasil 通信、Union 联盟出入站均记录于此（保留 90 天）。",
     "accessKindAll": "全部类型",

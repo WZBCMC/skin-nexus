@@ -2,7 +2,7 @@
 // SettingsView: the 站点设置 group — env-migrated site knobs + OAuth
 // clients + SEO + appearance/themes (moved out of the old card flow in B1;
 // semantics unchanged: bool normalization, refetch-on-error, one-click SEO).
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { fetchJSON } from '../../adminApi.js'
 
@@ -16,11 +16,39 @@ const setError = ref('')
 const boolKeys = new Set([
   'invite_required', 'require_verification',
   'union_enabled', 'union_enable_update', 'union_enable_oauth2',
+  'ygg_mojang_fallback',
 ])
 const textKeys = new Set([
   'skin_domains', 'announcement', 'custom_player_name_regexp', 'texture_name_regexp',
   'union_oauth2_sig_private_key', 'union_oauth2_sig_public_key',
 ])
+// secrets never render as plain text inputs
+const secretKeys = new Set(['union_member_key', 'smtp_pass'])
+
+// Panel section grouping: the backend tags every whitelist key with a
+// `group`; this list is the display order (unknown ids fall to the end,
+// keeping the API forward-compatible).
+const GROUP_ORDER = ['basic', 'register', 'mail', 'security', 'ygg', 'texture', 'union']
+const groupedSettings = computed(() => {
+  const buckets = new Map()
+  for (const s of settings.value) {
+    const g = s.group || 'other'
+    if (!buckets.has(g)) buckets.set(g, [])
+    buckets.get(g).push(s)
+  }
+  const ordered = GROUP_ORDER.filter((g) => buckets.has(g))
+    .map((g) => ({ id: g, items: buckets.get(g) }))
+  for (const [g, items] of buckets) {
+    if (!GROUP_ORDER.includes(g)) ordered.push({ id: g, items })
+  }
+  return ordered
+})
+// i18n title with a readable fallback for unknown/missing group ids
+const groupTitle = (g) => {
+  const key = `admin.settingsGroup.${g}`
+  const title = t(key)
+  return title === key ? g : title
+}
 
 async function loadSettings() {
   setError.value = ''
@@ -154,35 +182,38 @@ onMounted(load)
 
 <template>
   <div>
-    <!-- 站点设置（env 迁 UI） -->
+    <!-- 站点设置（env 迁 UI），按后端 group 分节 -->
     <div class="card">
       <h2 style="margin-top: 0;">站点设置（原环境变量，管理员可改）</h2>
       <div class="error" v-if="setError">{{ setError }}</div>
-      <div class="row" v-for="s in settings" :key="s.key" style="margin-top: 10px; align-items: center;">
-        <!-- Chinese-first label: server-provided desc is primary, the raw key
-             demoted to a small muted hint -->
-        <label style="width: 240px; font-weight: 600; font-size: 13px;">
-          {{ s.desc }}
-          <span class="muted" style="display: block; font-weight: 400; font-size: 11px;">{{ s.key }}</span>
-        </label>
-        <input v-if="boolKeys.has(s.key)"
-               type="checkbox" v-model="s.value" true-value="1" false-value="0" style="width: auto;" />
-        <textarea v-else-if="textKeys.has(s.key)"
-                  v-model="s.value" :style="s.key.startsWith('union_oauth2_sig_') ? 'max-width: 360px; min-height: 72px; font-family: monospace; font-size: 11px;' : 'max-width: 360px; min-height: 38px;'"></textarea>
-        <select v-else-if="s.key === 'player_name_rule'" v-model="s.value" style="max-width: 160px;">
-          <option value="official">official（字母/数字/下划线）</option>
-          <option value="cjk">cjk（+ 中文/§）</option>
-          <option value="utf8">utf8（任意非空白）</option>
-          <option value="custom">custom（自定义正则）</option>
-        </select>
-        <select v-else-if="s.key === 'union_queryemail_mode'" v-model="s.value" style="max-width: 160px;">
-          <option value="full">full（按 union 协议返回邮箱）</option>
-          <option value="off">off（不返回）</option>
-        </select>
-        <input v-else v-model="s.value" :type="s.key === 'union_member_key' ? 'password' : 'text'" style="max-width: 300px;" :placeholder="s.default" />
-        <button @click="saveSetting(s)">保存</button>
-        <span class="muted" style="font-size: 11px;">{{ s.restart ? '重启后生效' : '立即生效' }}</span>
-      </div>
+      <template v-for="grp in groupedSettings" :key="grp.id">
+        <h3 class="settings-group-title">{{ groupTitle(grp.id) }}</h3>
+        <div class="row" v-for="s in grp.items" :key="s.key" style="margin-top: 10px; align-items: center;">
+          <!-- Chinese-first label: server-provided desc is primary, the raw key
+               demoted to a small muted hint -->
+          <label style="width: 240px; font-weight: 600; font-size: 13px;">
+            {{ s.desc }}
+            <span class="muted" style="display: block; font-weight: 400; font-size: 11px;">{{ s.key }}</span>
+          </label>
+          <input v-if="boolKeys.has(s.key)"
+                 type="checkbox" v-model="s.value" true-value="1" false-value="0" style="width: auto;" />
+          <textarea v-else-if="textKeys.has(s.key)"
+                    v-model="s.value" :style="s.key.startsWith('union_oauth2_sig_') ? 'max-width: 360px; min-height: 72px; font-family: monospace; font-size: 11px;' : 'max-width: 360px; min-height: 38px;'"></textarea>
+          <select v-else-if="s.key === 'player_name_rule'" v-model="s.value" style="max-width: 160px;">
+            <option value="official">official（字母/数字/下划线）</option>
+            <option value="cjk">cjk（+ 中文/§）</option>
+            <option value="utf8">utf8（任意非空白）</option>
+            <option value="custom">custom（自定义正则）</option>
+          </select>
+          <select v-else-if="s.key === 'union_queryemail_mode'" v-model="s.value" style="max-width: 160px;">
+            <option value="full">full（按 union 协议返回邮箱）</option>
+            <option value="off">off（不返回）</option>
+          </select>
+          <input v-else v-model="s.value" :type="secretKeys.has(s.key) ? 'password' : 'text'" style="max-width: 300px;" :placeholder="s.default" />
+          <button @click="saveSetting(s)">保存</button>
+          <span class="muted" style="font-size: 11px;">{{ s.restart ? '重启后生效' : '立即生效' }}</span>
+        </div>
+      </template>
     </div>
 
     <!-- SEO -->
@@ -271,3 +302,13 @@ onMounted(load)
     </div>
   </div>
 </template>
+
+<style scoped>
+/* settings section titles: quiet dividers between grouped knobs */
+.settings-group-title {
+  font-size: 13px; font-weight: 700; color: var(--muted);
+  margin: 22px 0 4px; padding: 14px 0 6px;
+  border-top: 1px solid var(--border);
+}
+.settings-group-title:first-of-type { border-top: none; padding-top: 4px; margin-top: 14px; }
+</style>

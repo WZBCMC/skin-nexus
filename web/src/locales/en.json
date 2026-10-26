@@ -286,6 +286,15 @@
     "navStatus": "Status",
     "navUnion": "Union",
     "navAccess": "Access Logs",
+    "settingsGroup": {
+      "basic": "Site Basics",
+      "register": "Registration & Verification",
+      "mail": "Mail Service (SMTP)",
+      "security": "Security & Rate Limits",
+      "ygg": "Yggdrasil Service",
+      "texture": "Profiles & Textures",
+      "union": "Union Federation"
+    },
     "accessTitle": "Access & Communication Logs",
     "accessHint": "Web/launcher logins, MC server Yggdrasil traffic, Union in/outbound — all recorded here (90-day retention).",
     "accessKindAll": "All kinds",
