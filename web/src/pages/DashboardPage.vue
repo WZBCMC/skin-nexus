@@ -3,10 +3,11 @@
 // markdown-it 渲染 + DOMPurify 消毒后才 v-html；服务端已 bluemonday 一层）、
 // 使用情况（角色 n/limit + 存储字节）、启动器快速配置（API 地址复制/
 // 可拖拽链接/HMCL PCL 引导）、上传、纹理列表。
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
+import SkinPreview from '../components/SkinPreview.vue'
 import { api, uploadTexture } from '../api.js'
 import { guard401 } from '../session.js'
 
@@ -24,6 +25,38 @@ const fileInput = ref(null)
 const uploading = ref(false)
 const uploadErr = ref('')
 const uploadOk = ref('')
+// 选中文件的本地预览（objectURL，随选择换新、卸载时回收）
+const previewURL = ref('')
+const dragging = ref(false)
+const glLost = ref(false)
+
+function setPreviewFile(f) {
+  if (previewURL.value) URL.revokeObjectURL(previewURL.value)
+  previewURL.value = f ? URL.createObjectURL(f) : ''
+  glLost.value = false
+}
+function clearPreview() {
+  if (previewURL.value) URL.revokeObjectURL(previewURL.value)
+  previewURL.value = ''
+  uploadFile.value = null
+  if (fileInput.value) fileInput.value.value = ''
+  glLost.value = false
+}
+// cape has no body render — show the flat texture instead of the 3D canvas
+const previewIsCape = computed(() => uploadType.value === 'cape')
+
+function onDrop(e) {
+  dragging.value = false
+  const f = e.dataTransfer.files && e.dataTransfer.files[0]
+  if (!f) return
+  if (fileInput.value) {
+    const dt = new DataTransfer()
+    dt.items.add(f)
+    fileInput.value.files = dt.files
+  }
+  uploadFile.value = f
+  setPreviewFile(f)
+}
 
 // ---- announcement: client sanitization layer ----
 // markdown-it renders the RAW markdown (linkify: bare URLs inside CJK prose
@@ -107,15 +140,19 @@ async function doUpload() {
   try {
     await uploadTexture(uploadType.value, uploadFile.value, uploadType.value === 'skin' ? uploadModel.value : '', '')
     uploadOk.value = t('dashboard.uploadSuccess')
-    uploadFile.value = null
-    if (fileInput.value) fileInput.value.value = ''
+    clearPreview()
     await load()
   } catch (e) { if (!guard401(e)) uploadErr.value = e.message } finally { uploading.value = false }
 }
 
-function onPick(e) { uploadFile.value = e.target.files[0] || null }
+function onPick(e) {
+  const f = e.target.files[0] || null
+  uploadFile.value = f
+  setPreviewFile(f)
+}
 
 onMounted(() => { load(); loadAnnouncement() })
+onBeforeUnmount(() => { if (previewURL.value) URL.revokeObjectURL(previewURL.value) })
 </script>
 
 <template>
@@ -140,24 +177,49 @@ onMounted(() => { load(); loadAnnouncement() })
     <p class="muted" style="margin-top: 8px; font-size: 12px;">{{ t('dashboard.launcherTutor') }}</p>
   </div>
 
-  <!-- upload -->
+  <!-- upload: 左控件列 + 右即时预览（选中文件即渲染 3D / 平面图） -->
   <div class="card">
     <h2>{{ t('dashboard.uploadTitle') }}</h2>
-    <div class="row">
-      <select v-model="uploadType" style="width: 120px;">
-        <option value="skin">{{ t('dashboard.typeSkin') }}</option>
-        <option value="cape">{{ t('dashboard.typeCape') }}</option>
-      </select>
-      <select v-model="uploadModel" style="width: 140px;" :disabled="uploadType !== 'skin'">
-        <option value="default">{{ t('dashboard.modelDefault') }}</option>
-        <option value="slim">{{ t('dashboard.modelSlim') }}</option>
-      </select>
-      <input type="file" accept="image/png" ref="fileInput" @change="onPick" style="width: auto;" />
-      <button :disabled="uploading" @click="doUpload">{{ uploading ? t('dashboard.uploading') : t('dashboard.upload') }}</button>
+    <div class="up-grid">
+      <div class="up-controls">
+        <div class="row">
+          <select v-model="uploadType" style="width: 120px;">
+            <option value="skin">{{ t('dashboard.typeSkin') }}</option>
+            <option value="cape">{{ t('dashboard.typeCape') }}</option>
+          </select>
+          <select v-model="uploadModel" style="width: 140px;" :disabled="uploadType !== 'skin'">
+            <option value="default">{{ t('dashboard.modelDefault') }}</option>
+            <option value="slim">{{ t('dashboard.modelSlim') }}</option>
+          </select>
+        </div>
+        <div class="drop-zone" :class="{ over: dragging }"
+             @dragover.prevent="dragging = true" @dragleave.prevent="dragging = false"
+             @drop.prevent="onDrop" @click="fileInput && fileInput.click()">
+          <input type="file" accept="image/png" ref="fileInput" @change="onPick" class="file-hidden" />
+          <template v-if="uploadFile">
+            <span class="file-name" :title="uploadFile.name">{{ uploadFile.name }}</span>
+            <button class="secondary file-clear" @click.stop="clearPreview">×</button>
+          </template>
+          <span v-else class="muted">{{ t('dashboard.dropHint') }}</span>
+        </div>
+        <div class="row">
+          <button :disabled="uploading || !uploadFile" @click="doUpload">
+            {{ uploading ? t('dashboard.uploading') : t('dashboard.upload') }}
+          </button>
+        </div>
+        <div class="error" v-if="uploadErr">{{ uploadErr }}</div>
+        <div class="success" v-if="uploadOk">{{ uploadOk }}</div>
+        <div class="muted">{{ t('dashboard.uploadHint') }}</div>
+      </div>
+      <div class="prev-box">
+        <template v-if="previewURL">
+          <img v-if="previewIsCape || glLost" class="cape-prev" :src="previewURL" alt="preview" />
+          <SkinPreview v-else :url="previewURL" :model-type="uploadModel"
+                       @gl-unavailable="glLost = true" />
+        </template>
+        <span v-else class="muted">{{ t('dashboard.previewEmpty') }}</span>
+      </div>
     </div>
-    <div class="error" v-if="uploadErr">{{ uploadErr }}</div>
-    <div class="success" v-if="uploadOk">{{ uploadOk }}</div>
-    <div class="muted" style="margin-top: 8px;">{{ t('dashboard.uploadHint') }}</div>
   </div>
 
   <!-- textures -->
@@ -206,5 +268,28 @@ h3 { font-size: var(--fs-s); margin: 16px 0 4px; color: var(--muted); font-weigh
 .drag-btn {
   display: inline-block; padding: 8px 16px; border: 1px dashed var(--accent);
   color: var(--accent); border-radius: var(--r-m); text-decoration: none; font-size: var(--fs-xs);
+}
+/* 上传卡 v3：双栏（控件 | 即时预览）、拖放区、披风平面图 */
+.up-grid { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 16px; align-items: start; }
+.up-controls { display: flex; flex-direction: column; gap: 12px; }
+.drop-zone {
+  display: flex; align-items: center; gap: 8px;
+  border: 1px dashed var(--line-strong); border-radius: var(--r-m);
+  background: var(--bg); padding: 12px; cursor: pointer; min-height: 48px;
+  transition: border-color .14s var(--ease), background .14s var(--ease);
+}
+.drop-zone:hover, .drop-zone.over { border-color: var(--gold); background: var(--ink-3); }
+.file-hidden { display: none; }
+.file-name { font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-clear { min-height: 24px; padding: 0 8px; font-size: var(--fs-xs); margin-left: auto; flex: none; }
+.prev-box {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 220px; border: 1px solid var(--border); border-radius: var(--r-m);
+  background: var(--bg); padding: 8px;
+}
+.cape-prev { max-width: 100%; max-height: 220px; image-rendering: pixelated; }
+@media (max-width: 720px) {
+  .up-grid { grid-template-columns: 1fr; }
+  .prev-box { min-height: 200px; }
 }
 </style>

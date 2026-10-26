@@ -2,6 +2,15 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
+## 2026-10-26（上传纹理卡重构：拖放区 + 选肤即 3D 预览——批注第五轮）
+
+批注「上传皮肤 ui 可以优化，另外当用户选择皮肤后可以前端渲染出皮肤的 3d 模型方便预览即将上传的皮肤」。
+
+- **上传卡双栏布局**：左控件列（类型/模型 select + **拖放上传区** + 上传按钮 + 提示），右**即时预览列**（220px 预览框，≤720px 塌缩）。拖放区 dashed 赭石线、dragover 金边高亮、点击即选文件、选中显示文件名 + 清除钮；拖放与点击两条路都写入同一 file input（FormData 提交路径不变）。
+- **选肤即 3D 预览**：选中 PNG 后 `URL.createObjectURL` 喂给 `SkinPreview`（skinview3d 动态 import）即时渲染自转模型；**模型切换（Steve/Alex）热更新** `playerModelType`；披风无 body 渲染 → 平面像素图预览；WebGL 不可用时自动降级平面图（探测 + `gl-unavailable` 回落）。objectURL 全生命周期回收（换选/清除/上传成功/卸载），viewer 卸载 `dispose()` 守住 WebGL context 预算。
+- **SkinPreview 组件增强**（向后兼容，PlayersPage 共用）：新增 `modelType` prop 热切换、WebGL 探测、卸载释放。
+- **验证**：`vite build` 绿；`zh_design_lint` 清零。
+
 ## 2026-10-26（Union 黑名单答疑 + 补齐翻页与「有效期至」列——批注第四轮）
 
 批注三问（管理面板 → Union → 联合黑名单）：「就20条？没设计翻页？封禁日期和解封日期老站有吗？」。回源取证（老站 `refs/yggdrasil-connect` + 线上 hub 实测）后回答并就地补齐：

@@ -90,6 +90,8 @@
     "upload": "Upload",
     "uploading": "Uploading…",
     "uploadHint": "Skins 64×64 / 64×32, capes 64×32 / 22×17 (or scaled up)",
+    "dropHint": "Drop a PNG here, or click to choose",
+    "previewEmpty": "Pick a file to preview it here",
     "uploadSuccess": "Uploaded",
     "pickPng": "Please choose a PNG file",
     "texturesTitle": "My textures ({count})",
