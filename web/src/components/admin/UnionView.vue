@@ -204,12 +204,12 @@ onMounted(async () => {
           {{ unionStatus.rotation_suspended ? t('admin.unionRotationSuspended') : t('admin.unionRotationOk') }}
         </span>
       </div>
-      <div class="row" style="margin-top: 10px;" v-if="unionStatus.rotation_suspended">
+      <div class="row" style="margin-top: 12px;" v-if="unionStatus.rotation_suspended">
         <button class="secondary" @click="resumeRotation">{{ t('admin.unionResumeRotation') }}</button>
       </div>
 
       <!-- B5.3 ops buttons -->
-      <div class="row" style="margin-top: 10px;">
+      <div class="row" style="margin-top: 12px;">
         <button class="secondary" :disabled="opBusy" @click="runOp('admin.unionOpServerList', '/api/admin/v1/union/ops/serverlist')">
           {{ t('admin.unionOpServerList') }}
         </button>
@@ -225,14 +225,14 @@ onMounted(async () => {
       </div>
       <div class="success" v-if="opResult">{{ opResult }}</div>
 
-      <div class="muted" style="margin-top: 10px; font-size: 12px;">
+      <div class="muted" style="margin-top: 12px; font-size: 12px;">
         {{ t('admin.unionTrustNotice') }}
       </div>
       <div class="error" v-if="error">{{ error }}</div>
     </div>
     <div class="card" v-else>
       <h2 style="margin-top: 0;">{{ t('admin.unionTitle') }}</h2>
-      <p class="muted">{{ t('admin.unionDisabled') }}</p>
+      <div class="muted">{{ t('admin.unionDisabled') }}</div>
     </div>
 
     <!-- B5.4 blacklist -->
@@ -281,7 +281,7 @@ onMounted(async () => {
     <div v-if="diagOpen" class="diag-overlay" @click.self="closeDiagnose">
       <div class="diag-modal">
         <div class="diag-head">
-          <h3>🩺 {{ t('admin.unionOpDiagnose') }}</h3>
+          <h3>{{ t('admin.unionOpDiagnose') }}</h3>
           <button class="diag-close" @click="closeDiagnose" aria-label="close">×</button>
         </div>
         <div class="diag-body">
@@ -341,9 +341,10 @@ onMounted(async () => {
 
 /* ---- 自助诊断 modal (1:1 legacy diagnoseModal, dark theme) ---- */
 .diag-overlay {
+  --scrim: rgba(0, 0, 0, 0.55);
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -353,35 +354,35 @@ onMounted(async () => {
   width: min(860px, 92vw);
   max-height: 86vh;
   overflow: auto;
-  background: var(--panel, #161b22);
-  border: 1px solid var(--border, #30363d);
+  background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: 12px;
 }
 .diag-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--border, #30363d);
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
 }
-.diag-head h3 { margin: 0; font-size: 16px; }
+.diag-head h3 { margin: 0; font-size: var(--fs-m); }
 .diag-close {
   background: none;
   border: none;
-  color: var(--muted, #8b949e);
-  font-size: 22px;
+  color: var(--muted);
+  font-size: var(--fs-l);
   cursor: pointer;
-  line-height: 1;
+  line-height: 1.5;
 }
-.diag-body { padding: 18px; }
-.diag-idle { text-align: center; padding: 26px 0; }
+.diag-body { padding: 20px; }
+.diag-idle { text-align: center; padding: 24px 0; }
 .diag-start {
-  padding: 10px 26px;
-  border-radius: 8px;
-  border: 1px solid var(--accent, #58a6ff);
-  background: var(--accent, #58a6ff);
-  color: #fff;
-  font-size: 15px;
+  padding: 8px 24px;
+  border-radius: var(--r-s);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--on-cinnabar);
+  font-size: var(--fs-s);
   cursor: pointer;
 }
 .diag-loading {
@@ -389,14 +390,14 @@ onMounted(async () => {
   gap: 12px;
   align-items: center;
   justify-content: center;
-  padding: 30px 0;
+  padding: 32px 0;
 }
 .diag-spinner {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  border: 3px solid var(--border, #30363d);
-  border-top-color: var(--accent, #58a6ff);
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
   animation: diag-spin 0.9s linear infinite;
 }
 @keyframes diag-spin { to { transform: rotate(360deg); } }
@@ -407,20 +408,22 @@ onMounted(async () => {
   margin-bottom: 12px;
 }
 .diag-badge {
+  --ok-wash: color-mix(in srgb, var(--ok) 16%, transparent);
+  --bad-wash: color-mix(in srgb, var(--danger) 14%, transparent);
   display: inline-block;
-  padding: 3px 12px;
-  border-radius: 999px;
-  font-size: 12.5px;
+  padding: 4px 12px;
+  border-radius: 24px;
+  font-size: var(--fs-xs);
   font-weight: 600;
 }
-.diag-badge.ok { background: rgba(46, 160, 67, 0.16); color: #3fb950; border: 1px solid #2ea04355; }
-.diag-badge.fail { background: rgba(248, 81, 73, 0.14); color: #f85149; border: 1px solid #f8514955; }
+.diag-badge.ok { background: var(--ok-wash); color: var(--ok); border: 1px solid var(--ok); }
+.diag-badge.fail { background: var(--bad-wash); color: var(--danger); border: 1px solid var(--danger); }
 .diag-export {
-  padding: 6px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--border, #30363d);
+  padding: 8px 12px;
+  border-radius: var(--r-s);
+  border: 1px solid var(--border);
   background: none;
-  color: var(--text, #e6edf3);
+  color: var(--text);
   cursor: pointer;
 }
 .diag-table { width: 100%; border-collapse: collapse; }
@@ -428,27 +431,27 @@ onMounted(async () => {
   width: 20%;
   text-align: right;
   padding: 8px 12px;
-  color: var(--muted, #8b949e);
+  color: var(--muted);
   font-weight: 500;
   vertical-align: top;
-  border-bottom: 1px solid var(--border, #30363d);
+  border-bottom: 1px solid var(--border);
 }
 .diag-table td {
   padding: 8px 12px;
   vertical-align: top;
-  border-bottom: 1px solid var(--border, #30363d);
+  border-bottom: 1px solid var(--border);
 }
 .diag-table textarea {
   width: 100%;
   min-height: 120px;
   resize: vertical;
   font-family: ui-monospace, Consolas, monospace;
-  font-size: 12px;
+  font-size: var(--fs-xs);
 }
-.diag-mono { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; word-break: break-all; }
+.diag-mono { font-family: ui-monospace, Consolas, monospace; font-size: var(--fs-xs); word-break: break-all; }
 .diag-meta {
   margin: 12px 0 0;
-  color: var(--muted, #8b949e);
-  font-size: 12px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
 }
 </style>

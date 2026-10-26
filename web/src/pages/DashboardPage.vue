@@ -198,7 +198,7 @@ onBeforeUnmount(() => { if (previewURL.value) URL.revokeObjectURL(previewURL.val
           <input type="file" accept="image/png" ref="fileInput" @change="onPick" class="file-hidden" />
           <template v-if="uploadFile">
             <span class="file-name" :title="uploadFile.name">{{ uploadFile.name }}</span>
-            <button class="secondary file-clear" @click.stop="clearPreview">×</button>
+            <button class="secondary file-clear" :aria-label="t('dashboard.clearFile')" @click.stop="clearPreview">×</button>
           </template>
           <span v-else class="muted">{{ t('dashboard.dropHint') }}</span>
         </div>

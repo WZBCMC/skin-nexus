@@ -94,6 +94,7 @@
     "uploading": "上传中…",
     "uploadHint": "皮肤 64×64 / 64×32，披风 64×32 / 22×17（或等比放大）",
     "dropHint": "将 PNG 拖入此处，或点击选择",
+    "clearFile": "清除已选文件",
     "previewEmpty": "选中文件后在此预览",
     "uploadSuccess": "上传成功",
     "pickPng": "请选择 PNG 文件",

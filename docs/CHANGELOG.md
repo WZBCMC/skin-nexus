@@ -2,6 +2,18 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
+## 2026-10-27（批注三问题修复：居中/亮暗统一/移动暗态 + zh-ui 全量自查清零）
+
+用户以 zh-ui-design + ui-ux-pro-max 双规范要求自查，随后批注三个直观问题（绿框标注三图）：
+
+- **① user-shell 不居中**：此前「不对称宽幅」拍板被视觉终审否决——container 改 `margin: 0 auto` 居中（保留 1180/1560 宽幅档）。**不对称偏移作废**，教训：拍板不等于终审。
+- **② 亮暗布局/样式不统一**（亮态 user-side 遮住 user-main）：规范本意「亮暗只有色调差异」——亮态玻璃卡透明度 .78→.92（消除内容透出的「被遮」观感）；布局类规则此前已 §20b 全明暗统一，两态形态自此完全同构。
+- **③ 移动端暗态异常**（dock 椭圆巨球）：`.nav-group` 组内 wrap 在窄屏把 dock 撑高、999px 圆角成椭圆——两处 wrap（v2 §10 与 §19）统一改 `nowrap`，组内也单行，父级 `overflow-x: auto` 统一横滚。
+- **自查清单修复**：渐变标题字浅端 #20b983→#17a06f（白底大字 3:1 达标）；`.md p/li` 行长 ≤34em；UnionView 诊断弹窗 🩺 emoji 移除（UI 图标禁 emoji）；文件清除钮补 `aria-label`（i18n clearFile）；topbar 按钮 min-height 36px。
+- **撤回一条误判**：瀑布请求——`load()` 实际已是 `Promise.all` 三路并行（design_review 的 RSC 条目为 React 语境通用规则，不适用）。
+- **lint 清零**：UnionView 诊断弹窗段 49 findings 全数修复（token 化 + 4px 网格 + color-mix 渐变洗色），复验仅剩 5 条导出 HTML 模板字面色——独立文档无 token 上下文，按规范逐条说明保留（OK/FAIL 状态色、报告表格内边距、报告标题+生成时间戳）。
+- **主题**：azure-glass 3.0.5（自动 bump）含上述主题侧修复，线上 `?v=3.0.5`；SPA 发版随本轮。
+
 ## 2026-10-26（晴空琉璃 dock 真凶落定：flex-direction 缺口——三修）
 
 DevTools 实证缓存已排除（`?v=3.0.3` 200 拉取、无 custom css、样式链仅 main→theme），但 dock 仍两行。逐层取证（线上响应 grep `.user-side` 全部规则 → 样式链清点 → 截图行为比对）后定位真凶：**v3 全局 `.user-side` 是 `flex-direction: column`，而主题 §19 的 `(0,2,0)` 规则没有声明 `flex-direction`——CSS 中未声明的属性继续取全局值**，nowrap 只控制换列救不了竖排；`.user-chip` 的 `margin-left:auto` 在 column 交叉轴表现为右对齐（与截图 chip 第三行右侧完全吻合）。修复：显式 `flex-direction: row`（带注释），上传脚本自动 bump → `?v=3.0.4`，线上响应已验证含该声明。
