@@ -93,16 +93,24 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.admin-shell { display: flex; gap: 16px; align-items: flex-start; }
-.admin-side { position: sticky; top: 16px; min-width: 180px; }
-.admin-nav { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.admin-shell { display: flex; gap: 20px; align-items: flex-start; }
+.admin-side { position: sticky; top: calc(56px + 16px); min-width: 180px; }
+.admin-nav { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; }
 .admin-nav-item {
+  position: relative;
   text-align: left; background: none; border: 1px solid transparent;
-  padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 14px;
-  color: var(--fg, inherit);
+  padding: 8px 12px; border-radius: var(--r-s); cursor: pointer; font-size: var(--fs-s);
+  color: var(--muted);
+  transition: background .14s var(--ease), color .14s var(--ease);
 }
-.admin-nav-item:hover { border-color: var(--border, #8884); }
-.admin-nav-item.active { border-color: var(--accent, #4a9eff); font-weight: 600; }
+.admin-nav-item:hover { background: var(--hover-wash); color: var(--text); }
+.admin-nav-item.active {
+  background: var(--accent-wash); color: var(--text); font-weight: 600;
+}
+.admin-nav-item.active::before {
+  content: ""; position: absolute; left: 0; top: 8px; bottom: 8px;
+  width: 3px; border-radius: 2px; background: var(--accent);
+}
 .admin-token { display: flex; gap: 8px; }
 .admin-token input { min-width: 0; flex: 1; }
 .admin-main { flex: 1; min-width: 0; }
@@ -110,5 +118,6 @@ onMounted(async () => {
   .admin-shell { flex-direction: column; }
   .admin-side { position: static; width: 100%; }
   .admin-nav { flex-direction: row; flex-wrap: wrap; }
+  .admin-nav-item.active::before { display: none; }
 }
 </style>

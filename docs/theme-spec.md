@@ -177,3 +177,24 @@ CSS **之后**（同特异性后定义者胜）——所以平实的 `:root { --
 注入顺序不变：主题包与 admin 自定义 CSS 仍在落地页内联样式**之后**注入，可按上述新键
 整体覆盖落地页配色；旧键 `--bg/--panel/--text/--accent` **不再影响落地页**。主题若需
 适配落地页，写新键的覆盖即可（详见 CHANGELOG 当轮记录）。
+
+## v3 全站设计体系（2026-10-26「月下仙山」大改）
+
+全站默认皮肤升级为国画色系（黛青底 / 月白字 / 朱砂主操作 / 青瓷链接 / 赭金警示）。
+**token 架构（主题作者必读）**：旧 7 契约键（`--bg/--panel/--border/--text/--muted/--accent/--danger`）
+仍是唯一真源——默认值换成国画色而已；**新增语义键全部别名到契约键**
+（`--ink/--ink-2/--line/--moon/--moon-2/--cinnabar` 等）。主题覆盖旧键时新键自动跟随，
+旧主题不需要任何改动即可兼容；新主题建议同时覆盖以下派生键以求完整：
+
+`--ink-3`（嵌套面/悬停底）· `--line-strong`（强描线）· `--jade`（链接/选中/健康）·
+`--jade-hi` · `--gold`（警示）· `--cinnabar-hi`（主按钮 hover）· `--on-cinnabar`（主按钮上的字）·
+`--danger-hi` · `--ok` · `--hover-wash`（表格行悬停薄雾）· `--r-s/--r-m/--r-l`（圆角三档）·
+`--shadow/--shadow-lift`（阴影两层）· `--ease/--t-fast/--t-mid`（动效）。
+
+**新结构类（布局契约，主题可覆盖）**：`.topbar`（sticky 玻璃顶栏，高 `--topbar-h`）、
+`.auth-split/.auth-scene/.auth-pane`（登录/注册/找回/重置的分栏场景布局，≤860px 塌缩）、
+`.user-chip`（侧栏底部用户卡）、`.nav-item .nav-ico`（图标导航，活动态朱砂左条）、
+`.page-head`（页面标题行）。已适配主题：azure-glass / ember-forge / verdigris-atelier
+（各追加 §「v3 语义键适配」小节）。
+
+**红线不变**：logo（N 字牌）为品牌资产，任何主题不得改其配色；变色须全品牌资产统一并由站主终审。

@@ -51,26 +51,51 @@ const inviteFieldShown = computed(() => !confLoaded.value || siteConf.value.invi
 const inviteIsRequired = computed(() => confLoaded.value && siteConf.value.invite_required)
 const mailEnabled = computed(() => !confLoaded.value || siteConf.value.mail_configured)
 
-// Sidebar nav (blessing parity: 用户中心/管理 两组；浏览组随 skinlib B 级后置).
-// device/apps/union are user-center entries too — kept out of the sidebar to
-// preserve the launcher-OAuth flow's focused page (they stay reachable from
-// the dashboard quick-config copy and the legacy top-row buttons below).
+// Sidebar nav (blessing parity: 用户中心/管理 两组). device/apps/union are
+// user-center entries too — kept out of the sidebar to preserve the
+// launcher-OAuth flow's focused page (reachable from the dashboard copy).
+// v3: nav items carry consistent line icons (1.7px stroke, currentColor).
+const navIcons = {
+  dashboard: '<path d="M3 3h7v7H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 14h7v7H3z"/>',
+  skinlib: '<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/>',
+  closet: '<path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17l9 5 9-5"/>',
+  players: '<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4 3.6-6 8-6s8 2 8 6"/>',
+  profile: '<path d="M3 5h18v14H3zM7 9h4M7 13h8M7 17h6"/>',
+  apps: '<path d="M14 7a4 4 0 1 1 3 6.9L12 18l-3 3-2-2 3-3-4.1-5A4 4 0 0 1 14 7z"/>',
+  union: '<path d="M12 3a9 9 0 1 0 9 9M12 3a9 9 0 0 1 9 9M12 8a4 4 0 1 0 4 4"/>',
+  admin: '<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3zM9.5 12l2 2 3.5-4"/>',
+}
 const navGroups = computed(() => {
   if (!user.value) return []
   const groups = [{
     items: [
-      { id: 'dashboard', labelKey: 'nav.dashboard' },
-      { id: 'skinlib', labelKey: 'nav.skinlib' },
-      { id: 'closet', labelKey: 'nav.closet' },
-      { id: 'players', labelKey: 'nav.players' },
-      { id: 'profile', labelKey: 'nav.profile' },
-      { id: 'apps', labelKey: 'nav.apps' },
-      { id: 'union', labelKey: 'nav.union' },
+      { id: 'dashboard', labelKey: 'nav.dashboard', icon: navIcons.dashboard },
+      { id: 'skinlib', labelKey: 'nav.skinlib', icon: navIcons.skinlib },
+      { id: 'closet', labelKey: 'nav.closet', icon: navIcons.closet },
+      { id: 'players', labelKey: 'nav.players', icon: navIcons.players },
+      { id: 'profile', labelKey: 'nav.profile', icon: navIcons.profile },
+      { id: 'apps', labelKey: 'nav.apps', icon: navIcons.apps },
+      { id: 'union', labelKey: 'nav.union', icon: navIcons.union },
     ],
   }]
-  if (isAdmin.value) groups.push({ items: [{ id: 'admin', labelKey: 'nav.adminPanel' }] })
+  if (isAdmin.value) groups.push({ items: [{ id: 'admin', labelKey: 'nav.adminPanel', icon: navIcons.admin }] })
   return groups
 })
+
+// Brand mark: the N plate (favicon.svg same artwork, brand colors) — the
+// topbar/auth-scene signature. Logo colors are brand assets: never retheme.
+const brandSVG = '<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">'
+  + '<defs><linearGradient id="bn-g" x1="0" y1="0" x2="1" y2="1">'
+  + '<stop offset="0" stop-color="#2f66ff"/><stop offset="0.55" stop-color="#2a8fe0"/><stop offset="1" stop-color="#20b983"/>'
+  + '</linearGradient></defs>'
+  + '<rect x="36" y="36" width="440" height="440" rx="96" fill="#f4f8ff" stroke="#d3def8" stroke-width="2"/>'
+  + '<path d="M150 372V150h52l108 138V150h52v222h-52L202 234v138z" fill="url(#bn-g)"/>'
+  + '</svg>'
+
+function goHome() {
+  history.replaceState(null, '', '/')
+  view.value = user.value ? 'dashboard' : 'login'
+}
 
 // Session-drop handler: pages call notifyUnauthorized() on 401 → back to login.
 setUnauthorizedHandler(() => { user.value = null; view.value = 'login' })
@@ -201,14 +226,15 @@ onMounted(boot)
 </script>
 
 <template>
-  <div class="container" :class="{ wide: view === 'admin' }">
-    <div class="row" style="justify-content: space-between; margin-bottom: 16px;">
-      <div>
-        <h1>{{ t('site.name') }} <span class="muted">{{ t('site.subtitle') }}</span></h1>
-        <div class="muted">{{ t('site.tagline') }}</div>
-      </div>
-      <div class="row">
-        <select :value="locale" @change="onLocaleChange" style="width: 110px;">
+  <div class="app-shell">
+    <!-- 顶栏：品牌区 + 语言 + 会话操作（sticky 玻璃带） -->
+    <header class="topbar">
+      <a class="brand" href="/" @click.prevent="goHome" :title="t('site.tagline')">
+        <span class="brand-n" v-html="brandSVG"></span>
+        <span class="brand-name">{{ t('site.name') }}</span>
+      </a>
+      <div class="topbar-right">
+        <select :value="locale" class="locale-sel" @change="onLocaleChange">
           <option value="zh-CN">中文</option>
           <option value="en">English</option>
         </select>
@@ -222,13 +248,34 @@ onMounted(boot)
           <button @click="view = 'register'">{{ t('common.register') }}</button>
         </template>
       </div>
-    </div>
+    </header>
 
+    <div class="container" :class="{ wide: view === 'admin' }">
     <!-- data-load failure banner: stays visible without dropping to login -->
     <div class="error" v-if="dataErr">{{ dataErr }}</div>
 
+    <!-- AUTH VIEWS: 分栏场景式（左=远山+N 牌，右=表单）。独立 v-if：error 横幅
+         不参与视图条件链 -->
+    <template v-if="['login', 'register', 'forgot', 'reset'].includes(view)">
+      <div class="auth-split">
+        <aside class="auth-scene" aria-hidden="true">
+          <span class="brandmark" v-html="brandSVG"></span>
+          <svg class="scene-mountains" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 320" preserveAspectRatio="none">
+            <path class="mtn-far" d="M0,200 L80,168 170,192 260,140 350,178 440,132 520,170 600,150 V320 H0 Z"/>
+            <path class="mtn-mid" d="M0,242 L110,212 230,238 340,198 450,234 540,204 600,226 V320 H0 Z"/>
+            <path class="mtn-near" d="M0,282 L130,260 280,278 430,254 600,272 V320 H0 Z"/>
+          </svg>
+          <div class="scene-fog fog-a"></div>
+          <div class="scene-fog fog-b"></div>
+          <div class="scene-copy">
+            <h1>{{ t('site.name') }}</h1>
+            <div class="scene-fact">{{ t('site.tagline') }}</div>
+          </div>
+        </aside>
+        <div class="auth-pane">
+
     <!-- LOGIN -->
-    <div v-if="view === 'login'" class="card" style="max-width: 420px;">
+    <div v-if="view === 'login'" class="card">
       <h2>{{ t('auth.loginTitle') }}</h2>
       <label>{{ t('auth.identifier') }}</label>
       <input v-model="identifier" autocomplete="username" />
@@ -245,7 +292,7 @@ onMounted(boot)
     </div>
 
     <!-- REGISTER -->
-    <div v-else-if="view === 'register'" class="card" style="max-width: 420px;">
+    <div v-else-if="view === 'register'" class="card">
       <h2>{{ t('auth.registerTitle') }}</h2>
       <label>{{ t('auth.nickname') }}</label>
       <input v-model="nickname" />
@@ -267,7 +314,7 @@ onMounted(boot)
     </div>
 
     <!-- FORGOT PASSWORD (A1 找回密码) -->
-    <div v-else-if="view === 'forgot'" class="card" style="max-width: 420px;">
+    <div v-else-if="view === 'forgot'" class="card">
       <h2>{{ t('auth.forgotTitle') }}</h2>
       <!-- mail unconfigured → the flow is honestly unavailable (direct
            navigation to /forgot-password lands here too) -->
@@ -295,7 +342,7 @@ onMounted(boot)
     </div>
 
     <!-- RESET PASSWORD (A1, /reset-password?token=…) -->
-    <div v-else-if="view === 'reset'" class="card" style="max-width: 420px;">
+    <div v-else-if="view === 'reset'" class="card">
       <h2>{{ t('auth.resetTitle') }}</h2>
       <template v-if="resetDone">
         <p class="muted">{{ t('auth.resetDone') }}</p>
@@ -322,6 +369,9 @@ onMounted(boot)
         </div>
       </template>
     </div>
+        </div><!-- /auth-pane -->
+      </div><!-- /auth-split -->
+    </template>
 
     <!-- SETUP wizard (first run) -->
     <template v-else-if="view === 'setup'">
@@ -332,7 +382,7 @@ onMounted(boot)
     <template v-else-if="view === 'device'">
       <div v-if="!user" class="card" style="max-width: 420px;">
         <h2>{{ t('device.needLogin') }}</h2>
-        <p class="muted">{{ t('device.needLoginHint') }}</p>
+        <div class="muted">{{ t('device.needLoginHint') }}</div>
         <button @click="view = 'login'">{{ t('device.goLogin') }}</button>
       </div>
       <template v-else>
@@ -356,9 +406,16 @@ onMounted(boot)
             <div class="nav-title" v-if="g.items.length">{{ gi === 0 ? t('nav.userCenter') : t('nav.manageGroup') }}</div>
             <button v-for="n in g.items" :key="n.id" class="nav-item"
                     :class="{ active: view === n.id }" @click="view = n.id">
-              {{ t(n.labelKey) }}
+              <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" v-html="n.icon"></svg>
+              <span>{{ t(n.labelKey) }}</span>
             </button>
           </nav>
+          <!-- 底部用户卡：昵称 + 退出（v3 布局） -->
+          <div class="user-chip">
+            <span class="who" :title="user.nickname">{{ user.nickname }}</span>
+            <button class="secondary" @click="doLogout">{{ t('common.logout') }}</button>
+          </div>
         </aside>
         <main class="user-main">
           <DashboardPage v-if="view === 'dashboard'" />
@@ -372,33 +429,11 @@ onMounted(boot)
         </main>
       </div>
     </template>
-  </div>
+    </div><!-- /container -->
+  </div><!-- /app-shell -->
 </template>
 
 <style scoped>
-.user-shell { display: flex; gap: 16px; align-items: flex-start; }
-.user-side { position: sticky; top: 16px; min-width: 170px; padding: 16px; }
-.user-main { flex: 1; min-width: 0; }
-.nav-group + .nav-group { margin-top: 16px; }
-.nav-title {
-  font-size: 12px; color: var(--muted); font-weight: 600;
-  margin: 0 0 8px; padding-left: 12px;
-}
-.nav-item {
-  display: block; width: 100%; text-align: left;
-  background: none; border: 1px solid transparent;
-  padding: 8px 12px; border-radius: 8px; cursor: pointer;
-  font-size: var(--fs-s); color: inherit; margin-bottom: 2px;
-}
-.nav-item:hover { border-color: var(--border); }
-.nav-item.active { border-color: var(--accent); font-weight: 600; }
-/* required invite label on the register card */
-label.required { color: var(--accent); }
-@media (max-width: 720px) {
-  .user-shell { flex-direction: column; }
-  .user-side { position: static; width: 100%; }
-  .nav-group { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-  .nav-title { width: 100%; margin-bottom: 2px; }
-  .nav-item { width: auto; margin-bottom: 0; }
-}
+/* v3: shell 全局样式统一在 style.css（topbar/auth-split/侧栏图标/用户卡），
+   scoped 不再重复定义 —— 主题包按全局类覆盖。 */
 </style>

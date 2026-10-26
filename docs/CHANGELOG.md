@@ -2,6 +2,17 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
+## 2026-10-26（v3 全站视觉革新「月下仙山」：token 架构 + 布局换代 + 动效体系 + 三主题适配）
+
+用户点单「大刀阔斧的视觉革新，布局/动画/拍板/设计要素优化，可酌情改 UI 规范并让现有 3 主题适配」。拍板：
+
+- **token 架构 v3**（`web/src/style.css` 全量重写）：旧 7 契约键保持为唯一真源（默认值换国画色：黛青 `--bg:#101825` / 石面 / 赭石发丝线 / 月白 / 朱砂主操作），**新语义键全部别名到契约键**（`--ink/--ink-2/--line/--moon/--cinnabar` 等）——主题覆盖旧键即自动联动，旧主题零改动兼容。新增派生键：`--ink-3/--line-strong/--jade`（青瓷：链接选中健康）`/--gold/--accent-wash/--sel/--fog/--glow-*/--ring-*`、圆角三档、阴影两层、动效令牌、场景三层山色。
+- **布局换代**（`App.vue`）：① sticky 毛玻璃**顶栏**（N 徽品牌区 + 站名宋体 + 语言/会话操作）取代原标题行；② 登录/注册/找回/重置从居中小卡改为 **分栏场景式**（左=远山 SVG + N 牌 + 站名 + 定位句，右=表单卡，≤860px 塌缩；场景装饰 aria-hidden）；③ 用户侧栏**图标导航**（1.7px 线性 SVG 图标，8 枚）+ 活动态朱砂左条 + 底部**用户卡**（昵称 + 退出）；④ 视图切换 fade-rise 一次安静入场。
+- **动效体系**：统一 `--ease` 缓动；按钮 hover 浮起 + 光晕、按下回落；输入焦点朱砂环；卡片悬停描线加深；表格行悬停薄雾；全局 `prefers-reduced-motion` 一刀停。
+- **管理面板**（`AdminPanel.vue`）：侧栏对齐新语言（朱砂活动左条、圆角刻度、动效令牌）。
+- **三主题适配**（`themes/`）：azure-glass / ember-forge / verdigris-atelier 各追加「v3 语义键适配」小节（派生键主题化取值 + `.topbar/.auth-scene` 结构类适配；azure 补玻璃顶栏）。theme-spec 新增「v3 全站设计体系」节（token 架构、新键清单、结构类契约、**logo 品牌资产红线**）。
+- **验证**：`vite build` 绿；`zh_design_lint` 清零（含清理本组件新债：内联宽度改类、场景 SVG fill 走 token、标题副行改事实块）；模板链完整性核对（error 横幅与视图条件链解耦）。
+
 ## 2026-10-26（前端设计体系落地：SPA token 化 + 落地页「月下仙山」+ 访客免登录逛皮肤库）
 
 - **能力底座**：装齐前端设计技能与插件（frontend-design / extract-design-system / zh-ui-design / unocss 四技能落盘 `~/.dsh/skills`；ui-ux-pro-max、dsh-zh-ui、dsh-web-review 三插件入 desktop profile——zh-ui release tgz 校验和与 README 不符，经内容级核验放行）。
