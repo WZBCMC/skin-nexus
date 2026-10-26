@@ -109,9 +109,14 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!DOCTYPE html>
   .divider { height: 26px; margin: 4px 0 0; opacity: .55; background-repeat: repeat-x;
              background-position: center; background-size: auto 26px;
              background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='132' height='26' viewBox='0 0 132 26'%3E%3Cpath d='M8 19c0-5 4-8 8-7 1-6 10-8 13-2 5-2 10 1 9 6 4 0 7 1 9 3' fill='none' stroke='%23c9a06a' stroke-width='1.5' stroke-linecap='round'/%3E%3Cpath d='M60 19c7 0 10-6 16-6 7 0 9 6 16 6 6 0 9-4 14-4' fill='none' stroke='%23c9a06a' stroke-width='1.2' opacity='.65'/%3E%3C/svg%3E"); }
-  .more { text-align: center; margin: 18px 0 0; }
-  .more a { color: var(--ochre); text-decoration: none; font-size: 14px; }
-  .more a:hover { text-decoration: underline; }
+  /* 皮肤库入口：次级按钮（与 CTA 描边款同语言，赭石线 + 金边 hover） */
+  .more { text-align: center; margin: 20px 0 0; }
+  .more a { display: inline-block; padding: 9px 24px; border-radius: 4px;
+            border: 1px solid var(--line-strong); color: var(--moon);
+            font-size: 14px; font-weight: 600; text-decoration: none;
+            transition: background .12s, border-color .12s; }
+  .more a:hover { background: var(--ink-3); border-color: var(--ochre);
+                  color: var(--moon); text-decoration: none; }
   .intro { line-height: 1.8; color: var(--moon); margin: 24px 0; max-width: 34em; }
   .feat h2 { font-family: var(--font-serif); font-size: 21px; margin: 32px 0 16px; font-weight: 600;
              letter-spacing: .04em; }
