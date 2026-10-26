@@ -2,6 +2,18 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
+## 2026-10-27（晴空琉璃 §22「气派升级」：ui-ux-pro-max + zh-ui 双规范设计轮）
+
+用户令调用设计插件好好优化晴空琉璃至更气派美观。`design_recommend`（玻璃拟态/ambient premium）+ `design_search`（hover 微动效库）取料后**择善取舍**：库推的黑金配色不采纳（晴空蓝绿是样板品牌轴），吸收其光影手法：
+
+- **卡片双层阴影 + hover 抬升**（-2px，250ms，Expo 等价 `cubic-bezier(0.16,1,0.3,1)`；`transition` 只写具体属性；`:not(.user-side)` 排除 sticky dock）；
+- **主按钮常态光晕**（蓝晕 45%→hover 55%）+ 按压缩放 `.97`；
+- **顶栏玻璃加深**（blur 16）+ **签名发丝线收边**（`border-image` 渐变，不遮玻璃面——实现时否掉双层 background-clip 方案，会盖掉玻璃透明底）；
+- **背景光斑极缓慢漂移**（120s alternate，晴空呼吸；实现时否掉 z-index:-1 伪元素方案——会被 body 背景吃掉，改 `background-position` 动画）；
+- **统计数字晴空渐变字**、焦点环统一 `--accent`。
+
+zh-ui 纪律：签名元素仍只一个（渐变发丝线）；动效 200-300ms 克制档；reduced-motion 全局杀不破。实现自查修 3 处风险（dock 误抬升/topbar 盖玻璃/光斑被吃）后上传 3.0.11，线上验证 drift/ease/border-image/not-dock 特征全命中、landing 200。
+
 ## 2026-10-27（同型 bug 全量扫描：未声明属性泄漏 / 特异性打平——批量清账 3.0.10）
 
 用户令「批量扫描同型 bug 一并修复」。同型定义：**主题覆盖结构类时未显式声明的属性照走全局值**（flex-direction/padding-top 两案），及**分态规则与全明暗规则特异性打平后位后胜**（r 角一案）。对账矩阵：v3 全局 style.css 287 行逐属性 × 主题全部覆盖块（v2 §10/§17/§18/§19/§20/§20b）× AdminPanel admin 类 × landing 模板。
