@@ -400,6 +400,7 @@
     "unionBlSource": "Source",
     "unionBlReason": "Reason",
     "unionBlCreated": "Added at",
+    "unionBlUntil": "Valid until",
     "unionBlAdd": "Add",
     "unionBlRelease": "Release",
     "unionBlDelete": "Delete",

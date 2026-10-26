@@ -403,6 +403,7 @@
     "unionBlSource": "来源",
     "unionBlReason": "原因",
     "unionBlCreated": "加入时间",
+    "unionBlUntil": "有效期至",
     "unionBlAdd": "添加",
     "unionBlRelease": "释放",
     "unionBlDelete": "删除",

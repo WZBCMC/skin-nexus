@@ -17,6 +17,9 @@ const opBusy = ref(false)
 const blRows = ref([])
 const blTotal = ref(0)
 const blPage = ref(1)
+// hub 是 Laravel 分页（per_page 由 hub 定，不固定）——用上游权威的
+// last_page，缺失时退化为 total/per_page 推算。
+const blTotalPages = ref(1)
 const blQ = ref('')
 const blEmail = ref('')
 const blReason = ref('')
@@ -139,6 +142,9 @@ async function loadBlacklist() {
     // hub returns Laravel pagination JSON; tolerate both shaped answers
     blRows.value = d.data || d.items || []
     blTotal.value = d.total || (d.data ? d.data.length : 0)
+    // per_page is hub-owned (not fixed) — trust upstream last_page first
+    const per = d.per_page || (d.data && d.data.length) || 1
+    blTotalPages.value = d.last_page || Math.max(1, Math.ceil((blTotal.value || 0) / per))
   } catch (e) {
     blRows.value = []
     error.value = e.message
@@ -236,10 +242,11 @@ onMounted(async () => {
         <input v-model="blQ" :placeholder="t('admin.unionBlSearch')" style="max-width: 220px;" @keyup.enter="blPage = 1; loadBlacklist()" />
         <button class="secondary" @click="blPage = 1; loadBlacklist()">{{ t('admin.unionBlSearchBtn') }}</button>
       </div>
-      <table v-if="blRows.length" class="bl-table" style="margin-top: 10px;">
+      <table v-if="blRows.length" class="bl-table" style="margin-top: 12px;">
         <tr>
           <th>ID</th><th>{{ t('admin.unionBlEmail') }}</th><th>{{ t('admin.unionBlSource') }}</th>
-          <th>{{ t('admin.unionBlReason') }}</th><th>{{ t('admin.unionBlCreated') }}</th><th></th>
+          <th>{{ t('admin.unionBlReason') }}</th><th>{{ t('admin.unionBlCreated') }}</th>
+          <th>{{ t('admin.unionBlUntil') }}</th><th></th>
         </tr>
         <tr v-for="row in blRows" :key="row.id">
           <td>{{ row.id }}</td>
@@ -247,15 +254,22 @@ onMounted(async () => {
           <td>{{ row.source || '—' }}</td>
           <td>{{ row.reason || '—' }}</td>
           <td class="muted">{{ row.created_at || '—' }}</td>
+          <td class="muted">{{ row.valid_until || '—' }}</td>
           <td>
             <button class="secondary" @click="blRelease(row)">{{ t('admin.unionBlRelease') }}</button>
-            <button class="secondary" @click="blDelete(row)" style="margin-left: 6px; border-color: var(--danger); color: var(--danger);">
+            <button class="secondary" @click="blDelete(row)" style="margin-left: 8px; border-color: var(--danger); color: var(--danger);">
               {{ t('admin.unionBlDelete') }}
             </button>
           </td>
         </tr>
       </table>
       <div v-else class="muted">{{ t('admin.unionBlEmpty') }}</div>
+      <!-- 上游 MUA API 为 Laravel 分页（默认 20 条/页），对齐老站翻页能力 -->
+      <div class="row pager" v-if="blTotalPages > 1" style="margin-top: 12px; justify-content: flex-end;">
+        <button class="secondary" :disabled="blPage <= 1" @click="blPage--; loadBlacklist()">{{ t('admin.prevPage') }}</button>
+        <span class="muted" style="font-size: var(--fs-xs);">{{ blPage }} / {{ blTotalPages }}</span>
+        <button class="secondary" :disabled="blPage >= blTotalPages" @click="blPage++; loadBlacklist()">{{ t('admin.nextPage') }}</button>
+      </div>
       <div class="row" style="margin-top: 12px;">
         <input v-model="blEmail" :placeholder="t('admin.unionBlEmail')" style="max-width: 220px;" />
         <input v-model="blReason" :placeholder="t('admin.unionBlReason')" style="max-width: 260px;" />
