@@ -220,16 +220,16 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!DOCTYPE html>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <linearGradient id="p2m-g-plate" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#f6f1e7"/>
-      <stop offset="1" stop-color="#e8dfcc"/>
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eef3fb"/>
     </linearGradient>
     <linearGradient id="p2m-g-n" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#c25446"/>
-      <stop offset="0.55" stop-color="#a8453a"/>
-      <stop offset="1" stop-color="#8f6a3e"/>
+      <stop offset="0" stop-color="#2f66ff"/>
+      <stop offset="0.55" stop-color="#2a8fe0"/>
+      <stop offset="1" stop-color="#20b983"/>
     </linearGradient>
     <filter id="p2m-soft" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="#b0453a" flood-opacity="0.22"/>
+      <feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="#2f66ff" flood-opacity="0.18"/>
     </filter>
     <mask id="p2m-wipe-mask">
       <rect id="p2m-wipe" x="96" y="76" width="420" height="380" fill="#ffffff"/>
@@ -237,7 +237,7 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!DOCTYPE html>
   </defs>
   <g id="p2m-stage">
     <rect id="p2m-plate" x="36" y="36" width="440" height="440" rx="96"
-          fill="url(#p2m-g-plate)" stroke="#d8cbb0" stroke-width="2"/>
+          fill="url(#p2m-g-plate)" stroke="#d3def8" stroke-width="2"/>
     <g id="p2m-mark" mask="url(#p2m-wipe-mask)" filter="url(#p2m-soft)">
       <path d="M 128 400 V 112 h 80 l 98 150 V 112 h 80 v 288 h -80 l -98 -150 v 150 z" fill="url(#p2m-g-n)"/>
       <rect x="128" y="112" width="80" height="80" fill="#ffffff" opacity="0.12"/>
@@ -248,7 +248,7 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!DOCTYPE html>
           stroke-linecap="butt" pathLength="1"/>
     <rect id="p2m-node-1" x="152" y="150" width="32" height="32" rx="6" fill="#ffffff" opacity="0.92"/>
     <rect id="p2m-node-2" x="266" y="246" width="32" height="32" rx="6" fill="#ffffff" opacity="0.92"/>
-    <rect id="p2m-node-3" x="330" y="330" width="32" height="32" rx="6" fill="#f3e8d8" opacity="0.92"/>
+    <rect id="p2m-node-3" x="330" y="330" width="32" height="32" rx="6" fill="#eafff6" opacity="0.92"/>
   </g>
 </svg>
       </div>
