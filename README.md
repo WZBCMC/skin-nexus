@@ -29,13 +29,13 @@ SkinNexus（肤枢）是对年久失修的 [blessing-skin-server](https://github
 ## 与主流开源皮肤站的对照
 
 > 对照对象：[blessing-skin-server](https://github.com/bs-community/blessing-skin-server)（Laravel/PHP，上游仅剩维护性提交）、[element-skin](https://github.com/water2004/element-skin)（Go + PostgreSQL + Vue 3）、[vSkin](https://github.com/iJunecn/vSkin)（FastAPI + Vue 3）。
-> 下表每格都经对方仓库**源码复核**（路由表 / grep，2026-10-25–26），方法与逐条证据见 [`docs/competitor-analysis.md`](docs/competitor-analysis.md)——✅ 不吝于人，❌ 不凭印象。
+> 下表每格都经对方仓库**源码复核**（路由表 / grep，2026-10-25–26），方法与逐条证据见 [`docs/competitor-analysis.md`](docs/competitor-analysis.md)——✅ 不吝于人，❌ 不凭印象；勘误就地修正并记入 CHANGELOG（如 2026-10-26 的 blessing 皮肤库勘误）。
 
 | 能力 | SkinNexus | blessing | element-skin | vSkin |
 |---|---|---|---|---|
-| 搜索引擎可见性（sitemap / robots / 逐页 meta·OG·JSON-LD） | ✅ 全量 | ❌ | ❌ | ❌ |
-| 服务端渲染内容页（免 JS 即出正文、可收录） | ✅ 首页 + 皮肤详情页 | ❌ SPA 壳 | ❌ SPA 壳 | ❌ SPA 壳 |
-| 皮肤库单品页（`/skinlib/{tid}` 可分享、可收录） | ✅ | ❌ 无皮肤库 | ❌ 仅列表+弹窗 | ❌ 仅列表 |
+| 搜索引擎可见性（sitemap / robots / 逐页 meta·OG·JSON-LD） | ✅ 全量 | ⚠️ 仅逐页 title + 全站共用 description（无 sitemap/OG/JSON-LD） | ❌ | ❌ |
+| 服务端渲染内容页（免 JS 即出正文、可收录） | ✅ 首页 + 皮肤详情页 | ⚠️ Twig 壳，title 服务端出、正文客户端渲染 | ❌ SPA 壳 | ❌ SPA 壳 |
+| 皮肤库单品页（可分享、可收录 URL） | ✅ `/skinlib/{tid}` | ✅ `/skinlib/show/{tid}`（2026-10-26 勘误补记） | ❌ 仅列表+弹窗 | ❌ 仅列表 |
 | 启动器深链（PCL 系「换皮肤/改密码」直达） | ✅ `/user/closet`·`/user/profile` | ✅ 约定发源地 | ❌ | ❌ |
 | Yggdrasil 官方兜底（本地未命中 → Mojang） | ✅ 出站防护 + 面板热开关 | ❌ | ✅ | ✅ |
 | 找回密码 + SMTP 邮件流 | ✅ 防枚举 / 单次令牌 | ✅ | ✅ | ✅ |
@@ -46,7 +46,7 @@ SkinNexus（肤枢）是对年久失修的 [blessing-skin-server](https://github
 | 运维观测面（登录 + 服务器/联盟通信日志 90 天 + 审计） | ✅ 全链路面板可查 | ❌ | ⚠️ 仅权限审计 | ❌ |
 | 部署形态 | Go 单二进制 / Docker，CI 直出生产镜像 | PHP 8.1 + Laravel 10（PHP 8.1 已 EOL） | Go + PostgreSQL + Redis | FastAPI + SQLite |
 
-**独有领先区**（上表 ✅ 且三家对照均为 ❌/⚠️）：服务端渲染 + 逐页 SEO 体系、皮肤库单品页、blessing 一键迁移链、全链路运维观测面——四项目前在整个赛道无同类实现可对标。外加一张实测性能账：**2 核 / 3.5GB 生产 VPS 实测**，落地页 ~600 RPS（CPU 封顶）、纹理分发 5182 RPS、Yggdrasil 元数据 2365 RPS、全程零错误（压测记录见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)）。
+**领先区**（逐格实证，不夸大）：**完整 SEO 体系**——正文级服务端渲染 + 逐页 OG/JSON-LD + sitemap/robots，三家均无完整实现（blessing 有皮肤库单品页与逐页 title，但正文客户端渲染、无 OG/JSON-LD/sitemap/robots；两家新秀全无）；**blessing 一键迁移链**与**全链路运维观测面**（登录 + 服务器/联盟通信日志 + 审计）则三家全无（element-skin 仅有权限审计）。外加一张实测性能账：**2 核 / 3.5GB 生产 VPS 实测**，落地页 ~600 RPS（CPU 封顶）、纹理分发 5182 RPS、Yggdrasil 元数据 2365 RPS、全程零错误（压测记录见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)）。
 
 ## 快速开始（站长视角）
 

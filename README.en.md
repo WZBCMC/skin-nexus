@@ -31,13 +31,13 @@ SkinNexus is a modern rewrite of the unmaintained [blessing-skin-server](https:/
 ## Comparison with mainstream open-source skin servers
 
 > Compared against [blessing-skin-server](https://github.com/bs-community/blessing-skin-server) (Laravel/PHP, upstream now maintenance-only), [element-skin](https://github.com/water2004/element-skin) (Go + PostgreSQL + Vue 3), and [vSkin](https://github.com/iJunecn/vSkin) (FastAPI + Vue 3).
-> Every cell was re-verified against the opponents' **source code** (route tables / grep, 2026-10-25–26); method and per-item evidence in [`docs/competitor-analysis.md`](docs/competitor-analysis.md) (Chinese). We credit rivals where they lead and never guess a ❌.
+> Every cell was re-verified against the opponents' **source code** (route tables / grep, 2026-10-25–26); method and per-item evidence in [`docs/competitor-analysis.md`](docs/competitor-analysis.md) (Chinese). We credit rivals where they lead and never guess a ❌ — errata are corrected in place and logged in the CHANGELOG (e.g. the 2026-10-26 blessing skinlib fix).
 
 | Capability | SkinNexus | blessing | element-skin | vSkin |
 |---|---|---|---|---|
-| Search-engine visibility (sitemap / robots / per-page meta·OG·JSON-LD) | ✅ complete | ❌ | ❌ | ❌ |
-| Server-rendered content pages (indexable, no JS required) | ✅ landing + skin detail pages | ❌ SPA shell | ❌ SPA shell | ❌ SPA shell |
-| Per-skin shareable URLs (`/skinlib/{tid}`) | ✅ | ❌ no skin library | ❌ list + modal only | ❌ list only |
+| Search-engine visibility (sitemap / robots / per-page meta·OG·JSON-LD) | ✅ complete | ⚠️ per-page title + one site-wide description only (no sitemap/OG/JSON-LD) | ❌ | ❌ |
+| Server-rendered content pages (indexable, no JS required) | ✅ landing + skin detail pages | ⚠️ Twig shell — title server-side, body rendered client-side | ❌ SPA shell | ❌ SPA shell |
+| Per-skin shareable URLs | ✅ `/skinlib/{tid}` | ✅ `/skinlib/show/{tid}` (corrected 2026-10-26) | ❌ list + modal only | ❌ list only |
 | Launcher deep links (PCL-style "change skin / change password") | ✅ `/user/closet`·`/user/profile` | ✅ origin of the convention | ❌ | ❌ |
 | Mojang official fallback (local miss → official sessionserver) | ✅ hardened outbound + panel hot-switch | ❌ | ✅ | ✅ |
 | Password reset + SMTP mail flow | ✅ enumeration-proof, single-use tokens | ✅ | ✅ | ✅ |
@@ -48,7 +48,7 @@ SkinNexus is a modern rewrite of the unmaintained [blessing-skin-server](https:/
 | Ops observability (login + server/union traffic logs, 90 days + audit) | ✅ full-chain, viewable in panel | ❌ | ⚠️ permission audit only | ❌ |
 | Deployment shape | Go single binary / Docker, CI-published images | PHP 8.1 + Laravel 10 (PHP 8.1 is EOL) | Go + PostgreSQL + Redis | FastAPI + SQLite |
 
-**Unique leads** (rows where SkinNexus is ✅ while all three rivals are ❌/⚠️): the SSR + per-page SEO system, per-skin shareable pages, the ID-preserving blessing migration chain, and full-chain ops observability — none of these has a counterpart anywhere in this space today. On top of that, a measured performance ledger from a **2-core / 3.5 GB production VPS**: ~600 RPS on the landing page (CPU-capped), 5182 RPS texture delivery, 2365 RPS Yggdrasil metadata, zero errors throughout (see [`docs/CHANGELOG.md`](docs/CHANGELOG.md)).
+**Leads** (per-cell, evidence-graded): the **complete SEO system** — body-level SSR + per-page OG/JSON-LD + sitemap/robots — has no full counterpart among the three (blessing ships skinlib detail pages and per-page titles, but renders bodies client-side and lacks OG/JSON-LD/sitemap/robots; the two newer rivals have none); the **ID-preserving blessing migration chain** and **full-chain ops observability** (login + server/union traffic logs + audit) are absent from all three (element-skin only has a permission audit). On top of that, a measured performance ledger from a **2-core / 3.5 GB production VPS**: ~600 RPS on the landing page (CPU-capped), 5182 RPS texture delivery, 2365 RPS Yggdrasil metadata, zero errors throughout (see [`docs/CHANGELOG.md`](docs/CHANGELOG.md)).
 
 ## Quick start (for operators)
 

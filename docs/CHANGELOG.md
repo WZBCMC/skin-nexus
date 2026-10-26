@@ -2,6 +2,13 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
+## 2026-10-26（对照表勘误：blessing 有完整皮肤库，两格就地修正）
+
+- **用户指出**：README 对照表「blessing ❌ 无皮肤库」不实。
+- **复核确认（用户对，原表错）**：blessing 核心有完整皮肤库——`/skinlib` 列表（`skinlib/index.twig`）、**单品页 `/skinlib/show/{tid}`**（`SkinlibController::show` + `show.twig`）、`/skinlib/upload`、`/skinlib/list` JSON API、举报/改名/隐私/点赞全套。原表错因：grep 用 element-skin/vSkin 的路由命名 `skin-library`，blessing 的命名是 `skinlib`，跨项目对照把「自家命名先验」当成了检索式。**教训：对照检索必须用对方自己的命名空间找路，不能用自己的命名先验套对方**。
+- **连带复核（另两格同步降级/修正）**：① blessing 的 skinlib 页面是 Twig 壳——title 逐页服务端出（`show.twig:3`），但正文由客户端 Vue 从 `blessing-extra` JSON blob 渲染，description 是全站一个值（`HeadComposer.php:75`），OG/JSON-LD/canonical/sitemap/robots grep 零命中 → 「服务端渲染内容页」格由 ❌ 改 ⚠️，「SEO 可见性」格由 ❌ 改 ⚠️；② blessing 核心无 Mojang fallback（grep 仅 locale fallback 噪声）→ 该格 ❌ 维持；③ 「独有领先区」改「领先区」并逐格重写：完整 SEO 体系（blessing 部分有、无完整实现）、迁移链与观测面（三家全无）。
+- **交付**：README（zh/en）表格两格修正 + 领先区段重写 + 表头勘误透明注记。
+
 ## 2026-10-26（管理面板站点设置分组化 + 交互修正三连）
 
 - **需求**（用户授权自决，点名方向「管理面板选项的分组」）：设置页 35 个键平铺一屏难找；顺带修同类交互。
