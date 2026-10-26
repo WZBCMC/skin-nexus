@@ -2,6 +2,15 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
+## 2026-10-26（Union 黑名单答疑 + 补齐翻页与「有效期至」列——批注第四轮）
+
+批注三问（管理面板 → Union → 联合黑名单）：「就20条？没设计翻页？封禁日期和解封日期老站有吗？」。回源取证（老站 `refs/yggdrasil-connect` + 线上 hub 实测）后回答并就地补齐：
+
+- **答疑结论（源码/线上双实证）**：①上游 MUA hub（`skin.mualliance.ltd/api/union/blacklist/query`）是标准 Laravel 分页，线上实测 `total=30、per_page=15、last_page=2、next_page_url` 齐备；我们 API 层一直透传 `page`，但**UI 翻页控件漏渲染**——页面停留第 1 页；②老站 `views/blacklist.twig` 表头 = ID/email/source/reason/**created_at（加入时间）/valid_until（有效期至）**/操作——**老站有「加入时间 + 有效期至」，没有独立「解封日期」**（释放是即时动作，上游不落解封时间；`UnionBlacklistController.php` 纯透传，结构由 hub 定）。
+- **取证插曲（如实记录）**：首轮取证 `total` 读出 ≤0，实为 token 未注入、403 空对象的假信号；带 `X-Admin-Token` 重取后 30/15/2 全字段命中。
+- **补齐**：黑名单表加「有效期至」列（`valid_until`，中英 `unionBlUntil`）+ 分页控件（上一页/页码/下一页）；总页数**优先取上游权威 `last_page`**（`per_page` 由 hub 定、非固定，写死 20 会算错），缺失时退化 `total/per_page` 推算；查询时重置首页。
+- **验证**：`vite build` 绿；`zh_design_lint` 清零；生产实证 page=1 15 条 / page=2 15 条、total=30。
+
 ## 2026-10-26（v3 续②：公告 markdown 渲染器拍板换 markdown-it + 排版升 v3——批注第三轮）
 
 批注「markdown 渲染可以修复，或者找个更棒的渲染器（待拍板）」（仪表盘公告裸 URL 未链接化、排版粗糙）。
