@@ -38,6 +38,8 @@ type landingData struct {
 	Textures int
 	Featured []landingTexture
 	Year     int
+	// LoggedIn: 已登录访客不再展示登录/注册 CTA（2026-10-27 逻辑修复）
+	LoggedIn bool
 }
 
 const landingIntro = "Minecraft 皮肤站：上传皮肤/披风、管理角色衣柜、逛皮肤库；配合 Yggdrasil 外置登录，启动器与服务器之间直接换装。"
@@ -260,8 +262,9 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!DOCTYPE html>
       <h1>{{.SiteName}}</h1>
       <p class="tag">Minecraft 皮肤站，支持 Yggdrasil 外置登录</p>
       <div class="cta">
-        <a class="primary" href="/register">注册账号</a>
-        <a class="alt" href="/login">登录</a>
+        {{if .LoggedIn}}<a class="primary" href="/user/dashboard">进入用户中心</a>
+        <a class="alt" href="/skinlib">浏览皮肤库</a>{{else}}<a class="primary" href="/register">注册账号</a>
+        <a class="alt" href="/login">登录</a>{{end}}
       </div>
     </header>
     <section class="stats">

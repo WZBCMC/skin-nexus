@@ -94,7 +94,7 @@ func TestSpaHandlerInjectsEveryHTMLPath(t *testing.T) {
 	h := spaHandler(dir,
 		seo.NewEngine(opts, seo.Defaults{SiteName: "示例站", BaseURL: "https://skin.example.com"}),
 		appearance.NewEngine(opts, reg),
-		func(context.Context) landingData {
+		func(*http.Request) landingData {
 			return landingData{SiteName: "示例站", Users: 3, Players: 4, Textures: 5,
 				Featured: []landingTexture{
 					{TID: 7, Name: "测试皮", URL: "/preview/7"},
@@ -150,7 +150,7 @@ func TestSpaHandlerServesLandingAtRoot(t *testing.T) {
 	h := spaHandler(dir,
 		seo.NewEngine(opts, seo.Defaults{SiteName: "示例站", BaseURL: "https://skin.example.com"}),
 		appearance.NewEngine(opts, reg),
-		func(context.Context) landingData {
+		func(*http.Request) landingData {
 			return landingData{SiteName: "示例站", Users: 3, Players: 4, Textures: 5,
 				Featured: []landingTexture{
 					{TID: 7, Name: "测试皮", URL: "/preview/7"},

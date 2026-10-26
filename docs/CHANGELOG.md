@@ -2,6 +2,16 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
+## 2026-10-27（前端逻辑修复批 A：URL 语义统一 + landing 登录态 CTA + 全量逻辑扫描启动）
+
+用户两问直指产品逻辑：「/user/skinlib 和 /skinlib 区分的意义？」「已登录首页为何还显示登录注册？」，并令完整扫描前端不合逻辑处。
+
+- **问题一拍板：语义统一到 `/skinlib`**。两 URL 本就映射同一视图（历史深链兼容、PCL 用 /user/*），无功能区分——纯困惑源。修法：view ↔ URL 双向同步（`watch(view)` pushState 到规范地址、popstate 反向恢复、防回环 flag）；`/user/skinlib` 保留深链兼容（进来后地址栏自动归一到 `/skinlib`）；goHome 删掉 `replaceState('/')` 的地址栏脱节行为。顺带根治「地址栏与视图完全脱节」的广义问题（同 URL 不同视图、刷新跳变）。
+- **问题二修复：landing 登录态 CTA**。服务端 `landingFn` 改收 `*http.Request`、读 `skin_session` cookie 走 `st.SessionUser` 验证 → `LoggedIn` 进模板：已登录 hero 双按钮换「进入用户中心 / 浏览皮肤库」，未登录保持「注册账号 / 登录」。与 goHome 闭环：点品牌回 landing 的已登录用户不再见登录注册。
+- **已确认无需修**：/login /register 已登录访问早有正确分支（落 dashboard）。
+- **全量逻辑扫描**：委派只读子代理按六维度（路由入口/登录态感知/导航一致性/状态完备/文案矛盾/数据一致性）审查 web/src + 服务端模板，结果另批处理。
+- `go test ./...` 全绿、SPA build ✓、App.vue lint 清零。
+
 ## 2026-10-27（晴空琉璃 §22「气派升级」：ui-ux-pro-max + zh-ui 双规范设计轮）
 
 用户令调用设计插件好好优化晴空琉璃至更气派美观。`design_recommend`（玻璃拟态/ambient premium）+ `design_search`（hover 微动效库）取料后**择善取舍**：库推的黑金配色不采纳（晴空蓝绿是样板品牌轴），吸收其光影手法：

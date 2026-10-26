@@ -590,9 +590,16 @@ func main() {
 	// 是搜索引擎的内容页). Registered on the root mux so it beats the SPA
 	// catch-all below; private textures render only for their owner (noindex).
 	root.HandleFunc("GET /skinlib/{tid}", texturePageHandler(st, seoEng, appearEng, cfg.SiteName, cfg.BaseURL))
-	// Public landing page data (counts + featured library cards).
-	landingFn := func(ctx context.Context) landingData {
+	// Public landing page data (counts + featured library cards + login state).
+	landingFn := func(r *http.Request) landingData {
+		ctx := r.Context()
 		d := landingData{SiteName: cfg.SiteName}
+		// 已登录访客的 hero CTA 换成进站动作（2026-10-27 逻辑修复）
+		if c, err := r.Cookie("skin_session"); err == nil {
+			if _, err := st.SessionUser(ctx, c.Value); err == nil {
+				d.LoggedIn = true
+			}
+		}
 		if n, err := st.CountUsers(ctx); err == nil {
 			d.Users = n
 		}
@@ -721,13 +728,13 @@ func textureHandler(ts *texture.Store) http.HandlerFunc {
 // raw and skipped SEO/theme/custom injection entirely).
 // The exact root path serves the public server-rendered landing page instead
 // of the SPA shell (2026-10-25 拍板: exposure for first-time visitors/crawlers).
-func spaHandler(dir string, seoEng *seo.Engine, appearEng *appearance.Engine, landing func(context.Context) landingData) http.Handler {
+func spaHandler(dir string, seoEng *seo.Engine, appearEng *appearance.Engine, landing func(*http.Request) landingData) http.Handler {
 	if st, err := os.Stat(dir); err == nil && st.IsDir() {
 		fs := http.FileServer(http.Dir(dir))
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			p := strings.TrimPrefix(r.URL.Path, "/")
 			if p == "" && landing != nil {
-				html := renderLanding(r.Context(), seoEng, appearEng, landing(r.Context()))
+				html := renderLanding(r.Context(), seoEng, appearEng, landing(r))
 				w.Header().Set("Content-Type", "text/html; charset=utf-8")
 				_, _ = w.Write([]byte(html))
 				return

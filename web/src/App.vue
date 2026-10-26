@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from './api.js'
 import AdminPanel from './components/AdminPanel.vue'
@@ -93,8 +93,32 @@ const brandSVG = '<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   + '</svg>'
 
 function goHome() {
-  history.replaceState(null, '', '/')
+  // 品牌点击 = 回工作台（URL 由下方 watch 同步为 /user/dashboard，
+  // 不再 replaceState '/' —— 那曾造成地址栏与视图脱节）
   view.value = user.value ? 'dashboard' : 'login'
+}
+
+// ── URL ↔ 视图双向同步（2026-10-27 逻辑修复：地址栏与视图曾完全脱节，
+//    同一皮肤库两个 URL 并存）──
+// /skinlib 为皮肤库唯一规范地址；/user/skinlib 仅作 PCL/旧链接深链兼容。
+const viewURLs = {
+  skinlib: '/skinlib',
+  closet: '/user/closet',
+  profile: '/user/profile',
+  players: '/user/players',
+  dashboard: '/user/dashboard',
+}
+let syncingURL = false
+watch(view, (v) => {
+  const u = viewURLs[v]
+  if (u && location.pathname !== u && !syncingURL) history.pushState({ view: v }, '', u)
+})
+function onPopState() {
+  syncingURL = true
+  const v = legacyRoutes[location.pathname]
+  if (v) view.value = v
+  else if (location.pathname === '/') view.value = user.value ? 'dashboard' : 'login'
+  syncingURL = false
 }
 
 // Session-drop handler: pages call notifyUnauthorized() on 401 → back to login.
@@ -222,7 +246,7 @@ async function doLogout() {
   view.value = 'login'
 }
 
-onMounted(boot)
+onMounted(() => { boot(); window.addEventListener('popstate', onPopState) })
 </script>
 
 <template>
