@@ -625,7 +625,7 @@ func main() {
 		}
 		return d
 	}
-	spa := spaHandler("web/dist", seoEng, appearEng, landingFn)
+	spa := spaHandler("web/dist", seoEng, appearEng, cfg.SiteName, landingFn)
 	if oidcProvider != nil {
 		spa = oidcProvider.Wrap(spa)
 	}
@@ -728,7 +728,18 @@ func textureHandler(ts *texture.Store) http.HandlerFunc {
 // raw and skipped SEO/theme/custom injection entirely).
 // The exact root path serves the public server-rendered landing page instead
 // of the SPA shell (2026-10-25 拍板: exposure for first-time visitors/crawlers).
-func spaHandler(dir string, seoEng *seo.Engine, appearEng *appearance.Engine, landing func(*http.Request) landingData) http.Handler {
+// isKnownSPAPath whitelists the SPA shell routes; anything else is a true 404.
+func isKnownSPAPath(p string) bool {
+	switch p {
+	case "index.html", "login", "register", "forgot-password", "reset-password", "device",
+		"skinlib", "user/skinlib", "user/closet", "user/profile",
+		"user/players", "user/dashboard":
+		return true
+	}
+	return strings.HasPrefix(p, "user/")
+}
+
+func spaHandler(dir string, seoEng *seo.Engine, appearEng *appearance.Engine, siteName string, landing func(*http.Request) landingData) http.Handler {
 	if st, err := os.Stat(dir); err == nil && st.IsDir() {
 		fs := http.FileServer(http.Dir(dir))
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -744,6 +755,14 @@ func spaHandler(dir string, seoEng *seo.Engine, appearEng *appearance.Engine, la
 				if fi, err := os.Stat(dir + "/" + p); err == nil && !fi.IsDir() && p != "index.html" {
 					inject = false // real asset file
 				}
+			}
+			// Unknown SPA paths get a real 404 (2026-10-27 逻辑修复：软 404 —
+			// 任何未知 URL 都曾 200 返回登录卡，爬虫把它们当内容页收进索引).
+			// Known shell routes: auth flows, device verification, the public
+			// skinlib list and the /user/* launcher-deep-link family.
+			if inject && !isKnownSPAPath(p) {
+				writeTexNotFound(r.Context(), w, siteName, appearEng, "页面不存在。")
+				return
 			}
 			if inject {
 				raw, err := os.ReadFile(dir + "/index.html")

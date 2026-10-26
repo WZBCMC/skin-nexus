@@ -94,6 +94,7 @@ func TestSpaHandlerInjectsEveryHTMLPath(t *testing.T) {
 	h := spaHandler(dir,
 		seo.NewEngine(opts, seo.Defaults{SiteName: "示例站", BaseURL: "https://skin.example.com"}),
 		appearance.NewEngine(opts, reg),
+		"示例站",
 		func(*http.Request) landingData {
 			return landingData{SiteName: "示例站", Users: 3, Players: 4, Textures: 5,
 				Featured: []landingTexture{
@@ -102,7 +103,7 @@ func TestSpaHandlerInjectsEveryHTMLPath(t *testing.T) {
 				}}
 		})
 
-	for _, path := range []string{"/index.html", "/register", "/profile/Steve"} {
+	for _, path := range []string{"/index.html", "/register", "/skinlib"} {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		body := rec.Body.String()
@@ -112,9 +113,6 @@ func TestSpaHandlerInjectsEveryHTMLPath(t *testing.T) {
 			}
 		}
 		wantTitle := "<title>示例站</title>"
-		if path == "/profile/Steve" {
-			wantTitle = "<title>Steve - 示例站</title>" // per-route meta
-		}
 		if !strings.Contains(body, wantTitle) {
 			t.Fatalf("GET %s: SEO head not injected (want %s): %s", path, wantTitle, body)
 		}
@@ -126,6 +124,16 @@ func TestSpaHandlerInjectsEveryHTMLPath(t *testing.T) {
 		if ai, bi := strings.Index(body, "/assets/index-CAFE.css"), strings.Index(body, "skin-custom-css"); ai < 0 || bi < 0 || ai > bi {
 			t.Fatalf("GET %s: injected CSS must come after app CSS (app=%d custom=%d): %s", path, ai, bi, body)
 		}
+	}
+
+	// Unknown paths are a true 404 (no more soft-404 login card / fake SEO).
+	rec404 := httptest.NewRecorder()
+	h.ServeHTTP(rec404, httptest.NewRequest(http.MethodGet, "/profile/Steve", nil))
+	if rec404.Code != http.StatusNotFound {
+		t.Fatalf("GET /profile/Steve: want 404, got %d", rec404.Code)
+	}
+	if !strings.Contains(rec404.Body.String(), "页面不存在") {
+		t.Fatalf("GET /profile/Steve: generic 404 wording missing: %s", rec404.Body.String())
 	}
 
 	rec := httptest.NewRecorder()
@@ -150,6 +158,7 @@ func TestSpaHandlerServesLandingAtRoot(t *testing.T) {
 	h := spaHandler(dir,
 		seo.NewEngine(opts, seo.Defaults{SiteName: "示例站", BaseURL: "https://skin.example.com"}),
 		appearance.NewEngine(opts, reg),
+		"示例站",
 		func(*http.Request) landingData {
 			return landingData{SiteName: "示例站", Users: 3, Players: 4, Textures: 5,
 				Featured: []landingTexture{

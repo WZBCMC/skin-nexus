@@ -191,6 +191,14 @@ function onLocaleChange(e) {
   setLocale(e.target.value)
 }
 
+// 登录/注册共同收尾：设备页流程优先，launcher 深链恢复其次，落地即清
+// pendingView（防"迟到恢复"跳页）。
+function finishAuth() {
+  if (location.pathname === '/device') view.value = 'device'
+  else if (pendingView.value) { view.value = pendingView.value; pendingView.value = '' }
+  else view.value = 'dashboard'
+}
+
 async function doLogin() {
   authErr.value = ''
   try {
@@ -199,11 +207,7 @@ async function doLogin() {
     // (admin-entry gating) — refresh so the entry appears without a reload.
     try { user.value = await api.me() } catch { /* keep login payload */ }
   } catch (e) { authErr.value = e.message; return }
-  // returning from login initiated on the device page keeps the flow alive;
-  // a launcher deep link resumes into its target view after authentication
-  if (location.pathname === '/device') view.value = 'device'
-  else if (pendingView.value) { view.value = pendingView.value; pendingView.value = '' }
-  else view.value = 'dashboard'
+  finishAuth()
 }
 
 async function doRegister() {
@@ -216,7 +220,7 @@ async function doRegister() {
   try {
     user.value = await api.register(email.value, nickname.value, password.value, invitationCode.value.trim())
   } catch (e) { authErr.value = e.message; return }
-  view.value = 'dashboard'
+  finishAuth()
 }
 
 // A1 找回密码: forgot always shows the same sent-state (server is

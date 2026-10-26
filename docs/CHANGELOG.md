@@ -2,6 +2,18 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
+## 2026-10-27（前端逻辑修复批 B：真 404 + SEO 归位 + 错误可见性——子代理扫描 Top5 落地）
+
+子代理只读审查报告（H1-H4/M1-M8/L1-L10）落地第二批（H1/H2 已于批 A 完成）：
+
+- **H3 真 404（软 404 根治）**：spaHandler 未知路径不再 200 返回登录卡——`isKnownSPAPath` 白名单（auth 流/device/skinlib/user 族）外一律渲染品牌 404 并返回 404 状态；`/profile/{name}` 假内容页 SEO 残留（pageMetaFor）删除，SPA 壳统一 `noindex`；404 模板文案参数化（材质语境 vs 页面语境）。**顺手修 L6**：404/详情页模板补 `<!--skin-theme-->` 锚，主题/自定义 CSS 在 404 页恢复生效（注释承诺兑现）。
+- **M8 SEO 归位**：sitemap 静态项 `/register` → `/skinlib`（公开列表须收录、注册页不收录），seo_test 随语义更新。
+- **M4**：详情页面包屑「皮肤库」`/user/skinlib` → `/skinlib`（公开内容页不再引向登录墙）。
+- **H4 错误可见性**：UnionView 区分「模块关闭(404 预期空态)」与「加载失败(错误卡+重试按钮)」，不再把故障伪装成未启用；`fetchJSON` 错误补 `err.status`（M5 基础设施）。
+- **M6 pendingView**：doLogin/doRegister 共用 `finishAuth()` 收尾（注册不再丢深链目标），落地即清 pendingView（防"迟到恢复"跳页）。
+- i18n 补 `common.retry`。`go test ./...` 全绿（新增 `/profile/Steve` 404 行为断言）、SPA build ✓、lint 仅剩导出模板已知例外。
+- **待办台账（批 C）**：M1 错误位错位/dataErr 死代码、M2 SettingsView 静默失败、M3 访客 ♥ 引导+文案语义、M5 全站 guard401 统一、M7 写操作反馈、L1-L5/L7-L10（模型徽章/空状态/i18n/prompt 对话框等）。
+
 ## 2026-10-27（前端逻辑修复批 A：URL 语义统一 + landing 登录态 CTA + 全量逻辑扫描启动）
 
 用户两问直指产品逻辑：「/user/skinlib 和 /skinlib 区分的意义？」「已登录首页为何还显示登录注册？」，并令完整扫描前端不合逻辑处。

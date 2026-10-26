@@ -14,6 +14,7 @@ package main
 // the page is still a complete, crawlable, downloadable skin page.
 
 import (
+	"context"
 	"encoding/json"
 	"html/template"
 	"net/http"
@@ -131,10 +132,12 @@ var texDetailTmpl = template.Must(template.New("texdetail").Parse(`<!DOCTYPE htm
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
   @media (max-width: 560px) { h1 { font-size: 21px; } .viewer { min-height: 240px; } }
 </style>
+<!--skin-theme-->
+<!--skin-custom-head-->
 </head>
 <body>
   <div class="wrap">
-    <nav class="crumb"><a href="/">首页</a> › <a href="/user/skinlib">皮肤库</a> › {{.Name}}</nav>
+    <nav class="crumb"><a href="/">首页</a> › <a href="/skinlib">皮肤库</a> › {{.Name}}</nav>
     <article class="card" itemscope itemtype="https://schema.org/CreativeWork">
       <h1 itemprop="name">{{.Name}}</h1>
       <p class="sub">Minecraft {{if eq .Type "cape"}}披风{{else}}皮肤{{end}} · 上传者 <span itemprop="author">{{.Nickname}}</span></p>
@@ -185,8 +188,10 @@ var texNotFoundTmpl = template.Must(template.New("tex404").Parse(`<!DOCTYPE html
   .box h1 { font-family: var(--font-serif); font-size: 40px; margin: 0 0 8px; }
   a { color: var(--jade); }
 </style>
+<!--skin-theme-->
+<!--skin-custom-head-->
 </head>
-<body><div class="box"><h1>404</h1><p>材质不存在，或已被设为私密。</p><p><a href="/">返回首页</a></p></div></body>
+<body><div class="box"><h1>404</h1><p>{{.Msg}}</p><p><a href="/">返回首页</a></p></div></body>
 </html>
 `))
 
@@ -226,7 +231,7 @@ func texturePageHandler(st *store.Mysql, seoEng *seo.Engine, appearEng *appearan
 	return func(w http.ResponseWriter, r *http.Request) {
 		tid, err := strconv.ParseInt(r.PathValue("tid"), 10, 64)
 		if err != nil || tid <= 0 {
-			writeTexNotFound(w, siteName)
+			writeTexNotFound(r.Context(), w, siteName, appearEng, "材质不存在，或已被设为私密。")
 			return
 		}
 		// viewer identity: session cookie → owner/admin visibility
@@ -242,7 +247,7 @@ func texturePageHandler(st *store.Mysql, seoEng *seo.Engine, appearEng *appearan
 		}
 		row, err := st.SkinlibOne(r.Context(), tid, uid, admin)
 		if err == store.ErrNotFound {
-			writeTexNotFound(w, siteName)
+			writeTexNotFound(r.Context(), w, siteName, appearEng, "材质不存在，或已被设为私密。")
 			return
 		}
 		if err != nil {
@@ -334,10 +339,17 @@ func texDescription(d texDetailData) string {
 		" 人喜欢。注册账号即可一键使用。"
 }
 
-func writeTexNotFound(w http.ResponseWriter, siteName string) {
+// writeTexNotFound renders the branded 404 with theme/custom-css injection
+// (the anchors above feed appearEng.Render) and a true 404 status. msg is the
+// situation line (texture vs generic page wording).
+func writeTexNotFound(ctx context.Context, w http.ResponseWriter, siteName string, appearEng *appearance.Engine, msg string) {
 	var sb strings.Builder
-	_ = texNotFoundTmpl.Execute(&sb, map[string]string{"SiteName": siteName})
+	_ = texNotFoundTmpl.Execute(&sb, map[string]string{"SiteName": siteName, "Msg": msg})
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusNotFound)
-	_, _ = w.Write([]byte(sb.String()))
+	html := sb.String()
+	if appearEng != nil {
+		html = appearEng.Render(ctx, html)
+	}
+	_, _ = w.Write([]byte(html))
 }

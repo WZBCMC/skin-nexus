@@ -295,16 +295,11 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!DOCTYPE html>
 </html>
 `))
 
-// pageMetaFor derives per-page SEO overrides from the SPA path — player
-// profile pages get name-bearing titles so sitemap entries are not identical.
+// pageMetaFor: SPA 壳统一 noindex（2026-10-27 逻辑修复：删除 /profile/{name}
+// 假内容页 SEO 残留 —— SPA 根本没有该路由，壳是登录墙/工具页，不该进索引；
+// 真内容页（landing/详情页/皮肤库）由各自渲染层自带 meta）。
 func pageMetaFor(p string) seo.PageMeta {
-	if name, ok := strings.CutPrefix(p, "profile/"); ok {
-		name = strings.Trim(name, "/")
-		if name != "" {
-			return seo.PageMeta{TitleSuffix: name, Path: "/profile/" + name}
-		}
-	}
-	return seo.PageMeta{}
+	return seo.PageMeta{NoIndex: true}
 }
 
 // Injection anchors are passed as trusted template.HTML data: html/template

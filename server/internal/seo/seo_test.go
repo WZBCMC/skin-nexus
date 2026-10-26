@@ -87,7 +87,7 @@ func TestSitemapXML(t *testing.T) {
 	})
 	for _, want := range []string{
 		"<loc>https://skin.test/</loc>",
-		"<loc>https://skin.test/register</loc>",
+		"<loc>https://skin.test/skinlib</loc>",
 		"<loc>https://skin.test/skinlib/42</loc>",
 		"<lastmod>2026-10-01</lastmod>",
 		"<loc>https://skin.test/skinlib/43</loc>",

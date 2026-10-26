@@ -10,6 +10,7 @@ import { fetchJSON } from '../../adminApi.js'
 const { t } = useI18n()
 const unionStatus = ref(null)
 const error = ref('')
+const loadFailed = ref(false)
 const opResult = ref('')
 const opBusy = ref(false)
 
@@ -26,11 +27,15 @@ const blReason = ref('')
 
 async function load() {
   error.value = ''
-  // Absent (404) when the module is disabled — that's expected.
+  loadFailed.value = false
+  // 404 = 模块关闭（预期空态）；其余错误必须可见且可重试，
+  // 不能把「加载失败」伪装成「联盟功能未启用」（2026-10-27 逻辑修复）。
   try {
     unionStatus.value = await fetchJSON('/api/admin/v1/union/status')
   } catch (e) {
     unionStatus.value = null
+    if (e.status === 404) return
+    loadFailed.value = true
     error.value = e.message
   }
 }
@@ -229,6 +234,10 @@ onMounted(async () => {
         {{ t('admin.unionTrustNotice') }}
       </div>
       <div class="error" v-if="error">{{ error }}</div>
+    </div>
+    <div class="card" v-else-if="loadFailed">
+      <div class="error">{{ error }}</div>
+      <button class="secondary" style="margin-top: 12px;" @click="load">{{ t('common.retry') }}</button>
     </div>
     <div class="card" v-else>
       <h2 style="margin-top: 0;">{{ t('admin.unionTitle') }}</h2>

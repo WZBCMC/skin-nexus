@@ -261,10 +261,11 @@ func SitemapXML(canonical, baseURL string, entries []SitemapEntry) string {
 	var sb strings.Builder
 	sb.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
 	sb.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
-	// Only public, crawlable routes: the landing page, the registration page,
-	// and the (server-rendered, anonymous-readable) texture detail pages. The
-	// SPA list at /user/skinlib sits behind login — never advertise it.
-	statics := []string{"/", "/register"}
+	// Only public, crawlable routes: the landing page, the anonymous-readable
+	// skin library list (/skinlib, 2026-10-27 逻辑修复：公开列表须收录、注册页
+	// 不收录), and the server-rendered texture detail pages. /user/* stays
+	// behind login — never advertise it.
+	statics := []string{"/", "/skinlib"}
 	writeURL := func(p string, lastmod time.Time) {
 		sb.WriteString("  <url><loc>" + esc(base+p) + "</loc>")
 		if !lastmod.IsZero() {

@@ -17,7 +17,9 @@ export async function fetchJSON(path, opts) {
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
     if (res.status === 401 || res.status === 403) needToken.value = true
-    throw new Error(data.message || data.error || `HTTP ${res.status}`)
+    const err = new Error(data.message || data.error || `HTTP ${res.status}`)
+    err.status = res.status // 404=模块关闭/未找到，401=会话失效：调用方按 status 分流
+    throw err
   }
   return data
 }
