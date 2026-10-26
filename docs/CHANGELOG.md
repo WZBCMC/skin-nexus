@@ -2,6 +2,21 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
+## 2026-10-27（同型 bug 全量扫描：未声明属性泄漏 / 特异性打平——批量清账 3.0.10）
+
+用户令「批量扫描同型 bug 一并修复」。同型定义：**主题覆盖结构类时未显式声明的属性照走全局值**（flex-direction/padding-top 两案），及**分态规则与全明暗规则特异性打平后位后胜**（r 角一案）。对账矩阵：v3 全局 style.css 287 行逐属性 × 主题全部覆盖块（v2 §10/§17/§18/§19/§20/§20b）× AdminPanel admin 类 × landing 模板。
+
+**批量修复（3.0.10）**：
+- `.user-chip` 补 `justify-content: space-between` 显式化（全局泄漏口）；
+- `.user-chip button` min-height 28→32、`.topbar-right select` 32→36（触控目标同型遗漏）；
+- `.admin-nav` 补 `margin-top: 12px` 显式化、`.admin-nav-item` 补 `padding/gap/text-align/font-size` 显式化（scoped 被覆盖方完整对账）。
+
+**已完整确认（前几轮血泪补齐）**：`.user-side` 全盒模型、`.nav-group + .nav-group`（padding-top 本轮晨修）、`.nav-title`（nowrap/flex）、`.nav-item` 全属性、`.card/.topbar/.auth-split/.auth-pane/.container` 无布局泄漏。
+
+**有意保留（非泄漏）**：≤720 全局 `.user-side { position: static }` 被主题 sticky 覆盖——v2 移动端 dock 吸顶是设计意图；亮态 `.auth-scene .scene-fog { display: none }` 为分态装饰裁剪；v2 §10 与 §19 同选择器冗余块（同特异性后胜无害）留待下个大版本归档清理。
+
+**类案清查**：token 误用（--ink-2 当字色案）全文件 grep 清零。纪律入 theme-spec：主题覆盖结构类必须**全盒模型显式重写**（display/flex 系/gap/margin/padding/width/height/position 系/border/text-align/white-space/overflow/line-height），凡「只改我要的」必留泄漏口——本周同型三案（flex-direction、padding-top、r 角打平）同一课。
+
 ## 2026-10-27（批注三问题修复：居中/亮暗统一/移动暗态 + zh-ui 全量自查清零）
 
 用户以 zh-ui-design + ui-ux-pro-max 双规范要求自查，随后批注三个直观问题（绿框标注三图）：
