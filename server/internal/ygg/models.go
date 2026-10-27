@@ -29,7 +29,7 @@ type Profile struct {
 
 // texturesJSON is the decoded textures property value. The custom marshal
 // guarantees `textures:{}` for the empty case (Go nil/empty map must not
-// collapse to null — see docs/m0-poc-report.md bridge pitfall #3).
+// collapse to null — clients treat null as a malformed textures property).
 type texturesJSON struct {
 	Timestamp   int64                  `json:"timestamp"`
 	ProfileID   string                 `json:"profileId"`

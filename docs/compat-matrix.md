@@ -1,7 +1,7 @@
 # 兼容矩阵 —— blessing / yggdrasil-connect 1:1 复刻进度
 
-> 依据：2026-10-23 对线上 legacy 站点全量只读实测（报文在私有工作区 `analysis/live-capture/`）
-> 与 `analysis/` 源码级报告。图例：✅ 达成 / 🔧 实测后修复 / ⚠️ 缺口 / ➖ 不复刻。
+> 依据：2026-10-23 对线上 legacy 站点全量只读实测（报文留档于维护者本地，不随仓库分发）
+> 与上游源码级审计。图例：✅ 达成 / 🔧 实测后修复 / ⚠️ 缺口 / ➖ 不复刻。
 
 ## 1. Yggdrasil 面（authlib-injector 硬契约）
 
@@ -52,4 +52,4 @@ JWT access token 实测形状：`aud="2"（shared_client_id）、sub=uid、scope
 - **P2**：举报/通知/纹理广场 · OAuth 社交登录 · API PAT 面 · 插件宿主 · 正版绑定 · 纹理删除
 - **P3**：`/api` 根装饰 · 验证码 · 积分商城 · 2FA
 
-详细版（含逐端点请求/应答、JWT 形状、存疑项）见私有工作区 `docs/blessing-gap-analysis.md`。
+详细版（含逐端点请求/应答、JWT 形状、存疑项）保留在维护者本地分析档；本表是公开事实源。

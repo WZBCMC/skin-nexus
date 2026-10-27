@@ -14,7 +14,7 @@
 - 本项目由 **YMZS（[GitHub @YimingZhanshen](https://github.com/YimingZhanshen)）** 发起并享有原始著作权，治理模式 BDFL（见 [`GOVERNANCE.md`](GOVERNANCE.md)）：日常改动走 PR，合并权归发起人。
 - 贡献即同意以 **AGPL-3.0** 授权你的改动（见 [`LICENSE`](LICENSE)）。
 - **隐私铁律**：任何提交不得出现真实姓名、真实站点域名、真实 IP 等隐私信息；示例一律用 `skin.example.com` / `legacy` 之类占位。署名只用 `YMZS (YimingZhanshen)`。
-- 欢迎 AI 辅助贡献，但**提交者对输出负全责**：贴真实验证输出（测试/构建结果），不以「应该可以」代替验证（证据铁律，见 [`docs/standards.md`](docs/standards.md)）。
+- 欢迎 AI 辅助贡献，但**提交者对输出负全责**：贴真实验证输出（测试/构建结果），不以「应该可以」代替验证（证据铁律，见 [`AGENTS.md`](AGENTS.md) §协作纪律）。
 
 ## 1. 语言翻译（i18n）
 
@@ -64,7 +64,7 @@ SKIN_TEST_DSN='user:pass@tcp(127.0.0.1:3306)/skin_nexus_test?parseTime=true' \
 ```
 
 CI 会跑全量门禁（后端 build/vet/test、**MySQL 5.7 与 8.0 双矩阵**集成测试、
-poc、前端构建、Docker 镜像）——本地至少把上面三连跑绿再提 PR。
+前端构建、Docker 镜像）——本地至少把上面三连跑绿再提 PR。
 
 ### 3.2 分支与提交
 

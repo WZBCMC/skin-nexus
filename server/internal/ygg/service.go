@@ -91,7 +91,7 @@ type Service struct {
 	now       func() time.Time
 	// resolve resolves an access token string to a Token. Default: opaque
 	// store lookup. Phase-2 dual-state: the OIDC layer injects a resolver
-	// that also accepts signed JWTs (analysis/oidc-client-contract-synthesis).
+	// that also accepts signed JWTs (phase-2 dual-state).
 	resolve func(ctx context.Context, access string) (Token, error)
 	// RequireVerification gates join on email_verified (fork's
 	// require_verification setting). Default off: without a verification

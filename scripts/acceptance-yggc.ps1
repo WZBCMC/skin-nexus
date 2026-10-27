@@ -3,7 +3,7 @@
   SkinNexus yggc/OIDC 免密登录验收脚本（辅助）。
 
 .DESCRIPTION
-  按 analysis/oidc-client-contract-synthesis.md §4 十条自动走查：
+  按 OIDC 客户端契约十条自动走查（契约基线见 docs/compat-matrix.md）：
   ① 元数据 openid_configuration_url  ② discovery 字段  ③ device_authorization
   ④ 站内登录+批准（可选：传 -Email/-Password 全自动；否则提示手批）
   ⑤ token 轮询（pending→成功）  ⑥ id_token RS256 声明  ⑦ userinfo 双路径

@@ -6,7 +6,6 @@ data/
 legacy.env
 refs/
 analysis/
-poc/
 docs/
 *.md
 .git/

@@ -376,7 +376,7 @@ func verifyJWTSignature(t *testing.T, key *rsa.PublicKey, jwt string) {
 	}
 }
 
-// ---- contract tests (analysis/oidc-client-contract-synthesis.md §1/§4) ----
+// ---- contract tests (OIDC client contract, docs/compat-matrix.md) ----
 
 func TestDiscoveryContract(t *testing.T) {
 	p, _ := testProvider(t)

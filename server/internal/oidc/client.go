@@ -9,7 +9,7 @@ import (
 
 // client adapts ClientRecord to the zitadel op.Client interface.
 //
-// Contract notes (analysis/oidc-client-contract-synthesis.md):
+// Contract notes (baseline: docs/compat-matrix.md):
 //   - launchers are public clients (discovery shared_client_id, no secret):
 //     AuthMethodNone + device_code grant;
 //   - access tokens are RS256 JWTs reused verbatim as Yggdrasil tokens, so

@@ -28,7 +28,7 @@ var ErrNotJOSE = errors.New("oidc: not a JWT")
 // passed to the game verbatim and used against /sessionserver/join and
 // /authserver/validate.
 //
-// Acceptance rules (analysis/oidc-client-contract-synthesis.md §4):
+// Acceptance rules (OIDC client contract):
 //   - signature RS256 against the provider signing key;
 //   - iss == configured issuer, exp within 60s skew;
 //   - jti present in the ledger and not revoked (revocation covers password

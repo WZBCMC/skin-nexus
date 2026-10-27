@@ -152,7 +152,8 @@ func (p *Provider) Wrap(next http.Handler) http.Handler {
 // DiscoveryHandler serves the discovery document with the client contract
 // fields injected (shared_client_id et al.). It is also mounted at the
 // yggdrasil API root so the launchers' "/.well-known/ truncation" heuristic
-// resolves the API root correctly (analysis/oidc-client-contract-synthesis §2).
+// resolves the API root correctly (launchers' "/.well-known/ truncation"
+// heuristic).
 func (p *Provider) DiscoveryHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// The engine serves discovery only at "/.well-known/openid-configuration";

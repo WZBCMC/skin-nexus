@@ -1,6 +1,6 @@
 # SkinNexus — 仓库协作说明
 
-> 供 AI agent / 新贡献者快速上手。权威依据：`docs/blueprint.md`（蓝图）、`docs/standards.md`（规范）。
+> 供 AI agent / 新贡献者快速上手。本文是仓库地图与铁律的入口；专题文档见文末表格。
 > 部署者视角的文档在 `docs/build.md`（构建）、`docs/deploy.md`（部署）、`docs/migration.md`（迁移）。
 
 ## 结构
@@ -31,12 +31,11 @@ server/         Go 后端（模块 skin-nexus/server）
   internal/plugin     P0 HookAPI 合约（冻结）
   migrations/         DDL（InnoDB utf8mb4；0001 基础 … 0011 access_logs，追踪式逐文件记标）
 web/            Vue 3 + Vite（npm ci && npm run build → web/dist）
-poc/            M0 插件运行时 PoC（goja 已裁决冻结）
-docs/           蓝图 / 规范 / 构建 / 部署 / 迁移 / 兼容矩阵 / 主题规范 / CHANGELOG（公开）；
+docs/           构建 / 部署 / 迁移 / 兼容矩阵 / 竞品证据 / 主题规范 / CHANGELOG（公开）；
                 开发过程文档在上级 docs/（本地，永不入库）
 ```
 
-## 铁律（拍板记录在私有工作区 `docs/phase1-dev-plan.md` §0，该文件不入库）
+## 铁律（拍板记录不随仓库分发）
 
 1. **`/api/yggdrasil` 全路径原语义不可破**：204 清单、错误体 `{error,errorMessage}`、textures 空对象 `{}`、毫秒时间戳、PEM 严格格式——改动必须先跑 `go test ./internal/ygg/` 且不动契约断言。
 2. **UUID 零漂移**：`OfflineUUID` 逐字节复刻旧公式；改名不重算。
@@ -45,6 +44,14 @@ docs/           蓝图 / 规范 / 构建 / 部署 / 迁移 / 兼容矩阵 / 主�
 5. **每轮开发收尾同步文档状态**：更新 README「状态」一句话摘要 + `docs/CHANGELOG.md` 逐轮条目，并同步受影响的必要文档（`docs/deploy.md` 等），过时即改、不留待办口吻的死条目——防止过时文档污染后续会话记忆。
 6. **wire 契约冻结区零改动**：`internal/union` 的字段名/头名/拼接顺序与 hub 互操作冻结（见该包 doc 注）；`internal/plugin` hook 合约同理。确需变更先开偏差备案。
 7. **数据兼容铁律（2026-10-23 拍板）**：任何持久化数据（表/列/字段语义）必须满足二者之一——①与 blessing-skin-server 及其插件生态的存量数据**同构可直迁**；②`internal/migrate` 提供**无损导入适配**。对既有代码与未来开发同时生效：密码凭证保持 12 算式可验证 + argon2id 惰性重哈希；新功能先考古老站存储约定（如 `invitation_codes.description`）再建表，不确定老站怎么存的先实测/读线上源码，不自造结构。
+
+## 协作纪律（人类与 agent 同等）
+
+- **任务粒度**：一个 agent 一个 PR 级任务，写范围（write scope）不重叠；越界问题只记 issue，不顺手改。
+- **证据铁律**：结论附 `文件:行号` 或命令输出；「不存在」类结论必须穷尽检索；推断与事实分开陈述。
+- **验证门**：每步贴真实输出；失败即停、最多重试 1 次；不以「应该可以」代替验证，契约测试与前端构建是合并门禁。
+- **文档先行**：协议/接口变更先改 `docs/` 再改代码；分支模型、提交格式与 PR 要求见 `CONTRIBUTING.md`。
+- **重大选型**：多 AI 独立评析 → 分歧对齐 → 发起人终裁。
 
 ## 常用命令
 

@@ -2,121 +2,145 @@
 
 <p align="center"><img src="docs/assets/logo.svg" width="140" alt="SkinNexus 像素枢纽 N 标识"></p>
 
-> 下一代 Minecraft 皮肤站：Yggdrasil 外置登录兼容、一键迁移 blessing-skin-server、自托管优先。
+<p align="center">
+  <a href="https://github.com/YimingZhanshen/skin-nexus/actions/workflows/ci.yml"><img src="https://github.com/YimingZhanshen/skin-nexus/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/YimingZhanshen/skin-nexus/releases/tag/v0.1.0"><img src="https://img.shields.io/badge/release-v0.1.0-blue" alt="v0.1.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-green" alt="AGPL-3.0"></a>
+</p>
 
-**状态**（每轮开发收尾同步 · 2026-10-27）：一期–三期 ✅ · 全量迁移并生产切流（67 用户 / 61 纹理零丢行、UUID 零漂移）✅ · **v0.1.0 已发布** ✅ · SEO 内容页 + 「月下仙山」v3 视觉体系 + 晴空琉璃样板主题 ✅ · A1 找回密码 / A2 Mojang 兜底 / C1 运维观测面 ✅ · 前端逻辑修复与 admin lint 清零 ✅ · 逐轮迭代历史见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)，路线图见下。
+> 自托管的 Minecraft 皮肤站：Yggdrasil 外置登录全兼容，可从 blessing-skin-server 无损迁移。
 
-**许可**：AGPL-3.0 · **发起人/著作权人**：YMZS
+**SkinNexus（肤枢）** 是给 Minecraft 服务器与社团用的皮肤站。玩家在网页上传、管理皮肤与披风，通过启动器免密登录直接进服；站长自托管，账号、纹理与签名密钥都在自己手里。
 
-## 这是什么
+它是 [blessing-skin-server](https://github.com/bs-community/blessing-skin-server) 的现代化重写（Go + Vue 3），已在一套真实生产环境完成全量迁移与切流：**67 用户 / 61 纹理零丢行、玩家 UUID 零漂移**。
 
-SkinNexus（肤枢）是对年久失修的 [blessing-skin-server](https://github.com/bs-community/blessing-skin-server) 的现代化重写：皮肤、身份、联合认证三线汇聚的中枢。
+- **当前版本**：v0.1.0（2026-10-25）· 迭代历史见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)
+- **许可**：AGPL-3.0 · **发起人 / 著作权人**：YMZS
 
-- **Yggdrasil API 完整兼容**：authlib-injector 直连，既有 MC 客户端与服务器**零改配置**，玩家 UUID 零漂移
-- **启动器免密登录（yggc/OIDC 内置）**：设备码流 + refresh 轮换，OAuth token 直通进服（SJMCL 等社区启动器兼容），取代旧架构 Janus 外挂
-- **MUA Union 成员站模块**：**可开关（默认关）**，未接入联盟的部署零负担；三头验签、绑定/同步、OAuth2 grant、共享纹理签名密钥
-- **一键数据迁移**：用户/皮肤/披风/角色绑定平滑迁移（多算法密码兼容 + 惰性重哈希），手册见 [`docs/migration.md`](docs/migration.md)
-- **现代技术栈**：Go + Vue 3，单二进制或 Docker 部署
-- **多语言（i18n）**：内置 zh-CN/en，界面全量键值化，语言切换即时生效
-- **SEO 一键配置**：meta/OG/canonical 注入、sitemap.xml、robots.txt、可整站 noindex（预发）
-- **自定义 CSS/JS 与主题包**：admin 贴样式（blessing 同款）+ `data/themes/` 主题包（社区分发、AI 可生成，规范见 [`docs/theme-spec.md`](docs/theme-spec.md)）
-- **Docker Compose 部署**：一键编排（可选内置 MySQL 或外部数据库），数据/主题/密钥卷持久化，升级不丢数据；空库自动建表 + `/setup` 安装向导（或任一 SPA 路由自动进入）
-- **对外数据接口**：CustomSkinAPI / USM / legacy 裸 PNG / 公开只读 API（社团官网读皮肤数据用）
-- **头像与预览服务端渲染**：`/avatar/{player|user|hash|tid}`、`/preview/{tid|hash}` 输出 PNG，高清皮保留原生分辨率
-- **自托管与数据主权**：零账号依赖、本地直连、单一控制点
-- **插件扩展**：hook 合约已冻结（goja 运行时已裁决），宿主运行时后置
+## 为什么选 SkinNexus
 
-## 与主流开源皮肤站的对照
+- **迁移不丢数据**：主键保留、UUID 零漂移、密码全兼容（12 种旧算式 + argon2id 惰性重哈希）；`preflight → dry-run → import` 三步可回滚，不是「导 CSV 碰运气」。
+- **登录链路现代化**：内置 OIDC 免密登录（设备码 + refresh 轮换），不再需要 Janus 外挂；SJMCL 等社区启动器的免密链路已实现，真机验收进行中。
+- **运维看得见**：登录与联盟通信日志（90 天）、审计、认证限流、登录/认证/`hasJoined` 三层封禁、面板自助诊断。
+- **内容能被搜到**：落地页与皮肤详情页服务端渲染，`sitemap.xml`、`robots.txt`、逐页 meta/OG/JSON-LD 全量注入——这是三家主流竞品都没有的完整能力。
+- **部署与升级简单**：Go 单二进制或 Docker Compose；CI 每次 push `main` 自动构建镜像推 GHCR，部署机只拉不编。
 
-> 对照对象：[blessing-skin-server](https://github.com/bs-community/blessing-skin-server)（Laravel/PHP，上游仅剩维护性提交）、[element-skin](https://github.com/water2004/element-skin)（Go + PostgreSQL + Vue 3）、[vSkin](https://github.com/iJunecn/vSkin)（FastAPI + Vue 3）。
-> 下表每格都经对方仓库**源码复核**（路由表 / grep，2026-10-25–26），方法与逐条证据见 [`docs/competitor-analysis.md`](docs/competitor-analysis.md)——✅ 不吝于人，❌ 不凭印象；勘误就地修正并记入 CHANGELOG（如 2026-10-26 的 blessing 皮肤库勘误）。
+性能实测（2 核 / 3.5 GB 生产 VPS，详见 CHANGELOG）：落地页 ~600 RPS、纹理分发 5182 RPS、Yggdrasil 元数据 2365 RPS，全程零错误。
+
+<details>
+<summary><b>与 blessing-skin-server / element-skin / vSkin 的逐项对照（源码实证）</b></summary>
+
+> 每格结论均对照对方仓库源码复核（路由表 / grep，2026-10-25–26）；方法与逐条证据见 [`docs/competitor-analysis.md`](docs/competitor-analysis.md)。对手占优处照实标注，勘误就地修正并记入 CHANGELOG。
 
 | 能力 | SkinNexus | blessing | element-skin | vSkin |
 |---|---|---|---|---|
-| 搜索引擎可见性（sitemap / robots / 逐页 meta·OG·JSON-LD） | ✅ 全量 | ⚠️ 仅逐页 title + 全站共用 description（无 sitemap/OG/JSON-LD） | ❌ | ❌ |
-| 服务端渲染内容页（免 JS 即出正文、可收录） | ✅ 首页 + 皮肤详情页 | ⚠️ Twig 壳，title 服务端出、正文客户端渲染 | ❌ SPA 壳 | ❌ SPA 壳 |
-| 皮肤库单品页（可分享、可收录 URL） | ✅ `/skinlib/{tid}` | ✅ `/skinlib/show/{tid}`（2026-10-26 勘误补记） | ❌ 仅列表+弹窗 | ❌ 仅列表 |
-| 启动器深链（PCL 系「换皮肤/改密码」直达） | ✅ `/user/closet`·`/user/profile` | ✅ 约定发源地 | ❌ | ❌ |
-| Yggdrasil 官方兜底（本地未命中 → Mojang） | ✅ 出站防护 + 面板热开关 | ❌ | ✅ | ✅ |
-| 找回密码 + SMTP 邮件流 | ✅ 防枚举 / 单次令牌 | ✅ | ✅ | ✅ |
-| OIDC 免密登录（免 Janus 外挂） | ✅ 内置，device_code 等四种 grant 全公告 | ⚠️ 需外挂 Janus + yggdrasil-connect | ⚠️ 实装但 discovery 公告不全 | ⚠️ 设备流完整，OAuth 细节弱 |
-| MUA Union 联盟接入 | ✅ 内置可开关模块，出站同步实装 | ✅ 经 yggdrasil-connect 插件 | ❌ 源码无 | ⚠️ 仅配置壳 |
-| blessing 一键迁移（ID 保全 / UUID 零漂移） | ✅ preflight → dry-run → import | —（迁移源头） | ❌ | ❌ |
-| 封禁执行面 | ✅ 登录 / 认证 / hasJoined 三层 | ✅ 权限位封禁 | ✅ | ❌ 仅挡 hasJoined |
-| 运维观测面（登录 + 服务器/联盟通信日志 90 天 + 审计） | ✅ 全链路面板可查 | ❌ | ⚠️ 仅权限审计 | ❌ |
-| 部署形态 | Go 单二进制 / Docker，CI 直出生产镜像 | PHP 8.1 + Laravel 10（PHP 8.1 已 EOL） | Go + PostgreSQL + Redis | FastAPI + SQLite |
+| SEO（sitemap / robots / 逐页 meta·OG·JSON-LD） | ✅ 全量 | ⚠️ 仅逐页 title + 全站共用 description | ❌ | ❌ |
+| 服务端渲染内容页（免 JS 可收录） | ✅ 首页 + 皮肤详情页 | ⚠️ Twig 壳，正文客户端渲染 | ❌ SPA 壳 | ❌ SPA 壳 |
+| 皮肤库单品页（可分享 URL） | ✅ `/skinlib/{tid}` | ✅ `/skinlib/show/{tid}` | ❌ 列表 + 弹窗 | ❌ 仅列表 |
+| 启动器深链（PCL 系换肤/改密直达） | ✅ `/user/closet`·`/user/profile` | ✅ 约定发源地 | ❌ | ❌ |
+| Mojang 官方兜底 | ✅ 出站防护 + 面板热开关 | ❌ | ✅ | ✅ |
+| 找回密码 + SMTP | ✅ 防枚举 / 单次令牌 | ✅ | ✅ | ✅ |
+| OIDC 免密登录 | ✅ 内置，设备码流 + 刷新轮换 | ⚠️ 需 Janus 外挂 | ⚠️ discovery 公告不全 | ⚠️ OAuth 细节弱 |
+| MUA Union 联盟接入 | ✅ 内置可开关 + 出站同步 | ✅ 经插件 | ❌ | ⚠️ 仅配置壳 |
+| blessing 一键迁移（ID 保全 / UUID 零漂移） | ✅ preflight→dry-run→import | —（迁移源头） | ❌ | ❌ |
+| 封禁执行面 | ✅ 登录 / 认证 / hasJoined | ✅ 权限位 | ✅ | ❌ 仅 hasJoined |
+| 运维观测面（登录 + 通信日志 + 审计） | ✅ 全链路面板可查 | ❌ | ⚠️ 仅权限审计 | ❌ |
+| 部署形态 | Go 单二进制 / Docker，CI 直出镜像 | PHP 8.1 + Laravel 10（PHP 8.1 已 EOL） | Go + PostgreSQL + Redis | FastAPI + SQLite |
 
-**领先区**（逐格实证）：**完整 SEO 体系**、**blessing 一键迁移链**、**全链路运维观测面**三家均无完整实现（逐格证据见 [`docs/competitor-analysis.md`](docs/competitor-analysis.md)）。性能实测（**2 核 / 3.5GB 生产 VPS**）：落地页 ~600 RPS（CPU 封顶）、纹理分发 5182 RPS、Yggdrasil 元数据 2365 RPS、全程零错误（记录见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)）。
+</details>
 
-## 快速开始（站长视角）
+## 核心功能
 
-三条路径任选，详见 [`docs/build.md`](docs/build.md)（构建）与 [`docs/deploy.md`](docs/deploy.md)（部署）：
+**玩家侧**
+- 注册 / 登录（可开启邀请码准入）、账号资料与密码管理
+- 上传皮肤与披风（拖放上传，3D 实时预览，高清皮保留原生分辨率）
+- 衣柜与角色管理、设为头像
+- 皮肤库：可见性三档、筛选与排序、点赞即入柜；单品页可分享
+- 授权应用与设备管理、Union 成员站绑定、账号注销
+
+**站长侧**
+- 管理面板：概览统计、用户 / 角色 / 材质管理、邀请码、站点设置（分组化）、Union 运维、自助诊断
+- 公告（Markdown 双层消毒）、自定义 CSS/JS、主题包切换
+- 封禁三层执行、认证限流与失败锁定、SMTP 找回密码
+- 登录与服务器/联盟通信日志（90 天保留）、操作审计
+
+**兼容与集成**
+- Yggdrasil API 全端点：authlib-injector 零改配置，UUID 零漂移
+- OIDC 免密登录（设备码流 + refresh 轮换，另支持授权码）、MUA Union 成员站模块（默认关 = 零表面）
+- CustomSkinAPI / USM / legacy 裸 PNG / 公开只读 API
+- Mojang 官方兜底：本地未命中时回源官方 sessionserver（出站地址防护 + 面板热开关）
+- 服务端头像与预览渲染：`/avatar/...`、`/preview/...` 输出 PNG
+
+**外观与内容**
+- 主题包体系（零构建：`theme.json` + CSS + 可选 JS）与 [AI 生成提示词模板](docs/theme-spec.md)
+- 中英双语（zh-CN / en），语言包可扩展
+- SEO：SSR 落地页与皮肤详情页、sitemap、robots、可整站 noindex（预发环境）
+
+## 快速部署
+
+**环境**：Docker 20+ / Compose v2；MySQL 5.7 或 8.0（compose 默认内置 8.0，也可接外部库）。
 
 ```bash
-# 路径 A：Docker Compose（推荐）。CI 每轮 push main 自动构建生产镜像推 GHCR，
-# 部署机只拉不编——复制仓库根 docker-compose.yml、改好环境变量后：
-git clone https://github.com/YimingZhanshen/skin-nexus.git && cd skin-nexus
-docker compose up -d                  # 首装；升级 pull && up -d，数据卷零丢失
-# → 空库访问 /setup（或任一 SPA 路由）自动进安装向导（建管理员/站点名/皮肤域）
-# 详细说明（数据库双模式/环境变量表/备份恢复/排错）见 docs/deploy.md §二
+git clone https://github.com/YimingZhanshen/skin-nexus.git
+cd skin-nexus
 
-# 路径 B：源码构建 + systemd（无 Docker 的内网机/主机面板环境）
-# 见 docs/build.md §二、docs/deploy.md §五
+# 编辑 docker-compose.yml，至少改三处：
+#   SKIN_BASE_URL      你的公开访问地址（首次启动前设定，会写入纹理 URL 与 OIDC issuer）
+#   SKIN_DATABASE_DSN  数据库连接串（密码与下方 MYSQL_PASSWORD 保持一致）
+#   SKIN_ADMIN_TOKEN   机器/API 管理令牌（openssl rand -hex 32）
 
-# 路径 C：从老皮肤站（blessing-skin-server）迁移数据
-# 见 docs/migration.md——preflight → dry-run → import 三步，全程可回滚
+docker compose up -d
 ```
 
-**上线后必做**：反代必须透传 `X-Forwarded-Proto` 与 `X-Forwarded-For`（缺失会导致 ALI 协议头错误、全站共享限流桶）；备份签名钥（Docker 主线在 skin-data 卷 `/data/sign-key.pem`，源码部署默认 `data/sign-key.pem`；丢失=全网皮肤失效）。
+首次启动后浏览器打开 `http://<主机>:8080/setup`（空库时访问任一页面也会自动进入向导），填写站点名、管理员账号与皮肤域即可完成安装。
 
-## 路线图（实时）
+- **升级**：`docker compose pull && docker compose up -d`（数据卷不动）
+- **从 blessing-skin-server 迁移**：见 [`docs/migration.md`](docs/migration.md) 的 `preflight → dry-run → import`，全程可回滚
+- **无 Docker / 源码构建**：见 [`docs/build.md`](docs/build.md) 与 [`docs/deploy.md`](docs/deploy.md) §五
 
-| 阶段 | 内容 | 状态 |
-|---|---|---|
-| 一期 M0–M5 | 技术验证 / 骨架 / Yggdrasil 全量 / 迁移工具 / 前端管理 / 部署切流 | ✅ 开发完成（2026-10-22）；**生产切流完成（2026-10-25）** |
-| 二期 H1/H2/L1–L4 | OIDC 免密核心 / Union 可开关模块 / 前端+管理+集成 | ✅ 完成（2026-10-23） |
-| 兼容矩阵 | blessing/yggdrasil-connect 1:1 复刻缺口（实测基线） | ✅ 36 端点实测基线、P1 主干全对齐；缺口明细见 [`docs/compat-matrix.md`](docs/compat-matrix.md) |
-| 三期骨架 | i18n / SEO / 主题与自定义 CSS-JS / Docker Compose / 空库初始化 | ✅ 骨架完成（2026-10-23） |
-| 部署管线 | CI 构建生产镜像→GHCR，部署机只拉不编 | ✅ 完成（2026-10-23） |
-| 管理面板对齐 blessing | B1–B5 全批（侧边栏/统计/状态/用户表/角色表/白名单/ygg 令牌/Union 运维/黑名单） | ✅ 完成（2026-10-24） |
-| 迁移与切流 | 全量迁移闭环 + 正式域名切换 + 签名钥连续性验证 | ✅ 完成（2026-10-24/25） |
-| 真机验收批次 | SJMCL + 社区启动器 OAuth 免密登录→选角→进服 | 🔶 预检已修契约断点，待按清单执行 |
-| 正版绑定 / 插件宿主 | Auth Source 第二实现 / goja 宿主运行时 | ⬜ 后置规划 |
-| 邮箱验证流 | 验证邮件发送 + `SKIN_REQUIRE_VERIFICATION` 开门 | ⬜ 后置规划 |
+**上线前必做**
+
+1. 反向代理透传 `X-Forwarded-Proto` 与 `X-Forwarded-For`（否则协议头错误、全站共享一个限流桶）。
+2. 备份签名密钥（Docker 在 `skin-data` 卷 `/data/sign-key.pem`，源码部署默认 `data/sign-key.pem`）——丢失会导致全网皮肤签名失效。
+
+完整环境变量表、反代示例、备份恢复与排错见 [`docs/deploy.md`](docs/deploy.md)。
 
 ## 文档
 
-面向**部署/迁移**：
+| 文档 | 内容 |
+|---|---|
+| [`docs/deploy.md`](docs/deploy.md) | 部署手册：Compose 双数据库模式、环境变量全表、Nginx 反代、运维 |
+| [`docs/build.md`](docs/build.md) | 构建指南：环境要求、源码构建、Docker 镜像、CI 产物、本地调试 |
+| [`docs/migration.md`](docs/migration.md) | 从 blessing-skin-server 全量迁移：CLI 手册、对账断言、切流与回滚 |
+| [`docs/compat-matrix.md`](docs/compat-matrix.md) | 兼容矩阵：blessing / yggdrasil-connect 逐端点实测基线 |
+| [`docs/theme-spec.md`](docs/theme-spec.md) | 主题包规范与 AI 生成提示词模板 |
+| [`docs/competitor-analysis.md`](docs/competitor-analysis.md) | 竞品对照的源码证据与方法 |
+| [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | 迭代历史（按日期倒序） |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | 贡献指南：翻译 / 主题包 / 代码与文档 |
+| [`AGENTS.md`](AGENTS.md) | 仓库地图、七条铁律与协作纪律（AI agent 首读） |
+| [`GOVERNANCE.md`](GOVERNANCE.md) · [`CITATION.cff`](CITATION.cff) | 治理结构（BDFL）与引用格式 |
 
-- [`docs/build.md`](docs/build.md) —— **构建指南**：环境要求、源码构建（后端/前端）、Docker 镜像、CI 产物、本地开发调试
-- [`docs/deploy.md`](docs/deploy.md) —— 部署、环境变量全表、Nginx 反代、运维要点
-- [`docs/migration.md`](docs/migration.md) —— **迁移指南**：从 blessing-skin-server 全量迁移（migrate 子命令手册 + 切流断言 + 签名钥对齐）
+## 路线图
 
-面向**了解项目/AI agent**：
+| 状态 | 内容 |
+|---|---|
+| ✅ 已完成 | 一期–三期：Yggdrasil 全量、OIDC 免密、Union 模块、i18n / SEO / 主题包、迁移工具链、管理面板；生产全量迁移与切流；v0.1.0 发布 |
+| 🔶 进行中 | 真机启动器验收（SJMCL 及社区启动器：OAuth 免密 → 选角 → 进服） |
+| ⬜ 规划中 | 正版账号绑定（Auth Source 第二实现）、插件宿主运行时（goja）、邮箱验证流 |
 
-- [`AGENTS.md`](AGENTS.md) —— 仓库地图、七条铁律、常用命令（AI agent 首读）
-- [`docs/standards.md`](docs/standards.md) —— 协作开发规范与 Agent 开发指南
-- [`docs/blueprint.md`](docs/blueprint.md) —— 设计蓝图：目标、架构、技术路线对比、协议分析（设计决策记录，实时状态以本文为准）
-- [`docs/compat-matrix.md`](docs/compat-matrix.md) —— blessing / yggdrasil-connect 兼容矩阵与缺口优先级（实测基线）
-- [`docs/competitor-analysis.md`](docs/competitor-analysis.md) —— 竞品对照的逐格源码证据与方法（README 对照表的事实源）
-- [`docs/theme-spec.md`](docs/theme-spec.md) —— 主题包规范（含 AI 生成主题的提示词模板）
-- [`docs/CHANGELOG.md`](docs/CHANGELOG.md) —— 迭代历史（按日期倒序的要点记录）
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) —— **贡献指南**：语言翻译 / 主题包 / 代码与文档三类贡献
-- [`GOVERNANCE.md`](GOVERNANCE.md) / [`CITATION.cff`](CITATION.cff) —— 治理结构（BDFL）与引用格式
+## 兼容契约（不可破坏）
 
-## 关键兼容契约（不可破坏）
-
-改动以下任意项前先读 [`AGENTS.md`](AGENTS.md) 铁律并跑对应契约测试：
+改动以下任意一项前，先读 [`AGENTS.md`](AGENTS.md) 铁律并跑对应契约测试：
 
 1. `/api/yggdrasil/**` 全路径原语义（204 清单、错误体 `{error,errorMessage}`、毫秒时间戳、PEM 严格格式）
 2. 玩家 UUID 零漂移（`OfflinePlayer:` md5 变体，改名不重算）
-3. 持久化数据与 blessing 存储约定同构可直迁（数据兼容铁律）
-4. `internal/union` 与 `internal/plugin` 的 wire/hook 契约冻结
+3. 持久化数据与 blessing-skin-server 存储约定同构可直迁
+4. `internal/union` wire 契约与 `internal/plugin` hook 合约冻结
 
-## 作者与署名
+## 参与贡献
 
-本项目由 **YMZS（[GitHub @YimingZhanshen](https://github.com/YimingZhanshen)）** 发起并享有原始著作权。治理结构见 [`GOVERNANCE.md`](GOVERNANCE.md)，引用格式见 [`CITATION.cff`](CITATION.cff)。
+翻译、主题包、代码与文档都欢迎，见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。治理为 BDFL，日常改动走 PR；AI 辅助贡献可以，但提交者对输出负全责（证据铁律）。
 
 ## 许可
 
-AGPL-3.0（见 [`LICENSE`](LICENSE)）。版权行为：`Copyright (c) 2026 YMZS (YimingZhanshen) and SkinNexus contributors`。
+AGPL-3.0（见 [`LICENSE`](LICENSE)）。版权行：`Copyright (c) 2026 YMZS (YimingZhanshen) and SkinNexus contributors`。

@@ -1,7 +1,6 @@
 // Package oidc is the built-in OAuth2/OIDC provider (yggc/OIDC passwordless
-// login, replacing the legacy Janus sidecar). Client contract is pinned in
-// analysis/oidc-client-contract-synthesis.md; provider engine is zitadel/oidc
-// v3 (selection record: analysis/oidc-lib-eval.md).
+// login, replacing the legacy Janus sidecar). Client contract baseline lives
+// in docs/compat-matrix.md; provider engine is zitadel/oidc v3.
 //
 // backend.go defines the persistence contract shared by the DB implementation
 // (internal/store) and in-memory test doubles. No zitadel types leak here.
