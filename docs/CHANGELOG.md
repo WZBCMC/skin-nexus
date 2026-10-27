@@ -2,6 +2,20 @@
 
 > 粒度 = 每轮开发收尾。README「状态」行只保留一句话摘要，逐轮细节沉淀在此文件（与 README 状态行每轮同步维护）。
 
+## 2026-10-27（前端逻辑修复批 C：访客引导/错误位/反馈/401 统一 + admin lint 存量清零）
+
+批 B 台账全清（除记档两项）：
+
+- **M3 访客引导与语义**：皮肤库 ♥ 对访客改 `pendingView` 闭环（弹登录、登录后回皮肤库）；`skinlib.likeTip`「喜欢（加入衣柜）」title 明确语义；详情页 viewer 401 带 `?next=` 回跳（登录后回本详情页，不再丢上下文），失败从静默改为按钮旁 3 秒可见提示。
+- **M1+L8 错误位分离**：DashboardPage 数据加载/入柜失败改走页面级 `pageErr` 横幅（不再混进上传卡）；App.vue `dataErr` 死代码删除。
+- **M2 静默失败**：SettingsView SEO/外观卡加载失败不再消失——卡外失败卡（错误 + 重试按钮）。
+- **M7 反馈**：SettingsView 保存、皮肤库改名/公开切换成功给「已保存」绿字；动作开始清错误/成功态。
+- **M5 401 统一**：SkinlibPage/UnionBindPage/AuthorizedAppsPage 全部 catch 走 `guard401`；DevicePage 用 `e.status === 401` 判定（弃消息文本猜测，设备流程保留原页提示）。
+- **L 项**：L2 披风不再显示 Steve/Alex 徽章；L3 UsersView 空状态 + `passwordAlgo` 防御；L4 材质卡去误导性跳转（无纹理管理视图，改展示卡）；L10 过时注释更新。
+- **admin lint 存量清零**：DashboardView/DevicePage/SettingsView/UsersView 首次 lint 暴露 31 条旧债（off-scale px/字面色/fallback/emoji 图标）批量清账（4px 网格、token 化、去 `var(--x,#hex)` fallback、⚠️ 移除）；终态仅剩 6 条诊断导出模板例外（独立 HTML 文档无 token 上下文，历轮已说明保留）。
+- **记档待办**：M7 剩余（UsersView 内联编辑、UnionView blAdd 成功反馈）、L5 i18n 彻底化、L7 ProfilePage 头像注释/省略号、L9 prompt 对话框组件化。
+- SPA build ✓（Go 侧本轮未动）。
+
 ## 2026-10-27（前端逻辑修复批 B：真 404 + SEO 归位 + 错误可见性——子代理扫描 Top5 落地）
 
 子代理只读审查报告（H1-H4/M1-M8/L1-L10）落地第二批（H1/H2 已于批 A 完成）：
