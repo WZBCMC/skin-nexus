@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/YimingZhanshen/skin-nexus/actions/workflows/ci.yml"><img src="https://github.com/YimingZhanshen/skin-nexus/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/YimingZhanshen/skin-nexus/releases/tag/v0.1.0"><img src="https://img.shields.io/badge/release-v0.1.0-blue" alt="v0.1.0"></a>
+  <a href="https://github.com/YimingZhanshen/skin-nexus/releases/tag/v0.2.0"><img src="https://img.shields.io/badge/release-v0.2.0-blue" alt="v0.2.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-green" alt="AGPL-3.0"></a>
 </p>
 
@@ -16,7 +16,7 @@
 
 It is a modern rewrite of [blessing-skin-server](https://github.com/bs-community/blessing-skin-server) in **Go + Vue 3**, already proven in a real production migration: **67 users / 61 textures with zero row loss and zero player-UUID drift**.
 
-- **Release**: v0.1.0 (2026-10-25) · iteration history in [`docs/CHANGELOG.md`](docs/CHANGELOG.md) (Chinese)
+- **Release**: v0.2.0 (2026-10-27) · iteration history in [`docs/CHANGELOG.md`](docs/CHANGELOG.md) (Chinese)
 - **License**: AGPL-3.0 · **Author / copyright holder**: YMZS
 
 ## Why SkinNexus
@@ -128,7 +128,7 @@ Most detailed docs are currently in Chinese.
 
 | Status | Item |
 |---|---|
-| ✅ Done | Phases 1–3: full Yggdrasil, OIDC passwordless, Union module, i18n / SEO / theme packs, migration toolchain, admin panel; production migration and cutover; v0.1.0 |
+| ✅ Done | Phases 1–3: full Yggdrasil, OIDC passwordless, Union module, i18n / SEO / theme packs, migration toolchain, admin panel; production migration and cutover; v0.2.0 (password reset / Mojang fallback / ops logs / SEO content pages) |
 | 🔶 In progress | Real-device launcher acceptance (SJMCL and community launchers: OAuth → character select → join) |
 | ⬜ Planned | Official-account binding (second Auth Source), plugin host runtime (goja), email verification |
 

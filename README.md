@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/YimingZhanshen/skin-nexus/actions/workflows/ci.yml"><img src="https://github.com/YimingZhanshen/skin-nexus/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/YimingZhanshen/skin-nexus/releases/tag/v0.1.0"><img src="https://img.shields.io/badge/release-v0.1.0-blue" alt="v0.1.0"></a>
+  <a href="https://github.com/YimingZhanshen/skin-nexus/releases/tag/v0.2.0"><img src="https://img.shields.io/badge/release-v0.2.0-blue" alt="v0.2.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-green" alt="AGPL-3.0"></a>
 </p>
 
@@ -14,7 +14,7 @@
 
 它是 [blessing-skin-server](https://github.com/bs-community/blessing-skin-server) 的现代化重写（Go + Vue 3），已在一套真实生产环境完成全量迁移与切流：**67 用户 / 61 纹理零丢行、玩家 UUID 零漂移**。
 
-- **当前版本**：v0.1.0（2026-10-25）· 迭代历史见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)
+- **当前版本**：v0.2.0（2026-10-27）· 迭代历史见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)
 - **许可**：AGPL-3.0 · **发起人 / 著作权人**：YMZS
 
 ## 为什么选 SkinNexus
@@ -124,7 +124,7 @@ docker compose up -d
 
 | 状态 | 内容 |
 |---|---|
-| ✅ 已完成 | 一期–三期：Yggdrasil 全量、OIDC 免密、Union 模块、i18n / SEO / 主题包、迁移工具链、管理面板；生产全量迁移与切流；v0.1.0 发布 |
+| ✅ 已完成 | 一期–三期：Yggdrasil 全量、OIDC 免密、Union 模块、i18n / SEO / 主题包、迁移工具链、管理面板；生产全量迁移与切流；v0.2.0 发布（自助找回 / 官方兜底 / 运维日志 / SEO 内容页） |
 | 🔶 进行中 | 真机启动器验收（SJMCL 及社区启动器：OAuth 免密 → 选角 → 进服） |
 | ⬜ 规划中 | 正版账号绑定（Auth Source 第二实现）、插件宿主运行时（goja）、邮箱验证流 |
 
