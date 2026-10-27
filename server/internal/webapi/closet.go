@@ -30,7 +30,7 @@ func (b *Backend) handleClosetList(w http.ResponseWriter, r *http.Request) {
 			"model": c.Model, "hash": c.Hash, // hash: closet search + dedupe hints
 		}
 		if c.Hash != "" {
-			item["url"] = b.Store.TextureURL(c.Hash)
+			item["url"] = b.textureURL(r.Context(), c.Hash, c.Type)
 		} else {
 			item["url"] = "" // orphan legacy row — visible, removable
 		}

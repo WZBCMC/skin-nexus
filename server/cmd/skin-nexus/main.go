@@ -33,6 +33,7 @@ import (
 	"skin-nexus/server/internal/config"
 	"skin-nexus/server/internal/migrate"
 	"skin-nexus/server/internal/oidc"
+	"skin-nexus/server/internal/plugin"
 	"skin-nexus/server/internal/publicapi"
 	"skin-nexus/server/internal/ratelimit"
 	"skin-nexus/server/internal/seo"
@@ -140,6 +141,23 @@ func main() {
 	}
 	appearEng := appearance.NewEngine(st, themeReg)
 
+	// Plugin host (v0.3.0): scans <data>/plugins; invalid directories are
+	// recorded as errored entries and never abort boot. Hooks are fail-open
+	// so a crashing plugin cannot alter the frozen Yggdrasil wire.
+	pluginHost := plugin.NewHost(plugin.RuntimeConfig{
+		Dir:         cfg.PluginsDir,
+		HostVersion: version,
+		State:       st,
+		Audit: func(ctx context.Context, action string, detail map[string]any) {
+			st.InsertAudit(ctx, 0, action, detail)
+		},
+	})
+	if err := pluginHost.Load(cfg.PluginsDir); err != nil {
+		log.Printf("plugins: load %s: %v", cfg.PluginsDir, err)
+	} else if n := len(pluginHost.List()); n > 0 {
+		log.Printf("plugins: %d scanned from %s", n, cfg.PluginsDir)
+	}
+
 	signer, err := ygg.NewLocalSigner(cfg.SignKeyPath)
 	if err != nil {
 		log.Fatalf("signer: %v", err)
@@ -160,6 +178,10 @@ func main() {
 	}
 
 	yggSvc := ygg.NewService(st, activeSigner)
+	yggSvc.TextureURL = pluginHost.TextureURL
+	yggSvc.ProfileFilter = pluginHost.ProfileFilter
+	yggSvc.AuthPhase = pluginHost.EmitAuthPhase
+	yggSvc.UserLifecycle = pluginHost.EmitUserLifecycle
 	oidcDiscoveryURL := ""
 	var oidcProvider *oidc.Provider
 	if cfg.OIDCEnabled {
@@ -257,6 +279,10 @@ func main() {
 		}
 	}()
 	backend := webapi.New(st, ts, yggSvc)
+	backend.TextureURL = pluginHost.TextureURL
+	backend.ProfileFilter = pluginHost.ProfileFilter
+	backend.OnTextureUploaded = pluginHost.EmitTextureUploaded
+	backend.OnUserLifecycle = pluginHost.EmitUserLifecycle
 	backend.Access = accessLog
 	backend.RequireInvite = cfg.RequireInvite
 	// A1 找回密码: reset-link base + mail subject + env fallbacks for the
@@ -346,7 +372,9 @@ func main() {
 		backend.MountUnion(unionOut) // registers /api/v1/union/* (zero surface when disabled)
 	}
 	pub := publicapi.New(st, ts)
+	pub.TextureURL = pluginHost.TextureURL
 	admin := adminapi.New(st, yggSvc)
+	admin.OnUserLifecycle = pluginHost.EmitUserLifecycle
 	admin.Version = version
 	// Union hot settings (2026-10-24 拍板「热切换」): the three hot keys apply
 	// on save without a restart; the rest of the union group is marked
@@ -472,6 +500,7 @@ func main() {
 		}()
 	}
 	admin.MountAppearance(adminapi.AppearanceDeps{SEO: seoEng, Appear: appearEng, Themes: themeReg})
+	admin.MountPlugins(adminapi.PluginsDeps{Host: pluginHost})
 	if unionSigner != nil {
 		admin.MountUnion(adminapi.UnionDeps{
 			Enabled: ustack.Enabled, // hot gate: 404 whole subtree when off
@@ -591,7 +620,7 @@ func main() {
 	// Public server-rendered texture detail page (2026-10-25 拍板: 皮肤详情
 	// 是搜索引擎的内容页). Registered on the root mux so it beats the SPA
 	// catch-all below; private textures render only for their owner (noindex).
-	root.HandleFunc("GET /skinlib/{tid}", texturePageHandler(st, seoEng, appearEng, cfg.SiteName, cfg.BaseURL))
+	root.HandleFunc("GET /skinlib/{tid}", texturePageHandler(st, seoEng, appearEng, cfg.SiteName, cfg.BaseURL, pluginHost.TextureURL))
 	// Public landing page data (counts + featured library cards + login state).
 	landingFn := func(r *http.Request) landingData {
 		ctx := r.Context()
@@ -631,6 +660,9 @@ func main() {
 	if oidcProvider != nil {
 		spa = oidcProvider.Wrap(spa)
 	}
+	// Plugin routes (read-only, GET/HEAD) resolve per request from the live
+	// registry so enable/disable takes effect without touching the mux.
+	root.Handle("/api/plugins/", pluginHost.Handler())
 	root.Handle("/", spa)
 
 	addr := cfg.Listen
@@ -652,6 +684,7 @@ func main() {
 		// of dropping uploads and texture downloads mid-response. 8s stays
 		// inside Docker's default 10s stop timeout before SIGKILL.
 		log.Printf("received %s, shutting down", sig)
+		_ = pluginHost.Close()
 		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(ctx); err != nil {

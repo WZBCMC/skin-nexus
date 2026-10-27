@@ -14,6 +14,7 @@ import SettingsView from './admin/SettingsView.vue'
 import StatusView from './admin/StatusView.vue'
 import UnionView from './admin/UnionView.vue'
 import AccessLogsView from './admin/AccessLogsView.vue'
+import PluginsView from './admin/PluginsView.vue'
 
 const { t } = useI18n()
 
@@ -28,6 +29,7 @@ const nav = [
   { id: 'status', labelKey: 'admin.navStatus', comp: StatusView },
   { id: 'access', labelKey: 'admin.navAccess', comp: AccessLogsView },
   { id: 'union', labelKey: 'admin.navUnion', comp: UnionView },
+  { id: 'plugins', labelKey: 'admin.navPlugins', comp: PluginsView },
 ]
 const current = ref('dashboard')
 const currentComp = shallowRef(DashboardView)

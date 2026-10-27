@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"skin-nexus/server/internal/auth"
+	"skin-nexus/server/internal/plugin"
 	"skin-nexus/server/internal/store"
 )
 
@@ -178,6 +179,9 @@ func (b *Backend) handleUserDelete(w http.ResponseWriter, r *http.Request) {
 	b.Store.InsertAudit(r.Context(), actorUID(r), "admin_user_delete", map[string]any{"target": id})
 	if b.OnUserDeleted != nil {
 		b.OnUserDeleted(id, players) // async inside the hook; never blocks this response
+	}
+	if b.OnUserLifecycle != nil {
+		b.OnUserLifecycle(r.Context(), plugin.UserLifecycleEvent{Kind: "deleted", UserID: id})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

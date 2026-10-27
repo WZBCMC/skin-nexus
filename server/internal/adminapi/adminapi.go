@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strconv"
 
+	"skin-nexus/server/internal/plugin"
 	"skin-nexus/server/internal/store"
 	"skin-nexus/server/internal/ygg"
 )
@@ -28,6 +29,7 @@ type Backend struct {
 	union          UnionDeps        // nil until MountUnion (module disabled = no routes)
 	sharedClientID string           // guard: shared launcher client cannot be deleted
 	appearance     *AppearanceDeps  // nil until MountAppearance
+	plugins        *PluginsDeps     // nil until MountPlugins (no plugin routes)
 	// SettingsDefaults carries env-derived fallbacks for the settings panel
 	// (injected by main from config).
 	SettingsDefaults map[string]string
@@ -39,6 +41,9 @@ type Backend struct {
 	// delete (players/uuid_map rows are gone afterwards). main wires the
 	// best-effort union hub announcement (webapi create-sync precedent).
 	OnUserDeleted func(uid int64, players [][2]string)
+	// OnUserLifecycle mirrors admin-driven deletions into the plugin host's
+	// lifecycle event stream (nil = no plugins).
+	OnUserLifecycle func(ctx context.Context, e plugin.UserLifecycleEvent)
 	// OnPlayerDeleted fires after an admin player deletion with the
 	// (uuid, name) captured before the delete — main wires the same
 	// best-effort union hub announcement as OnUserDeleted (B3).
@@ -122,6 +127,11 @@ func (b *Backend) Handler() http.Handler {
 		mux.HandleFunc("GET /api/admin/v1/appearance", b.auth(b.handleAppearanceGet))
 		mux.HandleFunc("POST /api/admin/v1/appearance", b.auth(b.handleAppearanceSave))
 		mux.HandleFunc("GET /api/admin/v1/themes", b.auth(b.handleThemesList))
+	}
+	// Plugin host (v0.3.0): list for any admin, mutations super-admin only.
+	if b.plugins != nil {
+		mux.HandleFunc("GET /api/admin/v1/plugins", b.auth(b.handlePluginsList))
+		mux.HandleFunc("POST /api/admin/v1/plugins/{name}/{action}", b.auth(b.handlePluginAction))
 	}
 	// 1 MiB body cap (review B P2) — admin JSON endpoints included.
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

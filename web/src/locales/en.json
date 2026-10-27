@@ -430,6 +430,25 @@
     "oidcIdRequired": "client_id is required",
     "oidcSecretOnce": "Client secret (shown only once — save it now):",
     "oidcDeleteConfirm": "Delete OAuth client {id}? Apps using it can no longer sign in.",
-    "oidcDelete": "Delete"
+    "oidcDelete": "Delete",
+    "navPlugins": "Plugins",
+    "pluginsTitle": "Plugin management",
+    "pluginsHint": "Plugin dir: <data>/plugins/&lt;name&gt;/. Drop a folder then reload or restart to discover it. Enabling runs third-party code inside the server process (not sandboxed).",
+    "pluginsReadOnly": "Read-only session: enabling/disabling/reloading plugins requires a SUPER_ADMIN web session.",
+    "pluginsEmpty": "No plugins found. Drop a plugin folder into <data>/plugins/ and reload.",
+    "pluginsEnable": "Enable",
+    "pluginsDisable": "Disable",
+    "pluginsReload": "Reload",
+    "pluginsEnableConfirm": "Enabling executes this plugin's code inside the server process (not sandboxed). Continue?",
+    "colPluginName": "Plugin",
+    "colVersion": "Version",
+    "colAuthor": "Author",
+    "colPerms": "Permissions",
+    "colState": "State",
+    "colError": "Last error",
+    "colActions": "Actions",
+    "stateLoaded": "loaded",
+    "stateDisabled": "disabled",
+    "stateError": "error"
   }
 }

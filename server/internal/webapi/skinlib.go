@@ -61,7 +61,7 @@ func (b *Backend) handleSkinlibList(w http.ResponseWriter, r *http.Request) {
 			"likes":      row.Likes,
 			"liked":      row.Liked,
 			"uploadAt":   uploadAt,
-			"textureURL": b.Store.TextureURL(row.Hash),
+			"textureURL": b.textureURL(r.Context(), row.Hash, row.Type),
 		}
 		// Renderer version in the URL: previews are immutable-cached for a
 		// year, so a rasterizer fix (e.g. HD-sheet sampling, v2) must change

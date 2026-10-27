@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"skin-nexus/server/internal/plugin"
 	"skin-nexus/server/internal/ratelimit"
 )
 
@@ -43,6 +44,10 @@ type Player struct {
 	SkinURL  string
 	SkinModel string
 	CapeURL  string
+	// SkinHash/CapeHash carry the raw texture hashes (pre-URL-rewrite) so
+	// plugin URL filters can key on the content address. Not serialized.
+	SkinHash string `json:"-"`
+	CapeHash string `json:"-"`
 }
 
 // Token is an issued access token (opaque string; format intentionally
@@ -116,6 +121,17 @@ type Service struct {
 	authGapResolver   func(ctx context.Context) time.Duration
 	tokenLimitResolver func(ctx context.Context) int
 	searchMaxResolver  func(ctx context.Context) int
+
+	// Plugin host hooks (v0.3.0). Nil = no plugins; all fail-open so a
+	// crashing plugin can never alter the frozen Yggdrasil wire.
+	// TextureURL rewrites a texture URL (content-address key + type) before
+	// it is embedded in a signed profile; ProfileFilter mutates the resolved
+	// texture URL map pre-signature; AuthPhase observes join/hasJoined;
+	// UserLifecycle observes launcher logins.
+	TextureURL    func(ctx context.Context, hash, url, typ string) string
+	ProfileFilter func(ctx context.Context, p *plugin.UserProfileFilter)
+	AuthPhase     func(ctx context.Context, e plugin.AuthPhaseEvent)
+	UserLifecycle func(ctx context.Context, e plugin.UserLifecycleEvent)
 }
 
 // SetAuthGapResolver wires ygg_rate_limit (milliseconds → gap).
@@ -386,6 +402,9 @@ func (s *Service) Authenticate(ctx context.Context, username, password, clientTo
 		return Token{}, nil, err
 	}
 	s.enforceTokenLimit(ctx, t.UserID) // ygg_tokens_limit LRU (best-effort)
+	if s.UserLifecycle != nil {
+		s.UserLifecycle(ctx, plugin.UserLifecycleEvent{Kind: "logged_in", UserID: u.ID})
+	}
 	return t, players, nil
 }
 
@@ -499,6 +518,9 @@ func (s *Service) Join(ctx context.Context, accessToken, playerUUID, serverID, s
 	if t.SelectedPID != 0 && p.ID != t.SelectedPID {
 		return ErrPlayerMismatch
 	}
+	if s.AuthPhase != nil {
+		s.AuthPhase(ctx, plugin.AuthPhaseEvent{Phase: "pre_join", UUID: NormalizeUUID(playerUUID), Player: p.Name})
+	}
 	return s.store.SaveJoin(ctx, JoinSession{
 		AccessToken: t.AccessToken,
 		UUID:        NormalizeUUID(playerUUID),
@@ -557,6 +579,9 @@ func (s *Service) HasJoined(ctx context.Context, username, serverID, serverIP st
 		return Profile{}, err
 	}
 	_ = js
+	if s.AuthPhase != nil {
+		s.AuthPhase(ctx, plugin.AuthPhaseEvent{Phase: "post_has_joined", UUID: p.UUID, Player: p.Name})
+	}
 	return s.buildProfile(ctx, p, true) // hasJoined always signs
 }
 
@@ -611,9 +636,30 @@ func (s *Service) LookupBulk(ctx context.Context, names []string) []Player {
 }
 
 func (s *Service) buildProfile(ctx context.Context, p Player, withSig bool) (Profile, error) {
-	props, err := AssembleTextures(p.UUID, p.Name, TextureSet{
-		SkinURL: p.SkinURL, SkinModel: p.SkinModel, CapeURL: p.CapeURL,
-	}, s.now(), withSig, s.signer)
+	ts := TextureSet{SkinURL: p.SkinURL, SkinModel: p.SkinModel, CapeURL: p.CapeURL}
+	// Plugin filters run strictly BEFORE AssembleTextures: the signature
+	// covers whatever URLs end up in the textures property, so rewriting
+	// after signing would make clients reject the profile.
+	if s.TextureURL != nil {
+		if ts.SkinURL != "" {
+			ts.SkinURL = s.TextureURL(ctx, p.SkinHash, ts.SkinURL, "skin")
+		}
+		if ts.CapeURL != "" {
+			ts.CapeURL = s.TextureURL(ctx, p.CapeHash, ts.CapeURL, "cape")
+		}
+	}
+	if s.ProfileFilter != nil {
+		pf := plugin.UserProfileFilter{
+			PlayerID:    p.ID,
+			PlayerName:  p.Name,
+			UUID:        p.UUID,
+			TexturesURL: map[string]string{"SKIN": ts.SkinURL, "CAPE": ts.CapeURL},
+		}
+		s.ProfileFilter(ctx, &pf)
+		ts.SkinURL = pf.TexturesURL["SKIN"]
+		ts.CapeURL = pf.TexturesURL["CAPE"]
+	}
+	props, err := AssembleTextures(p.UUID, p.Name, ts, s.now(), withSig, s.signer)
 	if err != nil {
 		return Profile{}, err
 	}

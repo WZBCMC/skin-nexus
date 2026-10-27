@@ -22,6 +22,7 @@ import (
 	"skin-nexus/server/internal/accesslog"
 	"skin-nexus/server/internal/announce"
 	"skin-nexus/server/internal/auth"
+	"skin-nexus/server/internal/plugin"
 	"skin-nexus/server/internal/ratelimit"
 	"skin-nexus/server/internal/store"
 	"skin-nexus/server/internal/texture"
@@ -64,6 +65,12 @@ type Backend struct {
 	// and inbound Union traffic lines for the admin panel. Best-effort —
 	// a failed log write never changes an HTTP response.
 	Access *accesslog.Logger
+
+	// Plugin host hooks (v0.3.0, nil = no plugins, all fail-open).
+	TextureURL        func(ctx context.Context, hash, url, typ string) string
+	ProfileFilter     func(ctx context.Context, p *plugin.UserProfileFilter)
+	OnTextureUploaded func(ctx context.Context, e plugin.TextureUploadedEvent)
+	OnUserLifecycle   func(ctx context.Context, e plugin.UserLifecycleEvent)
 
 	// union is the MUA Union hub client (nil or disabled -> no /api/v1/union/*
 	// routes exist at all: zero surface for non-alliance deployments).
@@ -339,6 +346,9 @@ func (b *Backend) handleRegister(w http.ResponseWriter, r *http.Request) {
 	b.webAccessLog(r, accesslog.Entry{Kind: accesslog.WebRegister,
 		Outcome: accesslog.OutcomeOK, UID: uid, Who: req.Nickname,
 		Detail: "invite=" + strconv.FormatBool(code != "")})
+	if b.OnUserLifecycle != nil {
+		b.OnUserLifecycle(r.Context(), plugin.UserLifecycleEvent{Kind: "registered", UserID: uid})
+	}
 	writeJSON(w, http.StatusCreated, map[string]interface{}{"id": uid, "nickname": req.Nickname})
 }
 
@@ -416,6 +426,9 @@ func (b *Backend) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	b.webAccessLog(r, accesslog.Entry{Kind: accesslog.WebLogin,
 		Outcome: accesslog.OutcomeOK, UID: u.ID, Who: u.Nickname, Detail: "web"})
+	if b.OnUserLifecycle != nil {
+		b.OnUserLifecycle(r.Context(), plugin.UserLifecycleEvent{Kind: "logged_in", UserID: u.ID})
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"id": u.ID, "nickname": u.Nickname})
 }
 
@@ -528,7 +541,7 @@ func (b *Backend) handleListTextures(w http.ResponseWriter, r *http.Request) {
 		out = append(out, item{
 			ID: t.ID, Type: t.Type, Hash: t.Hash, Model: t.Model,
 			Description: t.Description,
-			URL:         b.Store.TextureURL(t.Hash),
+			URL:         b.textureURL(r.Context(), t.Hash, t.Type),
 			UploadAt:    t.UploadAt.Format(time.RFC3339),
 		})
 	}
@@ -589,12 +602,28 @@ func (b *Backend) handleUploadTexture(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	if b.OnTextureUploaded != nil {
+		// Fire-and-forget: a plugin failure must never 500 a committed row.
+		b.OnTextureUploaded(r.Context(), plugin.TextureUploadedEvent{
+			UserID: uid, Hash: res.Hash, Type: string(typ),
+		})
+	}
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
-		"id": tid, "type": typ, "hash": res.Hash, "url": b.Store.TextureURL(res.Hash),
+		"id": tid, "type": typ, "hash": res.Hash, "url": b.textureURL(r.Context(), res.Hash, string(typ)),
 	})
 }
 
 // ---- players ----
+
+// textureURL resolves a texture URL and lets plugin URL filters rewrite it
+// (fail-open: a plugin error keeps the host-built URL).
+func (b *Backend) textureURL(ctx context.Context, hash, typ string) string {
+	u := b.Store.TextureURL(hash)
+	if b.TextureURL != nil {
+		u = b.TextureURL(ctx, hash, u, typ)
+	}
+	return u
+}
 
 func (b *Backend) handleListPlayers(w http.ResponseWriter, r *http.Request) {
 	uid, err := b.currentUser(r)
@@ -606,6 +635,27 @@ func (b *Backend) handleListPlayers(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "db error")
 		return
+	}
+	ctx := r.Context()
+	for i := range players {
+		p := &players[i]
+		if b.TextureURL != nil {
+			if p.SkinURL != "" {
+				p.SkinURL = b.TextureURL(ctx, p.SkinHash, p.SkinURL, "skin")
+			}
+			if p.CapeURL != "" {
+				p.CapeURL = b.TextureURL(ctx, p.CapeHash, p.CapeURL, "cape")
+			}
+		}
+		if b.ProfileFilter != nil {
+			pf := plugin.UserProfileFilter{
+				PlayerID: p.ID, PlayerName: p.Name, UUID: p.UUID,
+				TexturesURL: map[string]string{"SKIN": p.SkinURL, "CAPE": p.CapeURL},
+			}
+			b.ProfileFilter(ctx, &pf)
+			p.SkinURL = pf.TexturesURL["SKIN"]
+			p.CapeURL = pf.TexturesURL["CAPE"]
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"players": players})
 }

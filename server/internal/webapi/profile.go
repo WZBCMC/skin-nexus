@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"skin-nexus/server/internal/plugin"
 	"skin-nexus/server/internal/store"
 )
 
@@ -125,6 +126,9 @@ func (b *Backend) handleAccountDelete(w http.ResponseWriter, r *http.Request) {
 	if err := b.Store.DeleteUser(r.Context(), uid); err != nil {
 		writeErr(w, http.StatusInternalServerError, "delete failed")
 		return
+	}
+	if b.OnUserLifecycle != nil {
+		b.OnUserLifecycle(r.Context(), plugin.UserLifecycleEvent{Kind: "deleted", UserID: uid})
 	}
 	// Audit carries the (now-gone) uid as actor — audit rows are kept by
 	// contract and actor_uid has no FK to users.

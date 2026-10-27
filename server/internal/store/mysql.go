@@ -185,11 +185,13 @@ func scanPlayerRow(s rowScanner, baseURL string) (ygg.Player, error) {
 	if err != nil {
 		return ygg.Player{}, err
 	}
-	// hash columns -> absolute texture URLs
+	// hash columns -> absolute texture URLs (hashes kept for plugin filters)
 	if p.SkinURL != "" && !strings.HasPrefix(p.SkinURL, "http") {
+		p.SkinHash = p.SkinURL
 		p.SkinURL = baseURL + "/textures/" + p.SkinURL
 	}
 	if p.CapeURL != "" && !strings.HasPrefix(p.CapeURL, "http") {
+		p.CapeHash = p.CapeURL
 		p.CapeURL = baseURL + "/textures/" + p.CapeURL
 	}
 	return p, nil

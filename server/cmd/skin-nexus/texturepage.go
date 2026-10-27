@@ -226,7 +226,7 @@ func texJSONLD(d texDetailData, canonical string) string {
 // texturePageHandler serves GET /skinlib/{tid}. Visibility: public textures
 // render for everyone; private textures render only for their owner (or an
 // admin) and carry noindex; anything else 404s with a branded page.
-func texturePageHandler(st *store.Mysql, seoEng *seo.Engine, appearEng *appearance.Engine, siteName, baseURL string) http.HandlerFunc {
+func texturePageHandler(st *store.Mysql, seoEng *seo.Engine, appearEng *appearance.Engine, siteName, baseURL string, texURL func(ctx context.Context, hash, url, typ string) string) http.HandlerFunc {
 	base := strings.TrimRight(baseURL, "/")
 	return func(w http.ResponseWriter, r *http.Request) {
 		tid, err := strconv.ParseInt(r.PathValue("tid"), 10, 64)
@@ -281,6 +281,9 @@ func texturePageHandler(st *store.Mysql, seoEng *seo.Engine, appearEng *appearan
 			d.PreviewURL = "/textures/" + row.Hash
 		}
 		d.TextureURL = st.TextureURL(row.Hash)
+		if texURL != nil {
+			d.TextureURL = texURL(r.Context(), row.Hash, d.TextureURL, row.Type)
+		}
 		d.PreviewAbsURL = absURL(base, d.PreviewURL)
 
 		canonical := base + "/skinlib/" + strconv.FormatInt(row.TID, 10)

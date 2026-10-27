@@ -433,6 +433,25 @@
     "oidcIdRequired": "client_id 必填",
     "oidcSecretOnce": "客户端密钥（仅显示这一次，请立即保存）：",
     "oidcDeleteConfirm": "删除 OAuth 客户端 {id}？使用它的应用将无法登录。",
-    "oidcDelete": "删除"
+    "oidcDelete": "删除",
+    "navPlugins": "插件",
+    "pluginsTitle": "插件管理",
+    "pluginsHint": "插件目录：<data>/plugins/&lt;名称&gt;/。放入后需重载或重启才会被发现；启用即在服务进程内执行第三方代码（非沙箱）。",
+    "pluginsReadOnly": "当前会话为只读：插件启停/重载需要超级管理员网页会话。",
+    "pluginsEmpty": "未发现插件。把插件目录放入 <data>/plugins/ 后重载。",
+    "pluginsEnable": "启用",
+    "pluginsDisable": "停用",
+    "pluginsReload": "重载",
+    "pluginsEnableConfirm": "启用将在服务进程内执行该插件代码（非沙箱）。确认启用？",
+    "colPluginName": "插件",
+    "colVersion": "版本",
+    "colAuthor": "作者",
+    "colPerms": "权限",
+    "colState": "状态",
+    "colError": "最近错误",
+    "colActions": "操作",
+    "stateLoaded": "已加载",
+    "stateDisabled": "已停用",
+    "stateError": "错误"
   }
 }

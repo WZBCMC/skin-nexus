@@ -25,6 +25,9 @@ import (
 type Backend struct {
 	Store    *store.Mysql
 	Textures *texture.Store
+	// TextureURL, when set by the plugin host, rewrites texture URLs at
+	// response time (fail-open). Nil = no plugins.
+	TextureURL func(ctx context.Context, hash, url, typ string) string
 }
 
 func New(st *store.Mysql, ts *texture.Store) *Backend {
@@ -131,7 +134,7 @@ func (b *Backend) handleByName(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	writeJSON(w, http.StatusOK, b.profileJSON(p, skinHash, model, capeHash))
+	writeJSON(w, http.StatusOK, b.profileJSON(r.Context(), p, skinHash, model, capeHash))
 }
 
 func (b *Backend) handleByUUID(w http.ResponseWriter, r *http.Request) {
@@ -145,24 +148,31 @@ func (b *Backend) handleByUUID(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	writeJSON(w, http.StatusOK, b.profileJSON(&p, skinHash, model, capeHash))
+	writeJSON(w, http.StatusOK, b.profileJSON(r.Context(), &p, skinHash, model, capeHash))
 }
 
-func (b *Backend) profileJSON(p *ygg.Player, skinHash, model, capeHash string) map[string]interface{} {
+func (b *Backend) profileJSON(ctx context.Context, p *ygg.Player, skinHash, model, capeHash string) map[string]interface{} {
 	out := map[string]interface{}{
 		"id": p.UUID, "name": p.Name,
 		"skins": map[string]string{},
 	}
 	skins := out["skins"].(map[string]string)
+	url := func(hash, typ string) string {
+		u := b.Store.TextureURL(hash)
+		if b.TextureURL != nil {
+			u = b.TextureURL(ctx, hash, u, typ)
+		}
+		return u
+	}
 	if skinHash != "" {
 		if model == "slim" {
-			skins["slim"] = b.Store.TextureURL(skinHash)
+			skins["slim"] = url(skinHash, "skin")
 		} else {
-			skins["default"] = b.Store.TextureURL(skinHash)
+			skins["default"] = url(skinHash, "skin")
 		}
 	}
 	if capeHash != "" {
-		out["cape"] = b.Store.TextureURL(capeHash)
+		out["cape"] = url(capeHash, "cape")
 	}
 	return out
 }

@@ -61,6 +61,7 @@ type Config struct {
 	// Phase 3 (docker-first): unified data root + schema bootstrap.
 	DataDir        string // SKIN_DATA_DIR — textures/keys/themes live under it
 	ThemesDir      string // SKIN_THEMES_DIR — theme packs (default <DataDir>/themes)
+	PluginsDir     string // SKIN_PLUGINS_DIR — plugin packs (default <DataDir>/plugins)
 	AutoMigrate    bool   // SKIN_AUTO_MIGRATE — apply migrations/ on empty DB at boot
 	MigrationsDir  string // SKIN_MIGRATIONS_DIR — where *.sql live (default ./migrations)
 }
@@ -107,6 +108,7 @@ func Load() (*Config, error) {
 
 		DataDir:       dataDir,
 		ThemesDir:     getenv("SKIN_THEMES_DIR", filepath.Join(dataDir, "themes")),
+		PluginsDir:    resolveDataPath("SKIN_PLUGINS_DIR", dataDir, "plugins"),
 		AutoMigrate:   getenv("SKIN_AUTO_MIGRATE", "false") == "true",
 		MigrationsDir: getenv("SKIN_MIGRATIONS_DIR", "./migrations"),
 	}
