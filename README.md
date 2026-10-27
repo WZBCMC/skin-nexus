@@ -99,7 +99,7 @@ docker compose up -d                  # 首装；升级 pull && up -d，数据�
 - [`docs/blueprint.md`](docs/blueprint.md) —— 设计蓝图：目标、架构、技术路线对比、协议分析（设计决策记录，实时状态以本文为准）
 - [`docs/compat-matrix.md`](docs/compat-matrix.md) —— blessing / yggdrasil-connect 兼容矩阵与缺口优先级（实测基线）
 - [`docs/theme-spec.md`](docs/theme-spec.md) —— 主题包规范（含 AI 生成主题的提示词模板）
-- [`docs/CHANGELOG.md`](docs/CHANGELOG.md) —— 逐轮开发变更日志
+- [`docs/CHANGELOG.md`](docs/CHANGELOG.md) —— 迭代历史（按日期倒序的要点记录）
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) —— **贡献指南**：语言翻译 / 主题包 / 代码与文档三类贡献
 - [`GOVERNANCE.md`](GOVERNANCE.md) / [`CITATION.cff`](CITATION.cff) —— 治理结构（BDFL）与引用格式
 
