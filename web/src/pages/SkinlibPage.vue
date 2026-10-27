@@ -5,8 +5,10 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '../api.js'
+import { guard401 } from '../session.js'
 
 const { t } = useI18n()
+const emit = defineEmits(['login'])
 
 const items = ref([])
 const total = ref(0)
@@ -18,6 +20,7 @@ const keyword = ref('')
 const mine = ref(false)
 const loading = ref(false)
 const err = ref('')
+const ok = ref('')
 const me = ref(null)
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / perPage)))
@@ -59,6 +62,9 @@ function goPage(p) {
 }
 
 async function toggleLike(it) {
+  // 访客点 ♥ = 明确登录引导（2026-10-27 逻辑修复：原只塞一行红字）
+  if (!me.value) { emit('login'); return }
+  err.value = ''
   try {
     if (it.liked) {
       const res = await api.skinlibUnlike(it.tid)
@@ -70,27 +76,33 @@ async function toggleLike(it) {
       it.likes = res.likes
     }
   } catch (e) {
-    err.value = e.message
+    if (!guard401(e)) err.value = e.message
   }
 }
 
 async function togglePublic(it) {
+  err.value = ''
+  ok.value = ''
   try {
     await api.skinlibPatch(it.tid, { public: !it.public })
     it.public = !it.public
+    ok.value = t('common.saved')
   } catch (e) {
-    err.value = e.message
+    if (!guard401(e)) err.value = e.message
   }
 }
 
 async function renameItem(it) {
   const next = prompt(t('skinlib.renamePrompt'), it.name || '')
   if (next === null) return
+  err.value = ''
+  ok.value = ''
   try {
     await api.skinlibPatch(it.tid, { name: next.trim() })
     it.name = next.trim()
+    ok.value = t('common.saved')
   } catch (e) {
-    err.value = e.message
+    if (!guard401(e)) err.value = e.message
   }
 }
 
@@ -132,6 +144,7 @@ onMounted(async () => {
     </div>
 
     <div class="error" v-if="err">{{ err }}</div>
+    <div class="success" v-if="ok">{{ ok }}</div>
 
     <p class="muted" v-if="loading">{{ t('common.loading') }}</p>
     <p class="muted" v-else-if="!items.length">{{ t('skinlib.empty') }}</p>
@@ -150,13 +163,14 @@ onMounted(async () => {
             <a :href="'/skinlib/' + it.tid" class="skin-card-link">{{ it.name || `#${it.tid}` }}</a>
           </div>
           <div class="skin-card-meta">
-            <span class="badge" :class="it.model === 'slim' ? 'alex' : 'steve'">
+            <!-- 披风无模型之分，不渲染 Steve/Alex 徽章（cape 空 model 被误判 Steve） -->
+            <span v-if="it.type !== 'cape'" class="badge" :class="it.model === 'slim' ? 'alex' : 'steve'">
               {{ it.model === 'slim' ? 'Alex' : 'Steve' }}
             </span>
             <span class="uploader">{{ it.nickname }}</span>
           </div>
           <div class="skin-card-actions">
-            <button class="like-btn" :class="{ liked: it.liked }" @click="toggleLike(it)">
+            <button class="like-btn" :class="{ liked: it.liked }" :title="t('skinlib.likeTip')" @click="toggleLike(it)">
               ♥ {{ it.likes }}
             </button>
             <template v-if="canEdit(it)">

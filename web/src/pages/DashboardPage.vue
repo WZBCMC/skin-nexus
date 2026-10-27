@@ -23,6 +23,7 @@ const uploadModel = ref('default')
 const uploadFile = ref(null)
 const fileInput = ref(null)
 const uploading = ref(false)
+const pageErr = ref('') // 页面级数据错误（不混进上传卡）
 const uploadErr = ref('')
 const uploadOk = ref('')
 // 选中文件的本地预览（objectURL，随选择换新、卸载时回收）
@@ -115,7 +116,7 @@ async function load() {
     me.value = u
     textures.value = tx.textures || []
     closetIds.value = new Set((cl.closet || []).map((c) => c.textureId))
-  } catch (e) { if (!guard401(e)) uploadErr.value = e.message }
+  } catch (e) { if (!guard401(e)) pageErr.value = e.message } // 数据加载失败≠上传失败
 }
 
 async function loadAnnouncement() {
@@ -126,12 +127,12 @@ async function loadAnnouncement() {
 }
 
 async function addToCloset(tx) {
-  uploadErr.value = ''; uploadOk.value = ''
+  pageErr.value = ''
   try {
     await api.closetAdd(tx.id)
     const cl = await api.closet()
     closetIds.value = new Set((cl.closet || []).map((c) => c.textureId))
-  } catch (e) { if (!guard401(e)) uploadErr.value = e.message }
+  } catch (e) { if (!guard401(e)) pageErr.value = e.message } // 入柜失败显示在纹理卡区（页级横幅）
 }
 
 async function doUpload() {
@@ -156,6 +157,8 @@ onBeforeUnmount(() => { if (previewURL.value) URL.revokeObjectURL(previewURL.val
 </script>
 
 <template>
+  <!-- 页面级数据错误（与上传卡错误位分离） -->
+  <div class="error" v-if="pageErr">{{ pageErr }}</div>
   <!-- announcement (Markdown, double-sanitized) -->
   <div class="card" v-if="announcement">
     <h2>{{ t('dashboard.announcement') }}</h2>

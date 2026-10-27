@@ -4,6 +4,7 @@
     "login": "登录",
     "logout": "退出",
     "retry": "重试",
+    "saved": "已保存",
     "register": "注册",
     "loading": "加载中…",
     "none": "—",
@@ -44,7 +45,8 @@
     "total": "共 {n} 件",
     "makePrivate": "设为私有",
     "makePublic": "设为公开",
-    "renamePrompt": "新的名称："
+    "renamePrompt": "新的名称：",
+    "likeTip": "喜欢（加入衣柜）"
   },
   "site": {
     "name": "SkinNexus",
@@ -347,6 +349,7 @@
     "playerSearchPlaceholder": "搜索角色名 / 拥有者昵称 / UID…",
     "playerTotal": "共 {total} 个角色",
     "playerEmpty": "暂无角色",
+    "usersEmpty": "暂无用户",
     "colPreview": "预览",
     "colPlayerName": "角色名",
     "colOwner": "拥有者",

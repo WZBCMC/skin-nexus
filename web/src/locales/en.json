@@ -4,6 +4,7 @@
     "login": "Sign in",
     "logout": "Sign out",
     "retry": "Retry",
+    "saved": "Saved",
     "register": "Sign up",
     "loading": "Loading…",
     "none": "—",
@@ -44,7 +45,8 @@
     "total": "{n} total",
     "makePrivate": "Make private",
     "makePublic": "Make public",
-    "renamePrompt": "New name:"
+    "renamePrompt": "New name:",
+    "likeTip": "Like (adds to your closet)"
   },
   "site": {
     "name": "SkinNexus",
@@ -344,6 +346,7 @@
     "playerSearchPlaceholder": "Search player name / owner nickname / UID…",
     "playerTotal": "{total} profiles total",
     "playerEmpty": "No profiles yet",
+    "usersEmpty": "No users yet",
     "colPreview": "Preview",
     "colPlayerName": "Name",
     "colOwner": "Owner",

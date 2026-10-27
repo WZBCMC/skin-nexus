@@ -17,8 +17,8 @@ import AccessLogsView from './admin/AccessLogsView.vue'
 
 const { t } = useI18n()
 
-// Sidebar navigation (blessing 管理面板 order). Players stays a placeholder
-// until B3 lands the management table.
+// Sidebar navigation (blessing 管理面板 order). PlayersView is the full
+// management table (B3 landed).
 const nav = [
   { id: 'dashboard', labelKey: 'admin.navDashboard', comp: DashboardView },
   { id: 'users', labelKey: 'admin.navUsers', comp: UsersView },

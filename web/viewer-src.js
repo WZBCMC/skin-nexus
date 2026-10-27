@@ -48,20 +48,36 @@ function wireLikeButton() {
   btn.addEventListener('click', async () => {
     const liked = btn.getAttribute('data-liked') === '1'
     btn.disabled = true
+    // 失败可见（2026-10-27 逻辑修复：原静默 return）：按钮旁浮出 3 秒提示
+    const tip = (msg) => {
+      let el = document.getElementById('like-tip')
+      if (!el) {
+        el = document.createElement('span')
+        el.id = 'like-tip'
+        el.style.cssText = 'color:#d9564c;font-size:13px;margin-left:8px'
+        btn.parentElement.appendChild(el)
+      }
+      el.textContent = msg
+      setTimeout(() => el.remove(), 3000)
+    }
     try {
       const res = await fetch(`/api/v1/skinlib/${tid}/like`, {
         method: liked ? 'DELETE' : 'POST',
         headers: { 'Content-Type': 'application/json' },
       })
-      if (res.status === 401) { location.href = '/login'; return }
-      if (!res.ok) return
+      // 401：带 next 回跳，登录后回到本详情页（原直接 /login 丢失上下文）
+      if (res.status === 401) {
+        location.href = '/login?next=' + encodeURIComponent(location.pathname)
+        return
+      }
+      if (!res.ok) { tip('操作失败，请稍后重试'); return }
       const data = await res.json().catch(() => null)
       btn.setAttribute('data-liked', liked ? '0' : '1')
       btn.classList.toggle('liked', !liked)
       if (data && typeof data.likes === 'number' && countEl) {
         countEl.textContent = String(data.likes)
       }
-    } catch { /* offline — ignore */ }
+    } catch { tip('网络异常，请稍后重试') }
     finally { btn.disabled = false }
   })
 }

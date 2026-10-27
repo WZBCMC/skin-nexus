@@ -26,7 +26,7 @@ const isAdmin = computed(() => Number(user.value && user.value.permission) > 0)
 // profile | apps | union | admin
 const view = ref('login')
 const authErr = ref('') // login + register cards
-const dataErr = ref('') // top-level data-load banner (review P1-6)
+
 
 // login form
 const identifier = ref('')
@@ -191,13 +191,22 @@ function onLocaleChange(e) {
   setLocale(e.target.value)
 }
 
-// 登录/注册共同收尾：设备页流程优先，launcher 深链恢复其次，落地即清
-// pendingView（防"迟到恢复"跳页）。
+// 登录/注册共同收尾：?next= 回跳（详情页 viewer 401 引导来的）优先整页跳回；
+// 其次设备页流程、launcher 深链恢复；落地即清 pendingView（防"迟到恢复"跳页）。
 function finishAuth() {
+  const next = new URLSearchParams(location.search).get('next')
+  if (next && next.startsWith('/') && !next.startsWith('//')) {
+    pendingView.value = ''
+    location.href = next
+    return
+  }
   if (location.pathname === '/device') view.value = 'device'
   else if (pendingView.value) { view.value = pendingView.value; pendingView.value = '' }
   else view.value = 'dashboard'
 }
+
+// 皮肤库访客点 ♥ 等需登录操作：登录后回到皮肤库（pendingView 闭环）
+function skinlibLogin() { pendingView.value = 'skinlib'; view.value = 'login' }
 
 async function doLogin() {
   authErr.value = ''
@@ -279,9 +288,6 @@ onMounted(() => { boot(); window.addEventListener('popstate', onPopState) })
     </header>
 
     <div class="container" :class="{ wide: view === 'admin' }">
-    <!-- data-load failure banner: stays visible without dropping to login -->
-    <div class="error" v-if="dataErr">{{ dataErr }}</div>
-
     <!-- AUTH VIEWS: 分栏场景式（左=远山+N 牌，右=表单）。独立 v-if：error 横幅
          不参与视图条件链 -->
     <template v-if="['login', 'register', 'forgot', 'reset'].includes(view)">
@@ -423,7 +429,7 @@ onMounted(() => { boot(); window.addEventListener('popstate', onPopState) })
 
     <!-- public skin library: anonymous visitors browse without a session -->
     <template v-else-if="!user && view === 'skinlib'">
-      <SkinlibPage />
+      <SkinlibPage @login="skinlibLogin" />
     </template>
 
     <!-- logged-in shell: sidebar + page (blessing 用户中心布局) -->
@@ -447,7 +453,7 @@ onMounted(() => { boot(); window.addEventListener('popstate', onPopState) })
         </aside>
         <main class="user-main">
           <DashboardPage v-if="view === 'dashboard'" />
-          <SkinlibPage v-else-if="view === 'skinlib'" />
+          <SkinlibPage v-else-if="view === 'skinlib'" @login="skinlibLogin" />
           <ClosetPage v-else-if="view === 'closet'" />
           <PlayersPage v-else-if="view === 'players'" />
           <ProfilePage v-else-if="view === 'profile'" />

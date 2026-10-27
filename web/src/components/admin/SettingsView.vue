@@ -11,6 +11,7 @@ const { t } = useI18n()
 // Settings panel: env-migrated site knobs
 const settings = ref([])
 const setError = ref('')
+const setOk = ref('')
 
 // row widget routing (shared by loadSettings normalization + template)
 const boolKeys = new Set([
@@ -67,11 +68,13 @@ async function loadSettings() {
 
 async function saveSetting(s) {
   setError.value = ''
+  setOk.value = ''
   try {
     await fetchJSON('/api/admin/v1/settings', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key: s.key, value: s.value }),
     })
+    setOk.value = t('common.saved')
     await loadSettings()
   } catch (e) {
     // review P2-10: refetch so the UI doesn't keep a toggled-but-unsaved value
@@ -186,19 +189,20 @@ onMounted(load)
     <div class="card">
       <h2 style="margin-top: 0;">站点设置（原环境变量，管理员可改）</h2>
       <div class="error" v-if="setError">{{ setError }}</div>
+      <div class="success" v-if="setOk">{{ setOk }}</div>
       <template v-for="grp in groupedSettings" :key="grp.id">
         <h3 class="settings-group-title">{{ groupTitle(grp.id) }}</h3>
-        <div class="row" v-for="s in grp.items" :key="s.key" style="margin-top: 10px; align-items: center;">
+        <div class="row" v-for="s in grp.items" :key="s.key" style="margin-top: 12px; align-items: center;">
           <!-- Chinese-first label: server-provided desc is primary, the raw key
                demoted to a small muted hint -->
-          <label style="width: 240px; font-weight: 600; font-size: 13px;">
+          <label style="width: 240px; font-weight: 600; font-size: var(--fs-xs);">
             {{ s.desc }}
-            <span class="muted" style="display: block; font-weight: 400; font-size: 11px;">{{ s.key }}</span>
+            <span class="muted" style="display: block; font-weight: 400; font-size: var(--fs-xs);">{{ s.key }}</span>
           </label>
           <input v-if="boolKeys.has(s.key)"
                  type="checkbox" v-model="s.value" true-value="1" false-value="0" style="width: auto;" />
           <textarea v-else-if="textKeys.has(s.key)"
-                    v-model="s.value" :style="s.key.startsWith('union_oauth2_sig_') ? 'max-width: 360px; min-height: 72px; font-family: monospace; font-size: 11px;' : 'max-width: 360px; min-height: 38px;'"></textarea>
+                    v-model="s.value" :style="s.key.startsWith('union_oauth2_sig_') ? 'max-width: 360px; min-height: 72px; font-family: monospace; font-size: var(--fs-xs);' : 'max-width: 360px; min-height: 38px;'"></textarea>
           <select v-else-if="s.key === 'player_name_rule'" v-model="s.value" style="max-width: 160px;">
             <option value="official">official（字母/数字/下划线）</option>
             <option value="cjk">cjk（+ 中文/§）</option>
@@ -211,12 +215,17 @@ onMounted(load)
           </select>
           <input v-else v-model="s.value" :type="secretKeys.has(s.key) ? 'password' : 'text'" style="max-width: 300px;" :placeholder="s.default" />
           <button @click="saveSetting(s)">保存</button>
-          <span class="muted" style="font-size: 11px;">{{ s.restart ? '重启后生效' : '立即生效' }}</span>
+          <span class="muted" style="font-size: var(--fs-xs);">{{ s.restart ? '重启后生效' : '立即生效' }}</span>
         </div>
       </template>
     </div>
 
-    <!-- SEO -->
+    <!-- SEO：加载失败不再静默（卡外横幅 + 重试），卡内横幅只管保存失败 -->
+    <div class="card" v-if="!seo && seoError">
+      <h2>SEO 配置</h2>
+      <div class="error">{{ seoError }}</div>
+      <button class="secondary" style="margin-top: 12px;" @click="loadSEO">{{ t('common.retry') }}</button>
+    </div>
     <div class="card" v-if="seo">
       <h2>SEO 配置</h2>
       <div class="row">
@@ -246,7 +255,12 @@ onMounted(load)
       <div class="error" v-if="seoError">{{ seoError }}</div>
     </div>
 
-    <!-- Appearance: themes + custom CSS/JS -->
+    <!-- Appearance: themes + custom CSS/JS（失败卡外可见 + 重试） -->
+    <div class="card" v-if="!appearance && appearError">
+      <h2>外观（主题 / 自定义 CSS / JS）</h2>
+      <div class="error">{{ appearError }}</div>
+      <button class="secondary" style="margin-top: 12px;" @click="loadAppearance">{{ t('common.retry') }}</button>
+    </div>
     <div class="card" v-if="appearance">
       <h2>外观（主题 / 自定义 CSS / JS）</h2>
       <label>启用主题包</label>
@@ -257,15 +271,15 @@ onMounted(load)
       <div class="muted" v-if="!themes.length" style="font-size: 12px;">
         将主题包放入 data/themes/&lt;id&gt;/（含 theme.json），重启服务后在此识别（新增/删除主题包需重启）。规范见 docs/theme-spec.md。
       </div>
-      <label style="margin-top: 10px;">自定义 CSS（约 64KB 上限）</label>
+      <label style="margin-top: 12px;">自定义 CSS（约 64KB 上限）</label>
       <textarea v-model="appearance.custom_css" rows="5" placeholder=".card { border-radius: 16px; }"></textarea>
       <label>自定义 JS（约 64KB 上限）</label>
       <textarea v-model="appearance.custom_js" rows="4" placeholder="document.addEventListener('DOMContentLoaded', () => { /* ... */ })"></textarea>
-      <div class="muted" style="font-size: 12px; margin-top: 6px;">
-        ⚠️ 自定义 JS 与主题 JS 以管理员信任面原样注入（与 blessing 行为一致）——请只粘贴自己信任的代码。
+      <div class="muted" style="font-size: 12px; margin-top: 8px;">
+        自定义 JS 与主题 JS 以管理员信任面原样注入（与 blessing 行为一致）——请只粘贴自己信任的代码。
         JS 在 Vue 挂载前执行，操作界面 DOM 请包在 DOMContentLoaded 回调里。
       </div>
-      <div class="row" style="margin-top: 10px;">
+      <div class="row" style="margin-top: 12px;">
         <button @click="appearSave">保存外观</button>
       </div>
       <div class="error" v-if="appearError">{{ appearError }}</div>
@@ -288,7 +302,7 @@ onMounted(load)
         {{ t('admin.oidcSecretOnce') }}<code>{{ lastSecret }}</code>
       </div>
       <div class="error" v-if="oidcError">{{ oidcError }}</div>
-      <table v-if="oidcClients.length" style="margin-top: 10px;">
+      <table v-if="oidcClients.length" style="margin-top: 12px;">
         <tr><th>{{ t('admin.oidcClientId') }}</th><th>{{ t('admin.oidcClientName') }}</th><th>{{ t('admin.oidcClientType') }}</th><th>{{ t('admin.oidcClientGrants') }}</th><th>{{ t('admin.oidcClientRedirects') }}</th><th></th></tr>
         <tr v-for="c in oidcClients" :key="c.client_id">
           <td><code>{{ c.client_id }}</code></td>
@@ -306,9 +320,9 @@ onMounted(load)
 <style scoped>
 /* settings section titles: quiet dividers between grouped knobs */
 .settings-group-title {
-  font-size: 13px; font-weight: 700; color: var(--muted);
-  margin: 22px 0 4px; padding: 14px 0 6px;
+  font-size: var(--fs-xs); font-weight: 700; color: var(--muted);
+  margin: 24px 0 4px; padding: 16px 0 8px;
   border-top: 1px solid var(--border);
 }
-.settings-group-title:first-of-type { border-top: none; padding-top: 4px; margin-top: 14px; }
+.settings-group-title:first-of-type { border-top: none; padding-top: 4px; margin-top: 16px; }
 </style>

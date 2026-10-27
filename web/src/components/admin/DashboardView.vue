@@ -41,10 +41,11 @@ onMounted(async () => {
           <span class="stat-num">{{ overview.players }}</span>
           <span class="stat-label">{{ t('admin.players') }}</span>
         </button>
-        <button class="stat-card" @click="emit('go', 'settings')">
+        <!-- 材质无独立管理视图，展示型卡（不误导可点跳转） -->
+        <div class="stat-card">
           <span class="stat-num">{{ overview.textures }}</span>
           <span class="stat-label">{{ t('admin.textures') }}</span>
-        </button>
+        </div>
         <div class="stat-card">
           <span class="stat-num">{{ fmtBytes(overview.storageBytes) }}</span>
           <span class="stat-label">{{ t('admin.storage') }}</span>
@@ -67,12 +68,12 @@ onMounted(async () => {
   gap: 12px;
 }
 .stat-card {
-  display: flex; flex-direction: column; gap: 4px; padding: 14px;
-  border: 1px solid var(--border, #8884); border-radius: 10px;
+  display: flex; flex-direction: column; gap: 4px; padding: 16px;
+  border: 1px solid var(--border); border-radius: var(--r-l);
   background: none; cursor: pointer; text-align: left;
   color: var(--fg, inherit);
 }
-.stat-card:hover { border-color: var(--accent, #4a9eff); }
+.stat-card:hover { border-color: var(--accent); }
 .stat-num { font-size: 24px; font-weight: 700; }
-.stat-label { font-size: 12px; color: var(--muted, #888); }
+.stat-label { font-size: 12px; color: var(--muted); }
 </style>

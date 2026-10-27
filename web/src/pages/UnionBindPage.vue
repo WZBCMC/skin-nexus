@@ -6,6 +6,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api, union } from '../api.js'
+import { guard401 } from '../session.js'
 
 const { t } = useI18n()
 
@@ -39,7 +40,7 @@ async function load() {
   error.value = ''; success.value = ''
   try {
     players.value = (await api.players()).players || []
-  } catch (e) { error.value = e.message; return }
+  } catch (e) { if (!guard401(e)) error.value = e.message; return }
   try {
     const d = await union.servers()
     servers.value = d.servers || []
@@ -125,7 +126,7 @@ async function doBind() {
     bindTokenFor.value = playerName(p)
     bindTokenExpire.value = Date.now() + 2 * 60 * 1000 // hub TTL 2min
     success.value = t('union.bindCodeSuccess')
-  } catch (e) { error.value = e.message } finally { loading.value = false }
+  } catch (e) { if (!guard401(e)) error.value = e.message } finally { loading.value = false }
 }
 
 async function doBindTo() {
@@ -137,7 +138,7 @@ async function doBindTo() {
     if (d.error) { error.value = d.error; return }
     success.value = t('union.bindSuccess')
     bindtoToken.value = ''
-  } catch (e) { error.value = e.message } finally { loading.value = false }
+  } catch (e) { if (!guard401(e)) error.value = e.message } finally { loading.value = false }
 }
 
 async function doUnbind() {
@@ -149,7 +150,7 @@ async function doUnbind() {
     const d = await union.unbind(playerUUID(p))
     if (d.error) { error.value = d.error; return }
     success.value = t('union.unbindDone')
-  } catch (e) { error.value = e.message } finally { loading.value = false }
+  } catch (e) { if (!guard401(e)) error.value = e.message } finally { loading.value = false }
 }
 
 async function doRemap() {
@@ -165,7 +166,7 @@ async function doRemap() {
     if (d.error) { error.value = d.error; return }
     success.value = t('union.remapDone')
     remapTarget.value = ''
-  } catch (e) { error.value = e.message } finally { loading.value = false }
+  } catch (e) { if (!guard401(e)) error.value = e.message } finally { loading.value = false }
 }
 
 watch(selectedPID, loadRemapSuggestions) // reload suggestions per source profile

@@ -5,6 +5,7 @@
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { oidc } from '../api.js'
+import { guard401 } from '../session.js'
 
 const { t } = useI18n()
 
@@ -18,7 +19,7 @@ async function load() {
   try {
     const d = await oidc.tokens()
     tokens.value = d.tokens || []
-  } catch (e) { error.value = e.message }
+  } catch (e) { if (!guard401(e)) error.value = e.message }
 }
 
 async function revoke(jti) {
@@ -29,7 +30,7 @@ async function revoke(jti) {
     if (d.error) { error.value = d.error; return }
     success.value = t('apps.revokeDone')
     await load()
-  } catch (e) { error.value = e.message } finally { loading.value = false }
+  } catch (e) { if (!guard401(e)) error.value = e.message } finally { loading.value = false }
 }
 
 async function revokeAll() {
@@ -40,7 +41,7 @@ async function revokeAll() {
     if (d.error) { error.value = d.error; return }
     success.value = t('apps.revokeAllDone')
     await load()
-  } catch (e) { error.value = e.message } finally { loading.value = false }
+  } catch (e) { if (!guard401(e)) error.value = e.message } finally { loading.value = false }
 }
 
 function fmt(tm) {

@@ -152,8 +152,9 @@ onMounted(load)
       <span class="muted">{{ t('admin.userTotal', { total }) }}</span>
     </div>
     <div class="error" v-if="error">{{ error }}</div>
+    <p class="muted" v-if="!users.length && !error" style="margin-top: 12px;">{{ t('admin.usersEmpty') }}</p>
     <div class="table-scroll" v-if="users.length">
-    <table class="users-table" style="margin-top: 10px;">
+    <table class="users-table" style="margin-top: 12px;">
       <tr>
         <th>{{ t('admin.colId') }}</th><th>{{ t('admin.colNickname') }}</th><th>{{ t('admin.colEmail') }}</th>
         <th>{{ t('admin.colPermission') }}</th><th>{{ t('admin.colVerified') }}</th>
@@ -186,11 +187,11 @@ onMounted(load)
             {{ Number(u.emailVerified) ? '✓' : '—' }}
           </button>
         </td>
-        <td><span class="badge" :style="u.passwordAlgo.startsWith('legacy') ? 'border-color: var(--danger); color: var(--danger);' : ''">{{ u.passwordAlgo }}</span></td>
+        <td><span class="badge" :style="(u.passwordAlgo || '').startsWith('legacy') ? 'border-color: var(--danger); color: var(--danger);' : ''">{{ u.passwordAlgo }}</span></td>
         <td class="muted nowrap">{{ (u.createdAt || '').slice(0, 10) }}</td>
         <td class="nowrap">
           <button class="secondary" @click="adminResetPassword(u)">{{ t('admin.resetPw') }}</button>
-          <button class="secondary danger-outline" v-if="u.id !== 1 && Number(u.permission) !== 2" @click="adminDeleteUser(u)" style="margin-left: 6px;">{{ t('admin.delete') }}</button>
+          <button class="secondary danger-outline" v-if="u.id !== 1 && Number(u.permission) !== 2" @click="adminDeleteUser(u)" style="margin-left: 8px;">{{ t('admin.delete') }}</button>
         </td>
       </tr>
     </table>
@@ -216,8 +217,8 @@ onMounted(load)
 .nowrap { white-space: nowrap; }
 /* inline edit: borderless until hover/focus — no more dark clipped boxes */
 .cell-input {
-  width: 100%; padding: 5px 8px; font-size: 13px;
-  background: transparent; border: 1px solid transparent; border-radius: 6px;
+  width: 100%; padding: 4px 8px; font-size: var(--fs-xs);
+  background: transparent; border: 1px solid transparent; border-radius: var(--r-m);
   color: var(--text);
 }
 .cell-input:hover { border-color: var(--border); }
@@ -226,10 +227,10 @@ onMounted(load)
 .cell-email { min-width: 200px; }
 .cell-perm { min-width: 110px; }
 .veri-btn {
-  width: 36px; padding: 4px 0; font-size: 13px;
+  width: 36px; padding: 4px 0; font-size: var(--fs-xs);
   background: transparent; border: 1px solid var(--border); color: var(--muted);
 }
-.veri-btn.on { color: #57ab5a; border-color: #57ab5a66; }
+.veri-btn.on { color: var(--ok); border-color: var(--ok)66; }
 .danger-outline { border-color: var(--danger); color: var(--danger); }
-.danger-outline:hover { background: var(--danger); color: #fff; }
+.danger-outline:hover { background: var(--danger); color: var(--on-danger); }
 </style>

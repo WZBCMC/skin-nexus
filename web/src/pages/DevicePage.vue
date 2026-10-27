@@ -48,7 +48,9 @@ async function submit(decision) {
     done.value = decision === 'approve' ? t('device.approved') : t('device.denied')
     info.value = null
   } catch (e) {
-    error.value = e.message.includes('401') ? t('device.needLoginOnSubmit') : e.message
+    // 401 = 未登录提交（提示而非跳转，设备流程留在本页）；用 status 判定，
+    // 不再靠消息文本猜（2026-10-27 逻辑修复）
+    error.value = e.status === 401 ? t('device.needLoginOnSubmit') : e.message
   } finally { loading.value = false }
 }
 
@@ -74,7 +76,7 @@ onMounted(loadInfo)
 
     <!-- pending info -->
     <template v-else-if="info">
-      <p>{{ t('device.userCode') }}：<b style="font-size: 18px; letter-spacing: 2px;">{{ info.user_code }}</b></p>
+      <p>{{ t('device.userCode') }}：<b style="font-size: var(--fs-l); letter-spacing: 2px;">{{ info.user_code }}</b></p>
       <p>{{ t('device.requestClient') }}：<b>{{ info.client_name || info.client_id }}</b></p>
       <p class="muted">{{ t('device.requestScopes', { scopes: (info.scopes || []).join(', ') }) }}</p>
       <template v-if="info.players && info.players.length">
@@ -83,13 +85,13 @@ onMounted(loadInfo)
           <label style="display: flex; gap: 8px; align-items: center; cursor: pointer;">
             <input type="radio" :value="p.id" v-model="selectedPID" />
             <strong>{{ p.name }}</strong>
-            <span class="muted" style="font-size: 11px;">{{ (p.uuid || '').slice(0, 16) }}…</span>
+            <span class="muted" style="font-size: var(--fs-xs);">{{ (p.uuid || '').slice(0, 16) }}…</span>
           </label>
         </div>
       </template>
       <div v-else class="error">{{ t('device.noProfiles') }}</div>
       <div class="error" v-if="error">{{ error }}</div>
-      <div class="row" style="margin-top: 14px;">
+      <div class="row" style="margin-top: 16px;">
         <button :disabled="loading || !selectedPID" @click="submit('approve')">{{ t('device.approve') }}</button>
         <button class="secondary" :disabled="loading" @click="submit('deny')">{{ t('device.deny') }}</button>
       </div>
