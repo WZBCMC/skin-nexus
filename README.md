@@ -73,6 +73,7 @@
 
 **外观与内容**
 - 主题包体系（零构建：`theme.json` + CSS + 可选 JS）与 [AI 生成提示词模板](docs/theme-spec.md)
+- 插件宿主（goja）：6 个 hook + 只读插件路由，声明式权限、超管启停、fail-open；规范见 [docs/plugin-spec.md](docs/plugin-spec.md)
 - 中英双语（zh-CN / en），语言包可扩展
 - SEO：SSR 落地页与皮肤详情页、sitemap、robots、可整站 noindex（预发环境）
 
@@ -114,6 +115,7 @@ docker compose up -d
 | [`docs/migration.md`](docs/migration.md) | 从 blessing-skin-server 全量迁移：CLI 手册、对账断言、切流与回滚 |
 | [`docs/compat-matrix.md`](docs/compat-matrix.md) | 兼容矩阵：blessing / yggdrasil-connect 逐端点实测基线 |
 | [`docs/theme-spec.md`](docs/theme-spec.md) | 主题包规范与 AI 生成提示词模板 |
+| [`docs/plugin-spec.md`](docs/plugin-spec.md) | 插件创作规范（goja 宿主、权限、hook、与 blessing 对照） |
 | [`docs/competitor-analysis.md`](docs/competitor-analysis.md) | 竞品对照的源码证据与方法 |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | 迭代历史（按日期倒序） |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | 贡献指南：翻译 / 主题包 / 代码与文档 |
@@ -125,8 +127,8 @@ docker compose up -d
 | 状态 | 内容 |
 |---|---|
 | ✅ 已完成 | 一期–三期：Yggdrasil 全量、OIDC 免密、Union 模块、i18n / SEO / 主题包、迁移工具链、管理面板；生产全量迁移与切流；v0.2.0 发布（自助找回 / 官方兜底 / 运维日志 / SEO 内容页） |
-| 🔶 进行中 | 真机启动器验收（SJMCL 及社区启动器：OAuth 免密 → 选角 → 进服） |
-| ⬜ 规划中 | 正版账号绑定（Auth Source 第二实现）、插件宿主运行时（goja）、邮箱验证流 |
+| 🔶 进行中 | 插件宿主 v1（goja 运行时 + 管理面板，待 v0.3.0 发布）；真机启动器验收（SJMCL 及社区启动器：OAuth 免密 → 选角 → 进服） |
+| ⬜ 规划中 | 正版账号绑定（Auth Source 第二实现）、邮箱验证流、插件配置表单 / 插件市场 |
 
 ## 兼容契约（不可破坏）
 

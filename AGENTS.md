@@ -28,7 +28,7 @@ server/         Go 后端（模块 skin-nexus/server）
   internal/theme      主题包注册与加载（docs/theme-spec.md）
   internal/i18n       服务端多语言资源
   internal/ratelimit  认证限流（滑动窗口 + 失败锁定）
-  internal/plugin     P0 HookAPI 合约（冻结）
+  internal/plugin     P0 HookAPI 合约（冻结）+ goja 宿主运行时（v0.3.0：manifest 校验/VM/路由/状态）
   migrations/         DDL（InnoDB utf8mb4；0001 基础 … 0011 access_logs，追踪式逐文件记标）
 web/            Vue 3 + Vite（npm ci && npm run build → web/dist）
 docs/           构建 / 部署 / 迁移 / 兼容矩阵 / 竞品证据 / 主题规范 / CHANGELOG（公开）；

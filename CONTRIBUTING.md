@@ -49,9 +49,17 @@
 - 想深度定制（改布局/交互）用 admin「外观」的自定义 CSS/JS（blessing 同款），
   与主题同一信任面、无沙箱——只装你信任的代码。
 
-## 3. 代码与文档
+## 3. 插件（服务端扩展）
 
-### 3.1 开发环境与自检
+插件在服务进程内的 goja VM 中运行，规范见 [`docs/plugin-spec.md`](docs/plugin-spec.md)：
+
+- **契约冻结**：hook 形状与权限字符串以 `server/internal/plugin/contract.go` 为准，新增能力走 additive 版本；
+- 示例插件在 `examples/plugins/`（离线、无网络依赖），改动示例须保持 `go test ./internal/plugin/` 全绿；
+- 插件**不进主仓分发**（与主题包同口径）；对**规范本身**的改进欢迎 PR `docs/plugin-spec.md`。
+
+## 4. 代码与文档
+
+### 4.1 开发环境与自检
 
 见 [`docs/build.md`](docs/build.md)。最短路径：
 
@@ -66,7 +74,7 @@ SKIN_TEST_DSN='user:pass@tcp(127.0.0.1:3306)/skin_nexus_test?parseTime=true' \
 CI 会跑全量门禁（后端 build/vet/test、**MySQL 5.7 与 8.0 双矩阵**集成测试、
 前端构建、Docker 镜像）——本地至少把上面三连跑绿再提 PR。
 
-### 3.2 分支与提交
+### 4.2 分支与提交
 
 - trunk-based：从 `main` 拉短生命周期分支 `feat/<scope>-<desc>` / `fix/...` / `docs/...`；
 - Conventional Commits（`feat|fix|docs|refactor|test|chore`），scope 用模块名
@@ -74,7 +82,7 @@ CI 会跑全量门禁（后端 build/vet/test、**MySQL 5.7 与 8.0 双矩阵**�
 - 涉及数据库的改动必须带迁移脚本（`server/migrations/`，追踪式逐文件记标）；
 - 一个 PR 一件事；越界问题只记 issue，不顺手改。
 
-### 3.3 兼容红线（改前必读 AGENTS.md 七条铁律）
+### 4.3 兼容红线（改前必读 AGENTS.md 七条铁律）
 
 以下为冻结面，破坏性改动会被直接拒：
 
@@ -87,19 +95,19 @@ CI 会跑全量门禁（后端 build/vet/test、**MySQL 5.7 与 8.0 双矩阵**�
 协议面改动请附**兼容性验证记录**（对照 [`docs/compat-matrix.md`](docs/compat-matrix.md)）；
 响应语义变更须带 JSON 快照测试更新。
 
-### 3.4 文档同步
+### 4.4 文档同步
 
 - 接口/行为变更先改 `docs/` 再改代码（文档先行）；
 - 修完顺手同步受影响文档（含 README 状态行与 [`docs/CHANGELOG.md`](docs/CHANGELOG.md) 的一句话），
   过时文档会污染后续开发记忆——这是本仓的硬要求。
 
-## 4. 报告问题
+## 5. 报告问题
 
 Issue 请给：版本号或 commit sha、部署方式（Docker/源码）、复现步骤、
 相关日志（`docker compose logs skin-nexus` 或 journalctl）。涉及协议兼容的
 问题附客户端名与 authlib-injector 版本。**不要贴真实域名/账号/密码**。
 
-## 5. 评审与合并
+## 6. 评审与合并
 
 - PR 模板要素：动机 / 改动 / 测试（贴真实输出）/ 迁移影响；
 - CI 绿 + 至少一人评审后由发起人合并；重大选型走「多 AI 评析 → 分歧对齐 → 发起人终裁」；

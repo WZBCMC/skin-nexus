@@ -75,6 +75,7 @@ Measured on a 2-core / 3.5 GB production VPS: ~600 RPS landing, 5182 RPS texture
 
 **Appearance & content**
 - Theme packs (zero build: `theme.json` + CSS + optional JS) with an [AI prompt template](docs/theme-spec.md)
+- Plugin host (goja): six hooks plus read-only plugin routes, declarative permissions, super-admin enable/disable, fail-open; see [docs/plugin-spec.md](docs/plugin-spec.md)
 - zh-CN / en built in, language packs extensible
 - SEO: SSR landing and skin detail pages, sitemap, robots, optional site-wide noindex for staging
 
@@ -116,6 +117,7 @@ Full env-var tables, reverse-proxy examples, backup/restore and troubleshooting:
 | [`docs/migration.md`](docs/migration.md) | Full migration from blessing-skin-server: CLI, reconciliation, cutover |
 | [`docs/compat-matrix.md`](docs/compat-matrix.md) | Compatibility matrix: per-endpoint measured baseline |
 | [`docs/theme-spec.md`](docs/theme-spec.md) | Theme pack spec and AI prompt template |
+| [`docs/plugin-spec.md`](docs/plugin-spec.md) | Plugin authoring spec (goja host, permissions, hooks, blessing comparison) |
 | [`docs/competitor-analysis.md`](docs/competitor-analysis.md) | Source evidence behind the comparison table |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Iteration history |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contributing: translations / themes / code and docs |
@@ -129,8 +131,8 @@ Most detailed docs are currently in Chinese.
 | Status | Item |
 |---|---|
 | ✅ Done | Phases 1–3: full Yggdrasil, OIDC passwordless, Union module, i18n / SEO / theme packs, migration toolchain, admin panel; production migration and cutover; v0.2.0 (password reset / Mojang fallback / ops logs / SEO content pages) |
-| 🔶 In progress | Real-device launcher acceptance (SJMCL and community launchers: OAuth → character select → join) |
-| ⬜ Planned | Official-account binding (second Auth Source), plugin host runtime (goja), email verification |
+| 🔶 In progress | Plugin host v1 (goja runtime + admin panel, shipping with v0.3.0); real-device launcher acceptance (SJMCL and community launchers: OAuth → character select → join) |
+| ⬜ Planned | Official-account binding (second Auth Source), email verification, plugin config forms / plugin marketplace |
 
 ## Frozen compatibility contracts
 

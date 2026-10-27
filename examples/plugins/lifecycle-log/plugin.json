@@ -1,0 +1,11 @@
+{
+  "name": "lifecycle-log",
+  "version": "1.0.0",
+  "hookApi": 1,
+  "entrypoint": "index.js",
+  "permissions": ["auth:hooks"],
+  "title": "Lifecycle log",
+  "author": "SkinNexus",
+  "homepage": "https://github.com/YimingZhanshen/skin-nexus",
+  "description": "Logs register/login/delete and join/hasJoined phases to the server log. Useful as a wiring smoke test."
+}

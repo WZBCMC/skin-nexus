@@ -1,0 +1,11 @@
+{
+  "name": "texture-cdn",
+  "version": "1.0.0",
+  "hookApi": 1,
+  "entrypoint": "index.js",
+  "permissions": ["textures:read"],
+  "title": "Texture CDN mirror",
+  "author": "SkinNexus",
+  "homepage": "https://github.com/YimingZhanshen/skin-nexus",
+  "description": "Rewrite skin texture URLs to a CDN mirror. Edit CDN_BASE in index.js; the mirror must serve /textures/<hash>."
+}
