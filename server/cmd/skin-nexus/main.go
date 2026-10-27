@@ -732,7 +732,7 @@ func textureHandler(ts *texture.Store) http.HandlerFunc {
 func isKnownSPAPath(p string) bool {
 	switch p {
 	case "index.html", "login", "register", "forgot-password", "reset-password", "device",
-		"skinlib", "user/skinlib", "user/closet", "user/profile",
+		"setup", "skinlib", "user/skinlib", "user/closet", "user/profile",
 		"user/players", "user/dashboard":
 		return true
 	}

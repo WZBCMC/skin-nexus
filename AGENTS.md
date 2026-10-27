@@ -23,11 +23,13 @@ server/         Go 后端（模块 skin-nexus/server）
   internal/appearance 站点外观（自定义 CSS/JS、公告消毒）
   internal/announce   公告 Markdown 双层消毒（goldmark + bluemonday）
   internal/seo        SEO 注入 / sitemap / robots
+  internal/accesslog  访问/通信日志旁路记录器（C1）
+  internal/mailer     SMTP 发信（A1 找回密码）
   internal/theme      主题包注册与加载（docs/theme-spec.md）
   internal/i18n       服务端多语言资源
   internal/ratelimit  认证限流（滑动窗口 + 失败锁定）
   internal/plugin     P0 HookAPI 合约（冻结）
-  migrations/         DDL（InnoDB utf8mb4；0001 基础 … 0009 结构对齐，追踪式逐文件记标）
+  migrations/         DDL（InnoDB utf8mb4；0001 基础 … 0011 access_logs，追踪式逐文件记标）
 web/            Vue 3 + Vite（npm ci && npm run build → web/dist）
 poc/            M0 插件运行时 PoC（goja 已裁决冻结）
 docs/           蓝图 / 规范 / 构建 / 部署 / 迁移 / 兼容矩阵 / 主题规范 / CHANGELOG（公开）；

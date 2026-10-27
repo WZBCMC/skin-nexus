@@ -14,13 +14,13 @@
 ## 〇、开始前 checklist
 
 - [ ] SkinNexus 已能启动并连上**空的目标库**。建表推荐直接 `SKIN_AUTO_MIGRATE=true`
-      启动一次（自动应用 `migrations/0001…0009` 并写 `schema_migrations` 记标）。
+      启动一次（自动应用 `migrations/` 全部文件（0001…0011，以目录为准）并写 `schema_migrations` 记标）。
       ⚠️ 手动执行 DDL 有两处必炸：① `0009` 的 ALTER 与 `0001`/`0005` 部分列重叠，
       直接 `mysql < 0009.sql` 会 ER1060 中止，需 `mysql --force` 逐文件执行；
       ② 手动执行不写 `schema_migrations` 标记，而 **import 实跑强查
       `0008_legacy_preserve.sql` 的记标**（缺标记直接拒绝执行）——手动路径必须
       补 `INSERT INTO schema_migrations ...` 记标，否则用自动迁移
-- [ ] 手上有老站 `.env`（至少 `APP_URL`、`PWD_METHOD`/`PASSWORD_METHODS`、`SALT`）与老站纹理目录 `storage/textures/` 的读权限
+- [ ] 手上有老站 `.env`（必填：`PWD_METHOD`/`PASSWORD_METHODS`；`SALT` 缺省=空盐合法，`APP_URL` 仅展示）与老站纹理目录 `storage/textures/` 的读权限
 - [ ] 老站数据库只读账号（或 mysqldump 快照）——import 对老库只做查询，但仍建议只读凭据兜底
 - [ ] **老站表变体预检**（魔改/老版本插件会缺列，缺列会在 import 中止报 `Unknown column`）：
 
@@ -37,7 +37,9 @@
 - [ ] 目标纹理目录（`SKIN_TEXTURES_DIR`，compose 默认 `/data/textures`）可写
 - [ ] **若老站有非 bcrypt/argon2 的弱哈希用户**（preflight 哈希分布可查）：准备把老站
       `.env` 挂载进 skin-nexus 容器并在 compose 设 `SKIN_LEGACY_ENV=/data/legacy.env`，
-      否则这些用户**无法登录**（12 算式盐链验证依赖它；bcrypt/argon2 PHC 格式不依赖）
+      否则这些用户**无法登录**（按 .env 盐链逐个试验证，支持 12 种公式；bcrypt/argon2 PHC 格式不依赖）。
+      ⚠️ `SKIN_LEGACY_ENV` 指向的文件解析失败 = **服务启动即失败**（日志前缀 `legacy env:`）——
+      挂错路径/坏文件要当场看日志；缺挂载时弱哈希用户登录表现为「账号或密码错误」
 - [ ] 已读完本文 §三「切流断言」与 §六「切流到正式域名」（含签名钥步骤）
 
 **原则**：老站只读、目标先备份、先 dry-run 后实跑、跑完对账。
@@ -48,7 +50,7 @@
 
 | 老站表 | 目标表 | 说明 |
 |---|---|---|
-| `users` | `users` | 密码哈希原样携带；`password_algo` 自动分类（bcrypt→`legacy:bcrypt`、argon2 PHC→`legacy:argon2`、其余→`legacy` 走 12 算式逐个试，**需 SKIN_LEGACY_ENV**），网页登录时惰性重哈希为 argon2id |
+| `users` | `users` | 密码哈希原样携带；`password_algo` 自动分类（bcrypt→`legacy:bcrypt`、argon2 PHC→`legacy:argon2`、其余→`legacy` 按 .env 盐链逐个试（支持 12 种公式），**需 SKIN_LEGACY_ENV**），网页登录时惰性重哈希为 argon2id；`permission` 原样搬运（老站管理员迁移后即管理员） |
 | `players` | `players` | 名称/皮肤披风引用原样 |
 | `textures` | `textures` | `type` 做 steve/alex→`skin`+`model` 映射；`name`→`description` |
 | `uuid` | `uuid_map` | 过五步清洗（同名去重 / 同 UUID 去重 / pid 回填 / 孤儿剔除），**UUID 零漂移** |
@@ -82,7 +84,7 @@
 skin-nexus migrate preflight --env /path/to/legacy/.env \
   --textures /path/to/legacy/storage/textures \
   --dump hashes.txt
-#   预期：SALT slots aligned OK；texture scan: ok=<N> hashMismatch=0 badIHDR=0 badName=0
+#   预期：SALT slots aligned OK；texture scan: checked=<N> ok=<N> hashMismatch=0 badIHDR=0 badName=0
 #   hashes.txt = 老站 users.password 列逐行导出（mysql -N -e 'SELECT password FROM legacy.users' > hashes.txt）
 #   （--dump 是输入：给引擎哈希清单做分布统计，不是输出文件）
 ```
@@ -91,7 +93,7 @@ skin-nexus migrate preflight --env /path/to/legacy/.env \
 
 1. **方法/盐对齐表**（盐打码显示）——与老站 `.env` 声明一致才继续；
 2. **哈希分布**：`weak-share=0%` → 情景甲（仅惰性重哈希）；`weak-share>0%` → 情景乙（MD5/SALTED 族存量，需 `SKIN_LEGACY_ENV` 挂载 + 惰性重哈希 + 管理面板「弱哈希余量」看板跟踪）；
-3. **纹理树审计**：`hashMismatch`（文件名≠内容 hash）与 `badIHDR`（解码异常）、`badName`（非 64-hex 文件名）逐个列出——**这些问题文件不会被 import 拷贝**（见 §一），记录在案、修复后补拷。
+3. **纹理树审计**：`hashMismatch`（文件名≠内容 hash）与 `badIHDR`（解码异常）、`badName`（非 64-hex 文件名）逐个列出——**`hashMismatch` 与 `badName` 不会被 import 拷贝**；`badIHDR` 但 hash 合法的文件**仍会被拷贝**（文件在、渲染可能异常，记录在案人工复查）。
 
 ### 1. 备份
 
@@ -132,10 +134,11 @@ skin-nexus migrate import \
 
 通过标准：
 
-- 各表 `selected` 数与老站 `COUNT(*)` 逐一相等（`uuid_map`/`user_closet` 除外，见 §三.2）；
+- 各表 `selected` 数与老站 `COUNT(*)` **逐一相等**（7 表皆是）；例外在 `inserted`：
+  `uuid_map` 对 `uuid clean: out=` 计数、`user_closet` 对 `selected`（NOT EXISTS 去重）；
 - **无 `will be SKIPPED` 类 WARN、无超长告警**（报告里的 `skipped` 计数在 dry-run 下
   大多恒为 0，不能当通过信号——真正的丢行信号是 WARN 文本）；
-- 纹理 `checked=N ok=N`（`files copied` 等于老站**文件数**）。
+- 纹理 `checked=N ok=N`（dry-run 不拷文件、无 `files copied` 行，计数检查放到 §三.3 实跑后）。
 
 dry-run 的副作用仅一个：会在目标机创建纹理目录（`--textures-dst`），不写任何库表；
 另外 dry-run **不查 0008 记标**，通过≠实跑前置已满足（见〇节）。
@@ -224,10 +227,11 @@ mysql -N -e "SELECT v FROM skin_nexus.options WHERE k='union_member_key'"
 
 - `WARN invitation id=N used_at is NULL/zero date`：未使用邀请码的正常形态
   （老站 `used_at` 可空/零日期；导入时零日期折叠为 NULL），不影响使用。
-- `options` 比老站多 1 行是正常的：应用启动会写 `setup_done=1` 等自身键。
+- `options` 比老站多几行是正常的：`/setup` 完成或 union 启用会往 options 写新键。
   **迁移后不会误触发安装向导**（users 非空即视为已初始化，`/setup` 是一次性门），
-  无需手工补 `setup_done`；迁移导入的用户里也没有管理员，需用 SQL/管理接口补建
-  管理员（或切流前在空目标站先过 `/setup` 建好管理员再导入——ID 不冲突即可并存）。
+  无需手工补 `setup_done`。**老站 `permission>0` 的账号迁移后即为管理员**
+  （权限原样搬运，无需补建）；仅当老站确无管理员时才用 SQL/管理接口补建
+  （或切流前在空目标站先过 `/setup` 建好管理员再导入——ID 不冲突即可并存）。
 
 **非良性（必须处置）**：
 
@@ -235,7 +239,8 @@ mysql -N -e "SELECT v FROM skin_nexus.options WHERE k='union_member_key'"
 - 超长告警（如 players.name 超 16 字符）：引擎只 WARN 仍会插入，但目标列
   `VARCHAR(16)` 会截断（uuid_map 截断撞主键还会静默丢行）——老站名超长的先改名
   再迁，或迁后核对；
-- 纹理 `HASH-MISMATCH` / `BAD-IHDR` / `BAD-NAME`：对应文件不拷贝（§三.3）。
+- 纹理 `HASH-MISMATCH` / `BAD-NAME`：对应文件不拷贝（§三.3）；`BAD-IHDR` 若 hash 合法
+  仍会被拷贝（文件在、渲染可能异常），需人工复查。
 
 ## 五、回滚
 
@@ -260,7 +265,7 @@ mysql -N -e "SELECT v FROM skin_nexus.options WHERE k='union_member_key'"
      插件所用密钥同指纹（双侧实测一致），切流无需改
      `sign-key.pem`；一旦关闭 union 回退本地签名，必须先把老站
      `ygg_private_key` 写入 `sign-key.pem`（老站 option 值可能存成单行、
-     换行转义为字面 `\n`，写入前需解开转义）。
+     换行转义为字面 `\n`，写入前需解开转义）。`sign-key.pem` 必须是 **PKCS#8**（`BEGIN PRIVATE KEY`）：老站若是 PKCS#1（`BEGIN RSA PRIVATE KEY`），先 `openssl pkey -in old.pem -out sign-key.pem` 转换，否则启动即失败。
    - 从老站导出该 option 并比对指纹的参考命令（不打印私钥）：
 
      ```bash
@@ -270,12 +275,13 @@ mysql -N -e "SELECT v FROM skin_nexus.options WHERE k='union_member_key'"
      # 双侧公钥指纹比对（应一致）
      openssl pkey -in sign-key.pem -pubout | openssl pkey -pubin -outform DER | sha256sum
      # union 模式：比对的是「线上实际下发」的公钥（与 hub 私钥对应）：
-     curl -s https://你的域名/api/yggdrasil/ | python3 -c "import sys,json,base64,hashlib;print(hashlib.sha256(base64.b64decode(json.load(sys.stdin)['signaturePublickey'])).hexdigest())"
+     curl -s https://你的域名/api/yggdrasil/ | python3 -c "import sys,json,base64,hashlib;print(hashlib.sha256(base64.b64decode(''.join(json.load(sys.stdin)['signaturePublickey'].splitlines()[1:-1]))).hexdigest())"
      ```
 
 2. 改 `SKIN_BASE_URL` 与 nginx `server_name`、证书（`SKIN_BASE_URL` 改后需重启容器
    才影响纹理 URL——见 deploy.md §2.3）；
-3. 管理面板改 `site_url`（options 优先于 env）；
+3. 管理面板改 `site_url`（options 优先于 env；重启后才生效，纹理 URL 只随
+   `SKIN_BASE_URL` 变）；
 4. yggdrasil 客户端的服务器地址需随域名更新（老玩家改一次启动器配置）；
 5. 联盟（Union）成员站注册信息若含域名，需在 hub 侧同步。
 
@@ -294,5 +300,5 @@ skin-nexus migrate uuid --rows uuid.tsv --players players.tsv
 ```
 
 对**导出的 TSV 快照**（`uuid` 表 `id\tname\tuuid\tpid`、`players` 表 `id\tname`，
-均按 id 升序）做五步清洗的只读预演并输出 KEEP 清单。import 内部含同款清洗，
+TSV 的行序无关（内部自动按 id 排序；uuid TSV 第 4 列 pid 可选））做五步清洗的只读预演并输出 KEEP 清单。import 内部含同款清洗，
 本子命令用于提前看清「哪些行会被清洗掉」；不连数据库。

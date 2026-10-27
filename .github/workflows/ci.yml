@@ -23,7 +23,7 @@ jobs:
       - name: Test
         run: go test ./...
 
-  # MySQL round-trip suite over the full 0001-0009 schema (build tag `integration`).
+  # MySQL round-trip suite over the full 0001-0011 schema (build tag `integration`).
   # 5.7 + 8.0 matrix: two production incidents were 5.7-only SQL issues that
   # the 8.0-only suite could not catch (login COLLATE / prepared 1267).
   integration:

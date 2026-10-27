@@ -19,14 +19,14 @@ SkinNexus is a modern rewrite of the unmaintained [blessing-skin-server](https:/
 - **MUA Union member module** — **opt-in, off by default**; deployments outside the union carry zero surface: no routes, no overhead
 - **One-command data migration** from blessing-skin-server — users/skins/capes/role bindings migrate intact (multi-algorithm password compatibility + lazy rehash)
 - **Docker Compose deployment** — CI builds and publishes production images to GHCR on every push to `main`; deployment hosts only pull
-- **Fresh-DB bootstrap** — empty database auto-initializes schema, then a `/setup` wizard creates the admin account and site settings
+- **Fresh-DB bootstrap** — empty database auto-initializes schema, then a `/setup` wizard (reachable at `/setup`, or automatically on any SPA route) creates the admin account and site settings
 - **i18n** — zh-CN / en built in, switchable at runtime
 - **SEO** — meta/OG/canonical injection, `sitemap.xml`, `robots.txt`, optional site-wide `noindex`
 - **Custom CSS/JS & theme packs** — blessing-style admin styling plus `data/themes/` theme packs ([theme spec](docs/theme-spec.md), AI-generatable)
 - **Texture compatibility APIs** — CustomSkinAPI / USM / legacy bare-PNG / public read-only API
 - **Server-side avatar & preview rendering** — `/avatar/...` and `/preview/...` output PNG; HD skins keep their native resolution
 - **Self-hosting & data sovereignty** — zero third-party accounts, local data, single control point
-- **Plugin extension (planned)** — hook contract frozen (goja runtime chosen); host runtime ships later
+- **Plugin extension** — hook contract frozen (goja runtime chosen); host runtime ships later
 
 ## Comparison with mainstream open-source skin servers
 
@@ -48,7 +48,7 @@ SkinNexus is a modern rewrite of the unmaintained [blessing-skin-server](https:/
 | Ops observability (login + server/union traffic logs, 90 days + audit) | ✅ full-chain, viewable in panel | ❌ | ⚠️ permission audit only | ❌ |
 | Deployment shape | Go single binary / Docker, CI-published images | PHP 8.1 + Laravel 10 (PHP 8.1 is EOL) | Go + PostgreSQL + Redis | FastAPI + SQLite |
 
-**Leads** (per-cell, evidence-graded): the **complete SEO system** — body-level SSR + per-page OG/JSON-LD + sitemap/robots — has no full counterpart among the three (blessing ships skinlib detail pages and per-page titles, but renders bodies client-side and lacks OG/JSON-LD/sitemap/robots; the two newer rivals have none); the **ID-preserving blessing migration chain** and **full-chain ops observability** (login + server/union traffic logs + audit) are absent from all three (element-skin only has a permission audit). On top of that, a measured performance ledger from a **2-core / 3.5 GB production VPS**: ~600 RPS on the landing page (CPU-capped), 5182 RPS texture delivery, 2365 RPS Yggdrasil metadata, zero errors throughout (see [`docs/CHANGELOG.md`](docs/CHANGELOG.md)).
+**Leads** (per-cell, evidence-graded): the **complete SEO system**, the **ID-preserving blessing migration chain** and the **full-chain ops observability** have no full counterpart among the three rivals (per-cell evidence in [`docs/competitor-analysis.md`](docs/competitor-analysis.md)). Measured performance on a **2-core / 3.5 GB production VPS**: ~600 RPS landing (CPU-capped), 5182 RPS texture delivery, 2365 RPS Yggdrasil metadata, zero errors (see [`docs/CHANGELOG.md`](docs/CHANGELOG.md)).
 
 ## Quick start (for operators)
 
@@ -58,16 +58,16 @@ Path A — **Docker Compose (recommended)**:
 git clone https://github.com/YimingZhanshen/skin-nexus.git && cd skin-nexus
 # edit the environment variables in docker-compose.yml (database password, SKIN_BASE_URL, ...)
 docker compose up -d                  # first install; upgrades: docker compose pull && up -d
-# open your site — the /setup wizard runs on first visit (admin account / site name / skin domains)
+# open /setup (or any SPA route) on an empty DB — the wizard runs automatically (admin account / site name / skin domains)
 ```
 
 Full guide (two database modes, complete env-var tables, backup/restore, troubleshooting): [`docs/deploy.md`](docs/deploy.md).
 
-Path B — source build + systemd (no-Docker hosts): [`docs/build.md`](docs/build.md) §2/§3.
+Path B — source build + systemd (no-Docker hosts): [`docs/build.md`](docs/build.md) §2/§3 and [`docs/deploy.md`](docs/deploy.md) §5.
 
 Path C — migrate an existing blessing-skin-server: [`docs/migration.md`](docs/migration.md) — `preflight → dry-run → import`, fully rollback-able.
 
-**After launch (mandatory)**: your reverse proxy must forward `X-Forwarded-Proto` and `X-Forwarded-For` (without them, the ALI protocol header is wrong and all users share one rate-limit bucket); back up `data/sign-key.pem` (losing it invalidates every skin signature).
+**After launch (mandatory)**: your reverse proxy must forward `X-Forwarded-Proto` and `X-Forwarded-For` (without them, the ALI protocol header is wrong and all users share one rate-limit bucket); back up the signing key (`/data/sign-key.pem` inside the skin-data volume for Docker; `data/sign-key.pem` by default for source builds — losing it invalidates every skin signature).
 
 ## Documentation
 
@@ -77,6 +77,7 @@ Most detailed documentation is currently in Chinese:
 - [`docs/deploy.md`](docs/deploy.md) — deployment, env vars, Nginx reverse proxy, operations
 - [`docs/migration.md`](docs/migration.md) — migration from blessing-skin-server + cutover assertions + signing-key alignment
 - [`docs/compat-matrix.md`](docs/compat-matrix.md) — blessing / yggdrasil-connect compatibility matrix (measured baseline)
+- [`docs/competitor-analysis.md`](docs/competitor-analysis.md) — per-cell source evidence behind the comparison table (Chinese)
 - [`docs/theme-spec.md`](docs/theme-spec.md) — theme pack spec
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — iteration history (dated, concise; Chinese)
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution guide: translations, theme packs, code & docs

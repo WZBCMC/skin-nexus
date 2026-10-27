@@ -127,6 +127,12 @@ func TestSpaHandlerInjectsEveryHTMLPath(t *testing.T) {
 	}
 
 	// Unknown paths are a true 404 (no more soft-404 login card / fake SEO).
+	// /setup is a known shell route (first-install wizard deep link).
+	recSetup := httptest.NewRecorder()
+	h.ServeHTTP(recSetup, httptest.NewRequest(http.MethodGet, "/setup", nil))
+	if recSetup.Code != http.StatusOK {
+		t.Fatalf("GET /setup: want 200 (wizard shell), got %d", recSetup.Code)
+	}
 	rec404 := httptest.NewRecorder()
 	h.ServeHTTP(rec404, httptest.NewRequest(http.MethodGet, "/profile/Steve", nil))
 	if rec404.Code != http.StatusNotFound {

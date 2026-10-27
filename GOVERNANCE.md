@@ -14,7 +14,7 @@ SkinNexus / 肤枢 由 **YMZS（[GitHub @YimingZhanshen](https://github.com/Yimi
 
 - **本仓库（`YimingZhanshen/skin-nexus`）是唯一 canonical 仓库**：全部 commit、issue、PR、release 都在这里。
 - 协作组织下的 `skin-nexus` 为 fork 镜像（显示 `forked from` 回链），仅作组织内浏览/同步用，**不在 fork 上开发**。
-- 贡献归属以主仓 commit 历史为准；发起人的原始著作权不因后续贡献而稀释（Apache/AGPL 的版权-专利条款 + 本文件声明共同保障）。
+- 贡献归属以主仓 commit 历史为准；发起人的原始著作权不因后续贡献而稀释（AGPL-3.0 §11 版权-专利条款 + 本文件声明共同保障）。
 
 ## 贡献者认可
 

@@ -66,12 +66,12 @@ docker build -t skin-nexus:latest .   # 本地源码构建（离线/内网场景
 
 ## 五、CI 产物（推荐部署来源）
 
-`.github/workflows/ci.yml` 每次 push main / PR 运行五个 job：
+`.github/workflows/ci.yml` 定义 5 个 job（PR 跑 4 个——docker 仅 push main 触发；integration 含双矩阵腿）：
 
 | job | 内容 |
 |---|---|
 | server | `go build` + `go vet` + `go test ./...` |
-| integration | MySQL 8 service 容器跑 `-tags integration` 存储层往返 |
+| integration | MySQL **8.0 + 5.7 双矩阵**各跑一遍 `-tags integration` 存储层往返（5.7 专抓版本差异 SQL 问题） |
 | poc | 插件运行时 PoC 测试 |
 | web | `npm ci && npm run build` |
 | docker | 多阶段镜像推 GHCR：`ghcr.io/yimingzhanshen/skin-nexus:latest` 与 `:sha-<commit>`（GHA 缓存；仅 push main 触发推送，PR 构建不推镜像） |

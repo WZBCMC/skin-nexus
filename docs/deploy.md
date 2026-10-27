@@ -9,7 +9,7 @@
 | 方式 | 适合 | 说明 |
 |---|---|---|
 | **A. Docker Compose（推荐）** | 绝大多数站长 | 拉镜像 → 改环境变量 → `up -d`；升级 `pull && up -d`；内置 MySQL 可选 |
-| B. 源码构建 + systemd | 无 Docker 的面板机/内网机 | 单二进制 + web/dist，见 §五 |
+| B. 源码构建 + systemd | 无 Docker 的主机（如已有主机面板/内网机） | 单二进制 + web/dist，见 §五 |
 
 ## 二、Docker Compose 部署（主线）
 
@@ -56,7 +56,7 @@ db:
 ③ `SKIN_DATABASE_DSN` 里的 `CHANGE_ME` **必须与 ① MYSQL_PASSWORD 一致**（漏改 → access denied →
 容器反复重启）；④ `SKIN_ADMIN_TOKEN` 按 §2.3 生成。即 compose 里共动 4 处。
 
-**模式 2：外部 MySQL（已有老 blessing 库 / 迁移目标库 / 面板机库）**
+**模式 2：外部 MySQL（已有老 blessing 库 / 迁移目标库 / 主机面板环境的库）**
 
 注释掉 `db` 服务与 `depends_on`，把 DSN 指向外部库：
 
@@ -83,22 +83,30 @@ environment:
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `SKIN_LISTEN` | `:8080` | 容器内监听，**保持 `:8080` 即可**。bridge 网络下不要改成 `127.0.0.1:8080`（进程只绑容器环回 → 端口映射 connection refused，而 healthcheck 仍报 healthy，极难排查）；反代场景想只对本机开放就改 ports 绑定为 `127.0.0.1:8080:8080`；仅 `network_mode: host` 时才建议 `127.0.0.1:8080`。注意镜像 HEALTHCHECK 固定探 `127.0.0.1:8080`，改端口需同步改 healthcheck |
+| `SKIN_LISTEN` | `:8080` | 容器内监听，**保持 `:8080` 即可**（改端口/绑本机见表下注） |
 | `SKIN_SERVER_NAME` / `SKIN_SITE_NAME` | `SkinNexus` | Yggdrasil 元数据显示名 / 站点名（也可在管理面板改） |
 | `SKIN_SKIN_DOMAINS` | 空 | 皮肤域白名单；不接联盟填本站域名，接入 MUA Union 以联盟公布清单为准（改动会破坏联盟互认） |
 | `SKIN_DATA_DIR` | `/data`（镜像内） | 统一数据根：textures/、签名钥、themes/ 都在它下面 |
 | `SKIN_AUTO_MIGRATE` | `true`（镜像内） | 追踪式建表/补表：`schema_migrations` 逐文件记标，空库全量、既有库自动补新文件 |
 | `SKIN_INVITE_REQUIRED` | `false` | 注册强制邀请码（等价老站必填语义）；也可在管理面板「站点设置」改 |
 | `SKIN_REQUIRE_VERIFICATION` | `false` | join 邮箱验证门（邮件流落地前保持关） |
+| `SKIN_SMTP_HOST` / `SKIN_SMTP_PORT` / `SKIN_SMTP_USER` / `SKIN_SMTP_PASS` / `SKIN_SMTP_FROM` | 无 / `465` / 无 / 无 / 无 | 找回密码邮件流（A1）：SMTP 五键，也可在管理面板「站点设置」配；未配置时注册/找回不提供邮箱通道 |
+| `SKIN_MOJANG_FALLBACK` | `1`（开） | profile/hasJoined 本地未命中时向 Mojang 官方 sessionserver 发站外查询兜底；不希望站外请求就设 `0`（面板可热切） |
 | `SKIN_RATE_LIMIT_AUTH` / `SKIN_LOGIN_FAIL_LIMIT` | `120` / `5` | 认证限流：每 IP 10 分钟滑动窗口 / 连续失败锁定次数 |
 | `SKIN_OIDC_ENABLED` | `false` | 启动器免密登录（yggc/OIDC）；`SKIN_OIDC_ISSUER` 默认跟 `SKIN_BASE_URL` |
 | `SKIN_UNION_ENABLED` | `false` | MUA Union 联盟模块；未接入保持关 = 零路由零表面 |
 | `SKIN_LEGACY_ENV` | 无 | **从老站迁移且用户密码非 bcrypt/argon2 PHC 格式时必设**：指向挂载进容器的老站 `.env`（盐链来源），否则这些存量用户无法登录（见 [migration.md](migration.md)） |
 
 路径/密钥类变量默认值即可，一般无需改动：`SKIN_TEXTURES_DIR`（`<data>/textures`）、`SKIN_SIGN_KEY`（`<data>/sign-key.pem`）、`SKIN_OIDC_SIGN_KEY`（`<data>/oidc-key.pem`）、`SKIN_THEMES_DIR`（`<data>/themes`）、`SKIN_MIGRATIONS_DIR`（镜像内 `/app/migrations`）、`SKIN_OIDC_SHARED_CLIENT_ID`（`2`）。
-Union 七键（`SKIN_UNION_API_ROOT` / `SKIN_UNION_MEMBER_KEY` / `SKIN_UNION_HOST_PUBKEY` / `SKIN_UNION_ALLOW_UPDATEBACKENDKEY` / `SKIN_UNION_QUERYEMAIL_MODE` / `SKIN_UNION_OAUTH2_SIG_KEY` / `SKIN_UNION_HUB_ORIGIN`）走管理面板配置，env 仅作初始值/回退；完整变量清单以 `server/internal/config/config.go` 为准。
 
-> **站点类设置大多已迁管理 UI**（「管理 → 站点设置」：站点名/皮肤域/邀请码/验证门/ygg 五键/Union 八键），
+> `SKIN_LISTEN` 改值注意：bridge 网络下不要改成 `127.0.0.1:8080`（进程只绑容器环回 → 端口映射
+> connection refused，而 healthcheck 仍报 healthy，极难排查）；反代场景想只对本机开放就改 ports
+> 绑定为 `127.0.0.1:8080:8080`；仅 `network_mode: host` 时才建议 `127.0.0.1:8080`。镜像 HEALTHCHECK
+> 固定探 `127.0.0.1:8080`，改端口需同步改 healthcheck。
+Union 七键（`SKIN_UNION_API_ROOT` / `SKIN_UNION_MEMBER_KEY` / `SKIN_UNION_HOST_PUBKEY` / `SKIN_UNION_ALLOW_UPDATEBACKENDKEY` / `SKIN_UNION_QUERYEMAIL_MODE` / `SKIN_UNION_OAUTH2_SIG_KEY` / `SKIN_UNION_HUB_ORIGIN`）走管理面板配置，env 仅作初始值/回退。完整变量清单以 `server/internal/config/config.go` 加上散在 `main.go` / `adminapi` 里的 `os.Getenv` 为准（`SKIN_ADMIN_TOKEN`、`SKIN_SMTP_*`、`SKIN_MOJANG_FALLBACK`、`SKIN_LEGACY_ENV` 都不在 config.go）。
+
+> **站点类设置大多已迁管理 UI**（「管理 → 站点设置」：站点名/皮肤域/邀请码/验证门/mail 五键/ygg 六键/Union 八键——
+> env「Union 七键」与面板「Union 八键」是两个集合：面板多 `union_enabled` 开关），
 > 但**优先级分键**，别想当然：`site_url` option 优先于 env（不过**纹理 URL 只认启动时的
 > `SKIN_BASE_URL` 快照**，面板改 site_url 不会改纹理 URL）；`site_name`/`server_name`/
 > `skin_domains` 则是**显式 env 优先**——想在面板改这三项，就不要在 compose 里设对应 env
@@ -111,10 +119,10 @@ Union 七键（`SKIN_UNION_API_ROOT` / `SKIN_UNION_MEMBER_KEY` / `SKIN_UNION_HOS
 docker compose up -d
 docker compose ps            # 等两个服务 healthy（镜像内置 HEALTHCHECK 探 /healthz，DB 探活）
 curl -s http://127.0.0.1:8080/api/yggdrasil/ | head -c 300   # 元数据 JSON
-# 浏览器打开 SKIN_BASE_URL → 首访自动进 /setup 安装向导
+# 浏览器打开 /setup（或任一 SPA 路由）→ 空库自动进安装向导
 ```
 
-首启链路（空库）：自动迁移建表（`SKIN_AUTO_MIGRATE=true`）→ 首访 `/setup` 向导
+首启链路（空库）：自动迁移建表（`SKIN_AUTO_MIGRATE=true`）→ 访问 `/setup`（或任一 SPA 路由）自动进入向导
 （建管理员/站点名/皮肤域）→ **向导是一次性门**：完成后永久 404，向导里建的账号即管理员。
 若目标库已有用户（如迁移导入后），向导自动跳过（users>0 即视为已初始化），此时管理员
 需在导入前用向导创建，或导入后用 SQL/管理接口补建——顺序详见 [migration.md](migration.md)。
@@ -241,7 +249,7 @@ WantedBy=multi-user.target
 ```
 
 要点：工作目录须能读到 `web/dist` 与 `migrations/`（或用 `SKIN_MIGRATIONS_DIR` 指定）；
-手动建表按序执行 `migrations/0001…0009`，或设 `SKIN_AUTO_MIGRATE=true` 让启动时自动应用。
+手动建表按序执行 `migrations/0001…0011`（以目录实际文件为准），或设 `SKIN_AUTO_MIGRATE=true` 让启动时自动应用。
 Nginx 反代与 §三完全相同。日志 `journalctl -u skin-nexus -f`。
 
 ## 六、运维周期检查

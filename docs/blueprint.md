@@ -70,7 +70,7 @@
 4. **严格度**：元数据 JSON / 公钥 PEM 格式错误直接游戏退出；查无此人必须 204（4xx/5xx 会被当网络错误）；PEM 仅允许换行符空白。
 5. **发现机制**：ALI 响应头 `X-Authlib-Injector-API-Location`（相对/绝对均可）+ 启动器 prefetch（Base64 元数据 JSON，不发网络请求）——SkinNexus 对外数据接口和启动器集成两条路都要支持。
 6. **许可**：authlib-injector 为 AGPLv3+ 附例外，**HTTP API 交互不受传染**，SkinNexus 内置实现无需开源（但我们本来就 AGPL-3.0）；wiki 文本 CC BY-SA 4.0，引用需署名。协议规范文档直接可用，**不要抄其 Java 代码**（一并 AGPL 无碍，但保持 clean-room 更稳）。
-7. **待确认**：版本覆盖范围（推断 1.7.10～最新，待验证）；需求方所说「恒等名」在仓库无对应词条，推断指 `non_email_login` 或 `meta.serverName`，待 YMZS 确认语义。
+7. **历史遗留未闭合（2026-10-27 归档标注）**：版本覆盖范围（推断 1.7.10～最新，待验证）；需求方所说「恒等名」在仓库无对应词条，推断指 `non_email_login` 或 `meta.serverName`。
 
 ### 2.3 yggdrasil-connect 与 MUA Union（分析结论，2026-10-22）
 
@@ -78,7 +78,7 @@
 
 1. **API 根 `/api/yggdrasil`**：authserver 五端点、sessionserver join/hasJoined/profile、api/profiles/minecraft、api/users/profiles/minecraft/{name}、minecraftservices 别名、纹理管理（PUT/DELETE `api/user/profile/{uuid}/{type}`）、restore、yggc/*（OIDC/Janus）、api/union/member/*。错误体 `{error,errorMessage,cause?}`；未命中/invalidate/signout 返回 204。实现时以此清单为兼容基线。
 2. **数据源映射**：SKIN/CAPE URL = `site_url/textures/{hash}`；旧库 textures.type `steve→default`、`alex→slim`（迁移映射直接复用）。
-3. **MUA Union 协议**（hub 默认 `https://skin.mualliance.ltd/api/union`）：
+3. **MUA Union 协议**（hub 默认 `https://skin.mualliance.ltd/api/union`——MUA Union 官方 hub 公开地址，与代码默认值同址，第三方公开服务、非本站域名）：
    - 出站带 `X-Union-Member-Key`；入站验签 `X-Message-Signature/-Timestamp/-Nonce`（验签串 body+timestamp+nonce，RSA-SHA256，时间窗 ±10/30s + nonce 60s）；
    - `GET /privatekey` 统一下发**纹理签名私钥（全 Union 共享一把）**——架构含义：Union 模式下签名密钥不本地生成，由 hub 下发；
    - 成员操作：profile 同步/bind/bindto/remapuuid/sync/blacklist/queryemail/updateplugin、OAuth2 grant（base64 userInfo + HMAC-SHA256(member_key) + RSA-SHA256 签名 + hub 公钥分块 PKCS1 加密）；
@@ -211,22 +211,11 @@
 
 ## 8. 协作开发规范
 
-- **分支模型**：trunk-based，`main` 保护分支 + 短生命周期 feature 分支（`feat/<scope>-<desc>`），PR 合并前必须过 CI + 至少一人（或指定 agent）评审。
-- **提交规范**：Conventional Commits（`feat|fix|docs|refactor|test|chore`），scope 用模块名（`auth`/`texture`/`ygg`/`plugin`/`migrate`）。
-- **代码质量**（目标规范；lint 工具链尚未引入，当前 CI = go build/vet/test + 集成测试 + 前端构建 + Docker）：格式化与 lint（Go: golangci-lint；TS: eslint+prettier——随技术栈定）；单测覆盖率门槛核心域 ≥70%，落地后 CI 矩阵补 lint 项。
-- **PR 要求**：模板含「动机/改动/测试/迁移影响」；涉及 DB 的 PR 必须附迁移脚本；涉及 Yggdrasil 协议的 PR 必须附兼容性验证记录（对照 §2.2 清单）。
-- **文档先行**：协议/接口变更先改 `docs/` 再改代码；ADR（架构决策记录）存 `docs/adr/`，编号递增。
-- **安全**：依赖锁定 + 定期审计；密钥不进仓库；对外动作（发版、切库）先示内容再执行。
+> **已迁 [`standards.md`](standards.md)（真源）**：分支模型 / Conventional Commits / 代码质量目标 / PR 要求 / 文档先行 / 安全纪律。
 
 ## 9. Agent 开发指南（多 AI/多 agent 协作）
 
-- **仓库即上下文**：根目录 `AGENTS.md`（等价 `CLAUDE.md`）描述架构地图、常用命令、禁区（migration 不可逆操作需人工确认）；每个模块目录可有子 `AGENTS.md`。
-- **任务粒度**：一个 agent 一个 PR 级任务；任务卡包含「动机、验收标准、涉及文件范围（write scope）、依赖任务」；写范围不重叠，重叠需先协商。
-- **证据铁律**：结论标注出处（文件:行号或命令输出）；「不存在」类结论必须穷尽检索；不确定标「待验证」。
-- **验证门**：每步贴真实命令输出，失败即停、最多重试 1 次；不编造输出。
-- **分工边界**：重逆向/重分析（三仓库分析）走独立子代理并落盘 `analysis/`；实现 agent 不改他人 write scope 内文件。
-- **AI 可读契约**：API 变更同步更新 OpenAPI schema（`docs/openapi.yaml`，规划中、尚未落地，落地前以源码路由 + 契约测试为事实源）——agent 以 schema 为接口事实源；插件 hook 清单同理版本化。
-- **复盘沉淀**：每完成一个里程碑，把踩坑与有效流程沉淀为技能/ADR，不重复交学费。
+> **已迁 [`standards.md`](standards.md)（真源）**：仓库即上下文 / 任务粒度 / 证据铁律 / 验证门 / 分工边界 / AI 可读契约 / 复盘沉淀。
 
 ## 10. 开源协议
 
@@ -249,4 +238,4 @@
 | 插件形态终选 | 多 AI 评析后拍板 | ✅ 已冻结：goja 内嵌 + hook 合约（P0 15–20 个），宿主运行时后置 |
 | 域名/部署目标 | 自有 Linux 服务器 + MySQL + 反代域名 | ✅ 已确认（2026-10-22，见 docs/deploy.md） |
 | 旧站下线与回滚 | 双跑期时长与回滚触发条件 | ✅ 触发条件已定（docs/migration.md §五），切流已完成（2026-10-25） |
-| authlib-injector 版本覆盖 | 推断 1.7.10～最新，待验证；「恒等名」语义（non_email_login 或 meta.serverName）待确认 | 待 YMZS 确认 |
+| authlib-injector 版本覆盖 | 推断 1.7.10～最新，待验证；「恒等名」语义（non_email_login 或 meta.serverName）待确认 | **历史遗留未闭合（2026-10-27 归档标注）** |

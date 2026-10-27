@@ -20,7 +20,7 @@ SkinNexus（肤枢）是对年久失修的 [blessing-skin-server](https://github
 - **多语言（i18n）**：内置 zh-CN/en，界面全量键值化，语言切换即时生效
 - **SEO 一键配置**：meta/OG/canonical 注入、sitemap.xml、robots.txt、可整站 noindex（预发）
 - **自定义 CSS/JS 与主题包**：admin 贴样式（blessing 同款）+ `data/themes/` 主题包（社区分发、AI 可生成，规范见 [`docs/theme-spec.md`](docs/theme-spec.md)）
-- **Docker Compose 部署**：一键编排（可选内置 MySQL 或外部数据库），数据/主题/密钥卷持久化，升级不丢数据；空库自动建表 + 首访安装向导 `/setup`
+- **Docker Compose 部署**：一键编排（可选内置 MySQL 或外部数据库），数据/主题/密钥卷持久化，升级不丢数据；空库自动建表 + `/setup` 安装向导（或任一 SPA 路由自动进入）
 - **对外数据接口**：CustomSkinAPI / USM / legacy 裸 PNG / 公开只读 API（社团官网读皮肤数据用）
 - **头像与预览服务端渲染**：`/avatar/{player|user|hash|tid}`、`/preview/{tid|hash}` 输出 PNG，高清皮保留原生分辨率
 - **自托管与数据主权**：零账号依赖、本地直连、单一控制点
@@ -46,28 +46,28 @@ SkinNexus（肤枢）是对年久失修的 [blessing-skin-server](https://github
 | 运维观测面（登录 + 服务器/联盟通信日志 90 天 + 审计） | ✅ 全链路面板可查 | ❌ | ⚠️ 仅权限审计 | ❌ |
 | 部署形态 | Go 单二进制 / Docker，CI 直出生产镜像 | PHP 8.1 + Laravel 10（PHP 8.1 已 EOL） | Go + PostgreSQL + Redis | FastAPI + SQLite |
 
-**领先区**（逐格实证，不夸大）：**完整 SEO 体系**——正文级服务端渲染 + 逐页 OG/JSON-LD + sitemap/robots，三家均无完整实现（blessing 有皮肤库单品页与逐页 title，但正文客户端渲染、无 OG/JSON-LD/sitemap/robots；两家新秀全无）；**blessing 一键迁移链**与**全链路运维观测面**（登录 + 服务器/联盟通信日志 + 审计）则三家全无（element-skin 仅有权限审计）。外加一张实测性能账：**2 核 / 3.5GB 生产 VPS 实测**，落地页 ~600 RPS（CPU 封顶）、纹理分发 5182 RPS、Yggdrasil 元数据 2365 RPS、全程零错误（压测记录见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)）。
+**领先区**（逐格实证）：**完整 SEO 体系**、**blessing 一键迁移链**、**全链路运维观测面**三家均无完整实现（逐格证据见 [`docs/competitor-analysis.md`](docs/competitor-analysis.md)）。性能实测（**2 核 / 3.5GB 生产 VPS**）：落地页 ~600 RPS（CPU 封顶）、纹理分发 5182 RPS、Yggdrasil 元数据 2365 RPS、全程零错误（记录见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)）。
 
 ## 快速开始（站长视角）
 
 三条路径任选，详见 [`docs/build.md`](docs/build.md)（构建）与 [`docs/deploy.md`](docs/deploy.md)（部署）：
 
 ```bash
-# 路径 A：Docker Compose（推荐）。CI 每轮 push 自动构建生产镜像推 GHCR，
+# 路径 A：Docker Compose（推荐）。CI 每轮 push main 自动构建生产镜像推 GHCR，
 # 部署机只拉不编——复制仓库根 docker-compose.yml、改好环境变量后：
 git clone https://github.com/YimingZhanshen/skin-nexus.git && cd skin-nexus
 docker compose up -d                  # 首装；升级 pull && up -d，数据卷零丢失
-# → 打开站点自动进 /setup 安装向导（建管理员/站点名/皮肤域）
+# → 空库访问 /setup（或任一 SPA 路由）自动进安装向导（建管理员/站点名/皮肤域）
 # 详细说明（数据库双模式/环境变量表/备份恢复/排错）见 docs/deploy.md §二
 
-# 路径 B：源码构建 + systemd（无 Docker 的内网/面板机）
+# 路径 B：源码构建 + systemd（无 Docker 的内网机/主机面板环境）
 # 见 docs/build.md §二、docs/deploy.md §五
 
 # 路径 C：从老皮肤站（blessing-skin-server）迁移数据
 # 见 docs/migration.md——preflight → dry-run → import 三步，全程可回滚
 ```
 
-**上线后必做**：反代必须透传 `X-Forwarded-Proto` 与 `X-Forwarded-For`（缺失会导致 ALI 协议头错误、全站共享限流桶）；备份 `data/sign-key.pem`（丢失=全网皮肤失效）。
+**上线后必做**：反代必须透传 `X-Forwarded-Proto` 与 `X-Forwarded-For`（缺失会导致 ALI 协议头错误、全站共享限流桶）；备份签名钥（Docker 主线在 skin-data 卷 `/data/sign-key.pem`，源码部署默认 `data/sign-key.pem`；丢失=全网皮肤失效）。
 
 ## 路线图（实时）
 
@@ -75,12 +75,12 @@ docker compose up -d                  # 首装；升级 pull && up -d，数据�
 |---|---|---|
 | 一期 M0–M5 | 技术验证 / 骨架 / Yggdrasil 全量 / 迁移工具 / 前端管理 / 部署切流 | ✅ 开发完成（2026-10-22）；**生产切流完成（2026-10-25）** |
 | 二期 H1/H2/L1–L4 | OIDC 免密核心 / Union 可开关模块 / 前端+管理+集成 | ✅ 完成（2026-10-23） |
-| 兼容矩阵 | blessing/yggdrasil-connect 1:1 复刻缺口（实测基线） | ✅ 36 端点全量实测全对齐，P1 主干全清；缺口明细见 [`docs/compat-matrix.md`](docs/compat-matrix.md) |
+| 兼容矩阵 | blessing/yggdrasil-connect 1:1 复刻缺口（实测基线） | ✅ 36 端点实测基线、P1 主干全对齐；缺口明细见 [`docs/compat-matrix.md`](docs/compat-matrix.md) |
 | 三期骨架 | i18n / SEO / 主题与自定义 CSS-JS / Docker Compose / 空库初始化 | ✅ 骨架完成（2026-10-23） |
 | 部署管线 | CI 构建生产镜像→GHCR，部署机只拉不编 | ✅ 完成（2026-10-23） |
 | 管理面板对齐 blessing | B1–B5 全批（侧边栏/统计/状态/用户表/角色表/白名单/ygg 令牌/Union 运维/黑名单） | ✅ 完成（2026-10-24） |
 | 迁移与切流 | 全量迁移闭环 + 正式域名切换 + 签名钥连续性验证 | ✅ 完成（2026-10-24/25） |
-| 真机验收（A2） | SJMCL + 社区启动器 OAuth 免密登录→选角→进服 | 🔶 预检已修 4 处契约断点，待按清单执行 |
+| 真机验收批次 | SJMCL + 社区启动器 OAuth 免密登录→选角→进服 | 🔶 预检已修契约断点，待按清单执行 |
 | 正版绑定 / 插件宿主 | Auth Source 第二实现 / goja 宿主运行时 | ⬜ 后置规划 |
 | 邮箱验证流 | 验证邮件发送 + `SKIN_REQUIRE_VERIFICATION` 开门 | ⬜ 后置规划 |
 
@@ -98,6 +98,7 @@ docker compose up -d                  # 首装；升级 pull && up -d，数据�
 - [`docs/standards.md`](docs/standards.md) —— 协作开发规范与 Agent 开发指南
 - [`docs/blueprint.md`](docs/blueprint.md) —— 设计蓝图：目标、架构、技术路线对比、协议分析（设计决策记录，实时状态以本文为准）
 - [`docs/compat-matrix.md`](docs/compat-matrix.md) —— blessing / yggdrasil-connect 兼容矩阵与缺口优先级（实测基线）
+- [`docs/competitor-analysis.md`](docs/competitor-analysis.md) —— 竞品对照的逐格源码证据与方法（README 对照表的事实源）
 - [`docs/theme-spec.md`](docs/theme-spec.md) —— 主题包规范（含 AI 生成主题的提示词模板）
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) —— 迭代历史（按日期倒序的要点记录）
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) —— **贡献指南**：语言翻译 / 主题包 / 代码与文档三类贡献

@@ -85,8 +85,8 @@ func TestIntegrationImport(t *testing.T) {
 	exec(`INSERT INTO legacy_options (id,option_name,option_value) VALUES (1,'site_name','老站名'),(2,'ygg_uuid_algorithm','v3')`)
 	exec(`INSERT INTO legacy_user_closet (user_uid,texture_tid,item_name) VALUES (1,5,'我的皮肤'),(1,5,'我的皮肤'),(2,6,NULL)`)
 	exec(`INSERT INTO legacy_invitation_codes (id,code,generated_at,used_by,used_at,description) VALUES
-		(1,'aaaabbbbccccddddeeeeffff00001111','2025-09-01',0,NULL,'张三 24115901029'),
-		(2,'11112222333344445555666677778888','2025-09-02',1,'2025-09-03','李四 24115901030')`)
+		(1,'aaaabbbbccccddddeeeeffff00001111','2025-09-01',0,NULL,'张三 20210001'),
+		(2,'11112222333344445555666677778888','2025-09-02',1,'2025-09-03','李四 20210002')`)
 
 	opt := migrate.ImportOptions{Source: m.db, Target: m.db, SourcePrefix: "legacy_"}
 
