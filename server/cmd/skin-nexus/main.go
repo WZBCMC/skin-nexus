@@ -19,9 +19,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"skin-nexus/server/internal/accesslog"
@@ -633,8 +635,28 @@ func main() {
 
 	addr := cfg.Listen
 	log.Printf("skin-nexus %s listening on %s (base %s)", version, addr, cfg.BaseURL)
-	if err := http.ListenAndServe(addr, pub.WrapRoot(root)); err != nil {
-		log.Fatal(err)
+
+	srv := newHTTPServer(addr, pub.WrapRoot(root))
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- srv.ListenAndServe() }()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	select {
+	case err := <-serveErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatal(err)
+		}
+	case sig := <-stop:
+		// Docker/systemd stop sends SIGTERM: drain in-flight requests instead
+		// of dropping uploads and texture downloads mid-response. 8s stays
+		// inside Docker's default 10s stop timeout before SIGKILL.
+		log.Printf("received %s, shutting down", sig)
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Printf("graceful shutdown: %v", err)
+		}
 	}
 }
 
