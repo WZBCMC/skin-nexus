@@ -12,6 +12,9 @@ import ClosetPage from './pages/ClosetPage.vue'
 import SkinlibPage from './pages/SkinlibPage.vue'
 import PlayersPage from './pages/PlayersPage.vue'
 import ProfilePage from './pages/ProfilePage.vue'
+import PluginPage from './components/plugin/PluginPage.vue'
+import PluginSlot from './components/plugin/PluginSlot.vue'
+import { loadPluginUI, navPages, pageByPath } from './pluginUI.js'
 import { setLocale } from './i18n.js'
 import { setUnauthorizedHandler } from './session.js'
 
@@ -25,6 +28,8 @@ const isAdmin = computed(() => Number(user.value && user.value.permission) > 0)
 // login | register | setup | device | dashboard | closet | players |
 // profile | apps | union | admin
 const view = ref('login')
+const extPath = ref('')
+const pendingExt = ref('')
 const authErr = ref('') // login + register cards
 
 
@@ -67,6 +72,10 @@ const navIcons = {
 }
 const navGroups = computed(() => {
   if (!user.value) return []
+  const perm = Number(user.value.permission || 0)
+  const pluginItems = navPages('user')
+    .filter((p) => perm >= Number(p.perm || 0))
+    .map((p) => ({ id: 'ext:' + p.path, label: p.nav.label, path: p.path, icon: navIcons.apps }))
   const groups = [{
     items: [
       { id: 'dashboard', labelKey: 'nav.dashboard', icon: navIcons.dashboard },
@@ -76,11 +85,23 @@ const navGroups = computed(() => {
       { id: 'profile', labelKey: 'nav.profile', icon: navIcons.profile },
       { id: 'apps', labelKey: 'nav.apps', icon: navIcons.apps },
       { id: 'union', labelKey: 'nav.union', icon: navIcons.union },
+      ...pluginItems,
     ],
   }]
   if (isAdmin.value) groups.push({ items: [{ id: 'admin', labelKey: 'nav.adminPanel', icon: navIcons.admin }] })
   return groups
 })
+
+function openExt(path) {
+  const page = pageByPath(path)
+  if (page && page.area === 'admin' && !isAdmin.value) {
+    view.value = 'dashboard'
+    return
+  }
+  extPath.value = path
+  view.value = 'ext'
+  if (location.pathname !== path) history.pushState({ ext: path }, '', path)
+}
 
 // Brand mark: the N plate (favicon.svg same artwork, brand colors) — the
 // topbar/auth-scene signature. Logo colors are brand assets: never retheme.
@@ -115,9 +136,14 @@ watch(view, (v) => {
 })
 function onPopState() {
   syncingURL = true
-  const v = legacyRoutes[location.pathname]
-  if (v) view.value = v
-  else if (location.pathname === '/') view.value = user.value ? 'dashboard' : 'login'
+  if (location.pathname.startsWith('/ext/')) {
+    if (user.value) openExt(location.pathname)
+    else { pendingExt.value = location.pathname; view.value = 'login' }
+  } else {
+    const v = legacyRoutes[location.pathname]
+    if (v) view.value = v
+    else if (location.pathname === '/') view.value = user.value ? 'dashboard' : 'login'
+  }
   syncingURL = false
 }
 
@@ -151,6 +177,7 @@ async function boot() {
   // Site capabilities for the auth cards (best-effort: failure keeps the
   // old always-show UI).
   try { siteConf.value = await api.siteConfig(); confLoaded.value = true } catch { /* old UI */ }
+  await loadPluginUI()
   // Launcher verification page: /device?user_code=… is path-probed so the
   // minimal /device.html fallback and the SPA share one URL contract.
   const isDevice = location.pathname === '/device'
@@ -160,7 +187,11 @@ async function boot() {
     // me() failed = no usable session (review P1-6: NOT a data failure)
     user.value = null
   }
-  if (isDevice) view.value = 'device'
+  if (location.pathname.startsWith('/ext/')) {
+    if (user.value) openExt(location.pathname)
+    else { pendingExt.value = location.pathname; view.value = 'login' }
+  }
+  else if (isDevice) view.value = 'device'
   // A1 找回密码: /reset-password?token=… comes back from the mail as a real
   // URL; /forgot-password is the shareable form of the login-card link.
   else if (location.pathname === '/reset-password') {
@@ -201,6 +232,7 @@ function finishAuth() {
     return
   }
   if (location.pathname === '/device') view.value = 'device'
+  else if (pendingExt.value) { const p = pendingExt.value; pendingExt.value = ''; openExt(p) }
   else if (pendingView.value) { view.value = pendingView.value; pendingView.value = '' }
   else view.value = 'dashboard'
 }
@@ -256,6 +288,7 @@ async function doLogout() {
     await api.logout()
   } catch { /* session may already be gone — still sign out locally */ }
   user.value = null
+  extPath.value = ''
   view.value = 'login'
 }
 
@@ -284,6 +317,7 @@ onMounted(() => { boot(); window.addEventListener('popstate', onPopState) })
           <button class="secondary" @click="view = 'login'">{{ t('common.login') }}</button>
           <button @click="view = 'register'">{{ t('common.register') }}</button>
         </template>
+        <PluginSlot slot="app.topbar.after" />
       </div>
     </header>
 
@@ -439,10 +473,11 @@ onMounted(() => { boot(); window.addEventListener('popstate', onPopState) })
           <nav v-for="(g, gi) in navGroups" :key="gi" class="nav-group">
             <div class="nav-title" v-if="g.items.length">{{ gi === 0 ? t('nav.userCenter') : t('nav.manageGroup') }}</div>
             <button v-for="n in g.items" :key="n.id" class="nav-item"
-                    :class="{ active: view === n.id }" @click="view = n.id">
+                    :class="{ active: n.path ? (view === 'ext' && extPath === n.path) : view === n.id }"
+                    @click="n.path ? openExt(n.path) : (view = n.id)">
               <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                    stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" v-html="n.icon"></svg>
-              <span>{{ t(n.labelKey) }}</span>
+              <span>{{ n.label || t(n.labelKey) }}</span>
             </button>
           </nav>
           <!-- 底部用户卡：昵称 + 退出（v3 布局） -->
@@ -459,11 +494,13 @@ onMounted(() => { boot(); window.addEventListener('popstate', onPopState) })
           <ProfilePage v-else-if="view === 'profile'" />
           <AuthorizedAppsPage v-else-if="view === 'apps'" />
           <UnionBindPage v-else-if="view === 'union'" />
+          <PluginPage v-else-if="view === 'ext'" :path="extPath" />
           <AdminPanel v-else-if="view === 'admin'" />
         </main>
       </div>
     </template>
     </div><!-- /container -->
+    <PluginSlot slot="footer.before" />
   </div><!-- /app-shell -->
 </template>
 

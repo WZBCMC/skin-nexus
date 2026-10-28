@@ -43,9 +43,6 @@ func stubPerm(t *testing.T, perm int) {
 	old := actorPermission
 	actorPermission = func(context.Context, *Backend, int64) (int, error) { return perm, nil }
 	t.Cleanup(func() { actorPermission = old })
-	oldAudit := insertAudit
-	insertAudit = func(context.Context, *Backend, int64, string, map[string]any) {}
-	t.Cleanup(func() { insertAudit = oldAudit })
 }
 
 func pluginAction(t *testing.T, b *Backend, actor int64, name, action string) *httptest.ResponseRecorder {
@@ -116,4 +113,3 @@ func TestPluginUnknownActionAndName(t *testing.T) {
 		t.Fatalf("name code = %d", rec.Code)
 	}
 }
-

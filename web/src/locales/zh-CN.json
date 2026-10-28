@@ -12,6 +12,7 @@
     "confirm": "确认",
     "cancel": "取消",
     "save": "保存",
+    "close": "关闭",
     "delete": "删除",
     "rename": "改名",
     "language": "语言",
@@ -443,15 +444,29 @@
     "pluginsDisable": "停用",
     "pluginsReload": "重载",
     "pluginsEnableConfirm": "启用将在服务进程内执行该插件代码（非沙箱）。确认启用？",
+    "pluginsConfig": "配置",
+    "pluginsGuardBypass": "临时跳过插件 guard（破窗；仅超管，操作会审计）",
+    "pluginsGuardBypassConfirm": "破窗会暂时跳过所有插件 guard（注册/登录/进服等）。仅在插件故障导致无法操作时使用。确认开启？",
+    "pluginsConfigTitle": "插件配置：{name}",
+    "pluginsConfigHint": "配置保存后立即生效；密钥字段只显示掩码，不修改则保留原值。",
+    "pluginsConfigSave": "保存配置",
+    "pluginsConfigSaved": "配置已保存",
+    "pluginsConfigReadOnly": "配置修改需要超级管理员网页会话。",
     "colPluginName": "插件",
     "colVersion": "版本",
     "colAuthor": "作者",
     "colPerms": "权限",
     "colState": "状态",
+    "colHealth": "健康",
+    "colRoutes": "路由/UI",
     "colError": "最近错误",
     "colActions": "操作",
     "stateLoaded": "已加载",
     "stateDisabled": "已停用",
     "stateError": "错误"
+  },
+  "pluginUi": {
+    "notFound": "插件页面不存在或已停用",
+    "schemaUnsupported": "该插件页面使用宿主表单渲染，当前版本暂未开放。"
   }
 }

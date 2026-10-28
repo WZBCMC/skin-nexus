@@ -51,7 +51,7 @@
 
 ## 3. 插件（服务端扩展）
 
-插件在服务进程内的 goja VM 中运行，规范见 [`docs/plugin-spec.md`](docs/plugin-spec.md)：
+插件在服务进程内的 goja VM 中运行，规范见 [`docs/plugin-spec.md`](docs/plugin-spec.md)（v2：配置/密钥、命名空间数据、三档路由、事件/guard、sandbox iframe UI）：
 
 - **契约冻结**：hook 形状与权限字符串以 `server/internal/plugin/contract.go` 为准，新增能力走 additive 版本；
 - 示例插件在 `examples/plugins/`（离线、无网络依赖），改动示例须保持 `go test ./internal/plugin/` 全绿；

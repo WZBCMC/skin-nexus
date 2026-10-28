@@ -42,6 +42,14 @@ type manifestFile struct {
 	Permissions []string `json:"permissions"`
 	MinServer   string   `json:"minServer,omitempty"`
 
+	Runtime   string        `json:"runtime,omitempty"`
+	Config    *ConfigSpec   `json:"config,omitempty"`
+	Store     *StoreSpec    `json:"store,omitempty"`
+	Routes    []RouteSpec   `json:"routes,omitempty"`
+	UI        *UISpec       `json:"ui,omitempty"`
+	Requires  *RequiresSpec `json:"requires,omitempty"`
+	Conflicts []string      `json:"conflicts,omitempty"`
+
 	Title       string `json:"title,omitempty"`
 	Author      string `json:"author,omitempty"`
 	Homepage    string `json:"homepage,omitempty"`
@@ -63,13 +71,31 @@ type Info struct {
 
 // knownPermissions mirrors the contract's declarative permission strings.
 var knownPermissions = map[string]bool{
-	PermReadProfiles:  true,
-	PermEditProfiles:  true,
-	PermReadTextures:  true,
-	PermEditTextures:  true,
-	PermRegisterRoute: true,
-	PermMenuEntry:     true,
-	PermAuthHooks:     true,
+	PermReadProfiles:      true,
+	PermEditProfiles:      true,
+	PermReadTextures:      true,
+	PermEditTextures:      true,
+	PermRegisterRoute:     true,
+	PermMenuEntry:         true,
+	PermAuthHooks:         true,
+	PermConfig:            true,
+	PermStoreKV:           true,
+	PermStoreDocs:         true,
+	PermUIPage:            true,
+	PermUISlot:            true,
+	PermUIAssets:          true,
+	PermHTTPRoutesSession: true,
+	PermHTTPRoutesAdmin:   true,
+	PermHTTPRoutesSuper:   true,
+	PermNetHTTP:           true,
+	PermMailSend:          true,
+	PermScheduleJobs:      true,
+	PermCLICommands:       true,
+	PermPluginsRead:       true,
+	PermPluginsInvoke:     true,
+	PermAuditWrite:        true,
+	PermEventsSubscribe:   true,
+	PermAuthGuards:        true,
 }
 
 // loadManifest reads and validates <dir>/plugin.json. dirName is the parent
@@ -108,8 +134,8 @@ func validate(raw manifestFile, dir, dirName string) (Info, error) {
 	if raw.Version == "" || len(raw.Version) > maxVersionLen {
 		return Info{}, errors.New("version must be a non-empty string <= 64 chars")
 	}
-	if raw.HookAPI != HookAPIVersion {
-		return Info{}, fmt.Errorf("hookApi %d unsupported (host supports %d)", raw.HookAPI, HookAPIVersion)
+	if raw.HookAPI != HookAPIVersion && raw.HookAPI != HookAPIVersionV2 {
+		return Info{}, fmt.Errorf("hookApi %d unsupported (host supports %d and %d)", raw.HookAPI, HookAPIVersion, HookAPIVersionV2)
 	}
 	if !entryRe.MatchString(raw.Entrypoint) {
 		return Info{}, fmt.Errorf("invalid entrypoint %q", raw.Entrypoint)
@@ -135,6 +161,15 @@ func validate(raw manifestFile, dir, dirName string) (Info, error) {
 		return Info{}, errors.New("homepage must be an http(s) URL or empty")
 	}
 
+	hasV2Fields := raw.Runtime != "" || raw.Config != nil || raw.Store != nil ||
+		len(raw.Routes) > 0 || raw.UI != nil || raw.Requires != nil || len(raw.Conflicts) > 0
+	if raw.HookAPI == HookAPIVersion && hasV2Fields {
+		return Info{}, errors.New("hookApi 1 cannot declare v2 fields (set hookApi to 2)")
+	}
+	if raw.HookAPI == HookAPIVersionV2 && raw.Runtime == "" {
+		raw.Runtime = "goja"
+	}
+
 	script := filepath.Join(dir, raw.Entrypoint)
 	// Containment: the entrypoint must stay inside the plugin directory and
 	// must be a regular file (no symlink escape).
@@ -155,7 +190,7 @@ func validate(raw manifestFile, dir, dirName string) (Info, error) {
 		return Info{}, fmt.Errorf("entrypoint exceeds %d bytes", maxScriptBytes)
 	}
 
-	return Info{
+	info := Info{
 		Manifest: Manifest{
 			Name:        raw.Name,
 			Version:     raw.Version,
@@ -164,6 +199,13 @@ func validate(raw manifestFile, dir, dirName string) (Info, error) {
 			Entrypoint:  raw.Entrypoint,
 			MinServer:   raw.MinServer,
 			Description: raw.Description,
+			Runtime:     raw.Runtime,
+			Config:      raw.Config,
+			Store:       raw.Store,
+			Routes:      raw.Routes,
+			UI:          raw.UI,
+			Requires:    raw.Requires,
+			Conflicts:   raw.Conflicts,
 		},
 		Title:      raw.Title,
 		Author:     raw.Author,
@@ -171,12 +213,39 @@ func validate(raw manifestFile, dir, dirName string) (Info, error) {
 		Dir:        dir,
 		ScriptPath: script,
 		ScriptSize: lst.Size(),
-	}, nil
+	}
+	if raw.HookAPI == HookAPIVersionV2 {
+		if err := validateV2Manifest(&info.Manifest, dir); err != nil {
+			return Info{}, err
+		}
+	}
+	return info, nil
+}
+
+func (i Info) configSchemaVersion() int {
+	if i.Store == nil {
+		return 0
+	}
+	return i.Store.SchemaVersion
+}
+
+// CheckMinServer reports whether this plugin is allowed on hostVersion.
+func (i Info) CheckMinServer(hostVersion string) error {
+	ok, err := checkMinServer(i.MinServer, hostVersion)
+	if err != nil {
+		return fmt.Errorf("minServer: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("minServer %q not satisfied by host %s", i.MinServer, hostVersion)
+	}
+	return nil
 }
 
 // hasPermission reports whether the manifest declared a capability.
-func (i Info) hasPermission(p string) bool {
-	for _, x := range i.Permissions {
+func (i Info) hasPermission(p string) bool { return i.Manifest.hasPermission(p) }
+
+func (m Manifest) hasPermission(p string) bool {
+	for _, x := range m.Permissions {
 		if x == p {
 			return true
 		}

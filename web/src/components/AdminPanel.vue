@@ -15,6 +15,8 @@ import StatusView from './admin/StatusView.vue'
 import UnionView from './admin/UnionView.vue'
 import AccessLogsView from './admin/AccessLogsView.vue'
 import PluginsView from './admin/PluginsView.vue'
+import PluginPage from './plugin/PluginPage.vue'
+import { loadPluginUI, navPages } from '../pluginUI.js'
 
 const { t } = useI18n()
 
@@ -33,13 +35,22 @@ const nav = [
 ]
 const current = ref('dashboard')
 const currentComp = shallowRef(DashboardView)
+const currentPlugin = ref('')
+const pluginPages = ref([])
+const myPerm = ref(0)
 
 function go(id) {
   const item = nav.find((n) => n.id === id)
   if (item) {
+    currentPlugin.value = ''
     current.value = id
     currentComp.value = item.comp
   }
+}
+
+function openPlugin(path) {
+  currentPlugin.value = path
+  current.value = ''
 }
 
 // The load button re-runs the current view's data fetch: views fetch their
@@ -61,8 +72,11 @@ onMounted(async () => {
   // admin data — no token ceremony needed.
   try {
     const me = await api.me()
-    if (Number(me.permission) > 0) needToken.value = false
+    myPerm.value = Number(me.permission) || 0
+    if (myPerm.value > 0) needToken.value = false
   } catch { /* no usable session — the token fallback stays visible */ }
+  await loadPluginUI()
+  pluginPages.value = navPages('admin').filter((p) => myPerm.value >= Number(p.perm || 0))
   if (!needToken.value || token.value) {
     ready.value = true
     reloadTick.value++
@@ -84,11 +98,16 @@ onMounted(async () => {
                 :class="{ active: current === n.id }" @click="go(n.id)">
           {{ t(n.labelKey) }}
         </button>
+        <button v-for="p in pluginPages" :key="p.path" class="admin-nav-item"
+                :class="{ active: currentPlugin === p.path }" @click="openPlugin(p.path)">
+          {{ p.nav.label }}
+        </button>
       </nav>
     </aside>
     <main class="admin-main">
       <!-- key bump remounts the active view => its onMounted refetches -->
-      <component v-if="ready" :is="currentComp" :key="`${current}-${reloadTick}`" @go="go" />
+      <PluginPage v-if="ready && currentPlugin" :path="currentPlugin" />
+      <component v-else-if="ready" :is="currentComp" :key="`${current}-${reloadTick}`" @go="go" />
       <div v-else class="card muted">{{ t('admin.enterTokenHint') }}</div>
     </main>
   </div>

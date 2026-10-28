@@ -144,7 +144,10 @@ func TestRouteDispatch(t *testing.T) {
 		t.Fatalf("disabled route code = %d", rec.Code)
 	}
 
-	// wrong method -> 405
+	// wrong method -> 405 (re-enable first: disabled is a true 404)
+	if err := m.Enable(context.Background(), "cdn"); err != nil {
+		t.Fatal(err)
+	}
 	rec = httptest.NewRecorder()
 	m.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/plugins/cdn/ping", nil))
 	if rec.Code != 405 {

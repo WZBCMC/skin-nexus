@@ -12,6 +12,7 @@
     "confirm": "Confirm",
     "cancel": "Cancel",
     "save": "Save",
+    "close": "Close",
     "delete": "Delete",
     "rename": "Rename",
     "language": "Language",
@@ -440,15 +441,29 @@
     "pluginsDisable": "Disable",
     "pluginsReload": "Reload",
     "pluginsEnableConfirm": "Enabling executes this plugin's code inside the server process (not sandboxed). Continue?",
+    "pluginsConfig": "Config",
+    "pluginsGuardBypass": "Temporarily bypass plugin guards (break-glass; super-admin only, audited)",
+    "pluginsGuardBypassConfirm": "Break-glass skips every plugin guard (registration/login/join). Use only when a broken guard blocks operations. Enable?",
+    "pluginsConfigTitle": "Plugin config: {name}",
+    "pluginsConfigHint": "Changes apply immediately. Secret fields stay masked; leave the mask untouched to keep the stored value.",
+    "pluginsConfigSave": "Save config",
+    "pluginsConfigSaved": "Config saved",
+    "pluginsConfigReadOnly": "Changing config requires a super-admin web session.",
     "colPluginName": "Plugin",
     "colVersion": "Version",
     "colAuthor": "Author",
     "colPerms": "Permissions",
     "colState": "State",
+    "colHealth": "Health",
+    "colRoutes": "Routes/UI",
     "colError": "Last error",
     "colActions": "Actions",
     "stateLoaded": "loaded",
     "stateDisabled": "disabled",
     "stateError": "error"
+  },
+  "pluginUi": {
+    "notFound": "Plugin page not found or disabled",
+    "schemaUnsupported": "This plugin page uses host-rendered schema pages, not available in this release."
   }
 }

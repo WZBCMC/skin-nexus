@@ -17,12 +17,12 @@ import (
 
 // Errors map to the legacy response semantics (docs/phase1-dev-plan.md §1.3).
 var (
-	ErrBadCredentials   = errors.New("ygg: invalid credentials")     // 403 ForbiddenOperationException
-	ErrTokenInvalid     = errors.New("ygg: invalid token")           // 403
-	ErrProfileNotFound  = errors.New("ygg: profile not found")       // 204
-	ErrSessionNotFound  = errors.New("ygg: session not found")       // 204
-	ErrEmailUnverified  = errors.New("ygg: email not verified")      // 403 (join gate, fork behavior)
-	ErrPlayerMismatch   = errors.New("ygg: player mismatch")         // 403 player.not-match (live-captured legacy wording)
+	ErrBadCredentials  = errors.New("ygg: invalid credentials") // 403 ForbiddenOperationException
+	ErrTokenInvalid    = errors.New("ygg: invalid token")       // 403
+	ErrProfileNotFound = errors.New("ygg: profile not found")   // 204
+	ErrSessionNotFound = errors.New("ygg: session not found")   // 204
+	ErrEmailUnverified = errors.New("ygg: email not verified")  // 403 (join gate, fork behavior)
+	ErrPlayerMismatch  = errors.New("ygg: player mismatch")     // 403 player.not-match (live-captured legacy wording)
 )
 
 // ---- storage ports (DB-backed impls land in M1; memory impls in tests) ----
@@ -37,13 +37,13 @@ type User struct {
 
 // Player is one profile (character) owned by a user.
 type Player struct {
-	ID       int64
-	UID      int64
-	Name     string
-	UUID     string // 32 lowercase hex
-	SkinURL  string
+	ID        int64
+	UID       int64
+	Name      string
+	UUID      string // 32 lowercase hex
+	SkinURL   string
 	SkinModel string
-	CapeURL  string
+	CapeURL   string
 	// SkinHash/CapeHash carry the raw texture hashes (pre-URL-rewrite) so
 	// plugin URL filters can key on the content address. Not serialized.
 	SkinHash string `json:"-"`
@@ -53,13 +53,13 @@ type Player struct {
 // Token is an issued access token (opaque string; format intentionally
 // differs from legacy Passport JWT — all tokens die at cutover).
 type Token struct {
-	AccessToken  string
-	ClientToken  string
-	UserID       int64
-	SelectedPID  int64 // 0 = none selected
-	CreatedAt    time.Time
-	ExpiresAt    time.Time
-	Invalidated  bool
+	AccessToken string
+	ClientToken string
+	UserID      int64
+	SelectedPID int64 // 0 = none selected
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
+	Invalidated bool
 }
 
 // JoinSession is a join/hasJoined session (TTL 120s, legacy behavior).
@@ -90,10 +90,10 @@ type Store interface {
 // Service implements Yggdrasil session logic. Join-session TTL follows the
 // legacy deployment: 120s (not the 30s spec suggestion — see §1.7).
 type Service struct {
-	store     Store
-	signer    Signer
-	joinTTL   time.Duration
-	now       func() time.Time
+	store   Store
+	signer  Signer
+	joinTTL time.Duration
+	now     func() time.Time
 	// resolve resolves an access token string to a Token. Default: opaque
 	// store lookup. Phase-2 dual-state: the OIDC layer injects a resolver
 	// that also accepts signed JWTs (phase-2 dual-state).
@@ -117,8 +117,8 @@ type Service struct {
 	windowsResolver func(ctx context.Context) TokenWindows
 	// B5.2 live knobs (same resolver pattern): ygg_rate_limit gap and
 	// ygg_tokens_limit cap.
-	gap               gapGuard
-	authGapResolver   func(ctx context.Context) time.Duration
+	gap                gapGuard
+	authGapResolver    func(ctx context.Context) time.Duration
 	tokenLimitResolver func(ctx context.Context) int
 	searchMaxResolver  func(ctx context.Context) int
 
@@ -132,6 +132,9 @@ type Service struct {
 	ProfileFilter func(ctx context.Context, p *plugin.UserProfileFilter)
 	AuthPhase     func(ctx context.Context, e plugin.AuthPhaseEvent)
 	UserLifecycle func(ctx context.Context, e plugin.UserLifecycleEvent)
+	// JoinGuard is the v2 fail-closed guard seam (nil = no plugins). It runs
+	// after all token/ownership checks and before SaveJoin.
+	JoinGuard func(ctx context.Context, kind string, p plugin.EventPayload) error
 }
 
 // SetAuthGapResolver wires ygg_rate_limit (milliseconds → gap).
@@ -297,12 +300,12 @@ var DefaultTokenWindows = TokenWindows{
 
 func NewService(store Store, signer Signer) *Service {
 	return &Service{
-		store:    store,
-		signer:   signer,
-		joinTTL:  DefaultJoinTTL,
-		windows:  DefaultTokenWindows,
-		now:      time.Now,
-		resolve:  store.TokenByAccess,
+		store:   store,
+		signer:  signer,
+		joinTTL: DefaultJoinTTL,
+		windows: DefaultTokenWindows,
+		now:     time.Now,
+		resolve: store.TokenByAccess,
 	}
 }
 
@@ -518,6 +521,14 @@ func (s *Service) Join(ctx context.Context, accessToken, playerUUID, serverID, s
 	if t.SelectedPID != 0 && p.ID != t.SelectedPID {
 		return ErrPlayerMismatch
 	}
+	if s.JoinGuard != nil {
+		if err := s.JoinGuard(ctx, "auth.join.check", plugin.EventPayload{
+			UserID: t.UserID, PlayerID: p.ID, PlayerName: p.Name, UUID: NormalizeUUID(playerUUID),
+			Data: map[string]any{"serverId": serverID, "serverIP": serverIP},
+		}); err != nil {
+			return &JoinDeniedError{Message: err.Error()}
+		}
+	}
 	if s.AuthPhase != nil {
 		s.AuthPhase(ctx, plugin.AuthPhaseEvent{Phase: "pre_join", UUID: NormalizeUUID(playerUUID), Player: p.Name})
 	}
@@ -677,3 +688,10 @@ func randomHex(n int) string {
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }
+
+// JoinDeniedError is returned when a plugin guard denies a Yggdrasil join.
+// The HTTP layer maps it to 403 ForbiddenOperationException with the plugin
+// message, never to a 500.
+type JoinDeniedError struct{ Message string }
+
+func (e *JoinDeniedError) Error() string { return e.Message }

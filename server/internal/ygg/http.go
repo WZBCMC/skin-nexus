@@ -18,11 +18,11 @@ import (
 // docs/phase1-dev-plan.md §1.1).
 type Metadata struct {
 	Meta struct {
-		ServerName           string            `json:"serverName"`
-		ImplementationName   string            `json:"implementationName"`
-		ImplementationVersion string           `json:"implementationVersion"`
-		Links                map[string]string `json:"links"`
-		Features             map[string]bool   `json:"-"` // serialized flat below
+		ServerName            string            `json:"serverName"`
+		ImplementationName    string            `json:"implementationName"`
+		ImplementationVersion string            `json:"implementationVersion"`
+		Links                 map[string]string `json:"links"`
+		Features              map[string]bool   `json:"-"` // serialized flat below
 	} `json:"meta"`
 	SkinDomains        []string `json:"skinDomains"`
 	SignaturePublicKey string   `json:"signaturePublickey"`
@@ -30,10 +30,10 @@ type Metadata struct {
 
 // MetadataConfig is deployment configuration for the metadata document.
 type MetadataConfig struct {
-	ServerName string
-	Version    string
-	Homepage   string
-	Register   string
+	ServerName  string
+	Version     string
+	Homepage    string
+	Register    string
 	SkinDomains []string
 	// OpenIDConfigurationURL enables meta.feature.openid_configuration_url
 	// (yggc/OIDC passwordless login discovery; phase 2, absent when empty).
@@ -407,6 +407,12 @@ func (a *API) handleJoin(w http.ResponseWriter, r *http.Request) {
 		a.accessLog(r, accesslog.Entry{Kind: accesslog.YggJoin,
 			Outcome: accesslog.OutcomeFail, Detail: "player_mismatch uuid=" + uu + " serverId=" + req.ServerID})
 		writeError(w, http.StatusForbidden, "ForbiddenOperationException", "请求的角色与令牌绑定的角色不一致")
+	case isJoinDenied(err):
+		var denied *JoinDeniedError
+		_ = errors.As(err, &denied)
+		a.accessLog(r, accesslog.Entry{Kind: accesslog.YggJoin,
+			Outcome: accesslog.OutcomeDenied, Detail: "plugin_guard uuid=" + uu + " serverId=" + req.ServerID})
+		writeError(w, http.StatusForbidden, "ForbiddenOperationException", denied.Message)
 	case err != nil:
 		a.accessLog(r, accesslog.Entry{Kind: accesslog.YggJoin,
 			Outcome: accesslog.OutcomeFail, Detail: "invalid_token uuid=" + uu + " serverId=" + req.ServerID})
@@ -637,3 +643,8 @@ func isTrustedProxy(host string) bool {
 func ClientIP(r *http.Request) string { return clientIP(r) }
 
 var _ = errors.Is // keep errors import for future sentinel mapping
+
+func isJoinDenied(err error) bool {
+	var d *JoinDeniedError
+	return errors.As(err, &d)
+}

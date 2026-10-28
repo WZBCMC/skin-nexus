@@ -48,7 +48,7 @@ type Backend struct {
 	OnPasswordChange func(uid int64)
 	// Limiter protects login/register from guessing (nil = off; main wires
 	// settings-panel thresholds; IP window + identifier failure lockout).
-	Limiter *ratelimit.Limiter
+	Limiter  *ratelimit.Limiter
 	Ygg      *ygg.Service
 	MaxChars int // per-user player limit
 
@@ -71,11 +71,28 @@ type Backend struct {
 	ProfileFilter     func(ctx context.Context, p *plugin.UserProfileFilter)
 	OnTextureUploaded func(ctx context.Context, e plugin.TextureUploadedEvent)
 	OnUserLifecycle   func(ctx context.Context, e plugin.UserLifecycleEvent)
+	// v2 generic events/guards (nil = no plugins).
+	CheckGuard func(ctx context.Context, kind string, p plugin.EventPayload) error
+	OnEvent    func(ctx context.Context, kind string, p plugin.EventPayload)
+	PluginUI   func() []plugin.UI
 
 	// union is the MUA Union hub client (nil or disabled -> no /api/v1/union/*
 	// routes exist at all: zero surface for non-alliance deployments).
 	union    *union.Outbound
 	unionSrv *unionServerCache
+}
+
+func (b *Backend) checkGuard(ctx context.Context, kind string, p plugin.EventPayload) error {
+	if b.CheckGuard == nil {
+		return nil
+	}
+	return b.CheckGuard(ctx, kind, p)
+}
+
+func (b *Backend) emitEvent(ctx context.Context, kind string, p plugin.EventPayload) {
+	if b.OnEvent != nil {
+		b.OnEvent(ctx, kind, p)
+	}
 }
 
 // webAccessLog records a web-side entry with the request's IP/UA attached
@@ -111,6 +128,7 @@ func (b *Backend) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/login", b.handleLogin)
 	mux.HandleFunc("POST /api/v1/logout", b.handleLogout)
 	mux.HandleFunc("GET /api/v1/me", b.handleMe)
+	mux.HandleFunc("GET /api/v1/plugins/ui", b.handlePluginUI)
 	mux.HandleFunc("GET /api/v1/me/textures", b.handleListTextures)
 	mux.HandleFunc("POST /api/v1/me/textures", b.handleUploadTexture)
 	mux.HandleFunc("GET /api/v1/me/players", b.handleListPlayers)
@@ -264,6 +282,17 @@ func randomToken() string {
 //   - mail_configured: smtpConfig != nil (same resolution as forgot: panel
 //     option wins over env default). false → the register email field and
 //     the whole forgot-password flow are unavailable in the UI.
+// handlePluginUI exposes enabled plugin pages/slots/i18n. It is public and
+// contains no secrets; pages are filtered by area/permission client-side and
+// the backend still enforces route tiers.
+func (b *Backend) handlePluginUI(w http.ResponseWriter, r *http.Request) {
+	list := []plugin.UI{}
+	if b.PluginUI != nil {
+		list = b.PluginUI()
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"plugins": list})
+}
+
 func (b *Backend) handleSiteConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"invite_required": b.inviteRequired(r.Context()),
@@ -310,6 +339,14 @@ func (b *Backend) handleRegister(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if err := b.checkGuard(r.Context(), "user.registration.check", plugin.EventPayload{
+		IP: ygg.ClientIP(r), Data: map[string]any{"email": req.Email, "nickname": req.Nickname},
+	}); err != nil {
+		b.webAccessLog(r, accesslog.Entry{Kind: accesslog.WebRegister,
+			Outcome: accesslog.OutcomeDenied, Who: req.Nickname, Detail: "plugin_guard"})
+		writeErr(w, http.StatusForbidden, err.Error())
+		return
+	}
 	hash, err := auth.HashArgon2id(req.Password)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "hash error")
@@ -349,6 +386,9 @@ func (b *Backend) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if b.OnUserLifecycle != nil {
 		b.OnUserLifecycle(r.Context(), plugin.UserLifecycleEvent{Kind: "registered", UserID: uid})
 	}
+	b.emitEvent(r.Context(), "user.registered", plugin.EventPayload{
+		UserID: uid, PlayerName: req.Nickname, IP: ygg.ClientIP(r),
+	})
 	writeJSON(w, http.StatusCreated, map[string]interface{}{"id": uid, "nickname": req.Nickname})
 }
 
@@ -411,6 +451,15 @@ func (b *Backend) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if b.Limiter != nil {
 		b.Limiter.Succeed(idKey)
 	}
+	if err := b.checkGuard(r.Context(), "auth.login.check", plugin.EventPayload{
+		UserID: u.ID, PlayerName: u.Nickname, IP: ygg.ClientIP(r),
+		Data: map[string]any{"identifier": req.Identifier},
+	}); err != nil {
+		b.webAccessLog(r, accesslog.Entry{Kind: accesslog.WebLogin,
+			Outcome: accesslog.OutcomeDenied, UID: u.ID, Who: u.Nickname, Detail: "plugin_guard"})
+		writeErr(w, http.StatusForbidden, err.Error())
+		return
+	}
 	// Lazy rehash: legacy digest verified -> upgrade in place (official
 	// strategy: login success triggers changePassword).
 	if algo, err := b.Store.UserPasswordAlgo(r.Context(), u.ID); err == nil && strings.HasPrefix(algo, "legacy") {
@@ -429,6 +478,9 @@ func (b *Backend) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if b.OnUserLifecycle != nil {
 		b.OnUserLifecycle(r.Context(), plugin.UserLifecycleEvent{Kind: "logged_in", UserID: u.ID})
 	}
+	b.emitEvent(r.Context(), "user.logged_in", plugin.EventPayload{
+		UserID: u.ID, PlayerName: u.Nickname, IP: ygg.ClientIP(r),
+	})
 	writeJSON(w, http.StatusOK, map[string]interface{}{"id": u.ID, "nickname": u.Nickname})
 }
 
@@ -508,9 +560,9 @@ func (b *Backend) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"id": u.ID, "nickname": u.Nickname,
 		"emailVerified": u.EmailVerified, "playerLimit": limit,
-		"permission":    perm,
-		"playerCount":   playerCount, "storageBytes": storageBytes,
-		"avatarHash":    avatarHash,
+		"permission":  perm,
+		"playerCount": playerCount, "storageBytes": storageBytes,
+		"avatarHash": avatarHash,
 	})
 }
 
@@ -588,6 +640,13 @@ func (b *Backend) handleUploadTexture(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if err := b.checkGuard(r.Context(), "texture.upload.check", plugin.EventPayload{
+		UserID: uid, Type: string(typ), IP: ygg.ClientIP(r),
+		Data: map[string]any{"filename": hdr.Filename},
+	}); err != nil {
+		writeErr(w, http.StatusForbidden, err.Error())
+		return
+	}
 	res, err := texture.Process(file, typ, r.FormValue("model"))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -608,6 +667,9 @@ func (b *Backend) handleUploadTexture(w http.ResponseWriter, r *http.Request) {
 			UserID: uid, Hash: res.Hash, Type: string(typ),
 		})
 	}
+	b.emitEvent(r.Context(), "texture.uploaded", plugin.EventPayload{
+		UserID: uid, Hash: res.Hash, Type: string(typ), PlayerName: hdr.Filename,
+	})
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id": tid, "type": typ, "hash": res.Hash, "url": b.textureURL(r.Context(), res.Hash, string(typ)),
 	})
@@ -696,6 +758,9 @@ func (b *Backend) handleCreatePlayer(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusConflict, "角色名已被占用")
 		return
 	}
+	b.emitEvent(r.Context(), "player.added", plugin.EventPayload{
+		UserID: uid, PlayerID: pid, PlayerName: req.Name, UUID: uuid, IP: ygg.ClientIP(r),
+	})
 	// Union: announce the new profile to the hub (async, 5s bound, never
 	// blocks or fails the user response). Delete is now announced on the
 	// admin user-deletion path (adminapi.Backend.OnUserDeleted, wired in

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/url"
 	"os"
 	"path"
 	"strings"
@@ -40,12 +39,26 @@ type hookSet struct {
 	upload    []timed[uploadHookFn]
 	lifecycle []timed[lifecycleHookFn]
 	auth      []timed[authHookFn]
+	events    map[string][]timed[eventFn]
+	guards    map[string][]guardEntry
+}
+
+type eventFn func(context.Context, EventPayload) error
+
+type guardFn func(context.Context, EventPayload) (GuardDecision, error)
+
+type guardEntry struct {
+	fn         guardFn
+	timeout    time.Duration
+	failClosed bool
 }
 
 // routeEntry is one plugin-contributed read-only route.
 type routeEntry struct {
-	method  string // GET | HEAD
+	method  string
 	path    string // cleaned, leading "/"
+	tier    RouteTier
+	spec    RouteSpec
 	fn      goja.Callable
 	timeout time.Duration
 }
@@ -60,35 +73,70 @@ type runtime struct {
 	hooks  hookSet
 	routes []routeEntry
 
-	lastErr string
-	logs    []string
+	lastErr    string
+	logs       []string
+	calls      int64
+	errors     int64
+	timeouts   int64
+	routeCalls int64
 
 	// loadErr captures registration-time failures (bad permission, bad route)
 	// so RunString can surface them as a load failure.
 	loadErr error
 
-	defaults timeouts
-	logSink  func(string)
+	defaults  timeouts
+	logSink   func(string)
+	config    *configState
+	store     *storeService
+	installFn goja.Callable
+	upgradeFn goja.Callable
 }
 
 type timeouts struct {
-	hook, auth, route time.Duration
+	hook, auth, route, load time.Duration
 }
 
-func newRuntime(info Info, t timeouts, logSink func(string)) (*runtime, error) {
+func newRuntime(info Info, t timeouts, logSink func(string), cfg *configState, store *storeService) (*runtime, error) {
 	src, err := os.ReadFile(info.ScriptPath)
 	if err != nil {
 		return nil, fmt.Errorf("read entrypoint: %w", err)
 	}
-	rt := &runtime{info: info, vm: goja.New(), defaults: t, logSink: logSink}
+	rt := &runtime{info: info, vm: goja.New(), defaults: t, logSink: logSink, config: cfg, store: store}
+	rt.hooks.events = map[string][]timed[eventFn]{}
+	rt.hooks.guards = map[string][]guardEntry{}
+	rt.vm.SetMaxCallStackSize(1024)
 	rt.installAPI()
-	if _, err := rt.vm.RunString(string(src)); err != nil {
+	loadTimeout := t.load
+	if loadTimeout <= 0 {
+		loadTimeout = 2 * time.Second
+	}
+	timer := time.AfterFunc(loadTimeout, func() { rt.vm.Interrupt(errTimeout) })
+	_, err = rt.vm.RunString(string(src))
+	timer.Stop()
+	rt.vm.ClearInterrupt()
+	if err != nil {
 		return nil, fmt.Errorf("run entrypoint: %w", err)
 	}
 	if rt.loadErr != nil {
 		return nil, rt.loadErr
 	}
+	if info.HookAPI == HookAPIVersionV2 {
+		for _, spec := range info.Routes {
+			if !rt.hasRoute(spec.Method, spec.Path) {
+				return nil, fmt.Errorf("declared route %s %s was not registered by the entrypoint", spec.Method, spec.Path)
+			}
+		}
+	}
 	return rt, nil
+}
+
+func (rt *runtime) hasRoute(method, path string) bool {
+	for _, r := range rt.routes {
+		if r.method == method && r.path == path {
+			return true
+		}
+	}
+	return false
 }
 
 // installAPI exposes the global `skin` object plugins program against.
@@ -103,6 +151,31 @@ func (rt *runtime) installAPI() {
 		},
 		"route": rt.regRoute,
 		"log":   rt.jsLog,
+		"config": map[string]interface{}{
+			"get": func(call goja.FunctionCall) goja.Value {
+				if !rt.info.hasPermission(PermConfig) {
+					rt.throw(errors.New("missing permission config"))
+				}
+				v, ok := rt.config.get(call.Argument(0).String())
+				if !ok {
+					return goja.Undefined()
+				}
+				return rt.vm.ToValue(v)
+			},
+			"all": func(call goja.FunctionCall) goja.Value {
+				if !rt.info.hasPermission(PermConfig) {
+					rt.throw(errors.New("missing permission config"))
+				}
+				return rt.vm.ToValue(rt.config.all())
+			},
+		},
+		"store": rt.storeAPI(),
+		"events": map[string]interface{}{
+			"on": rt.onEvent,
+		},
+		"guards": map[string]interface{}{
+			"on": rt.onGuard,
+		},
 	})
 }
 
@@ -194,9 +267,17 @@ func (rt *runtime) withTimeout(d time.Duration, run func() (goja.Value, error)) 
 	if rt.vm == nil {
 		return nil, errors.New("plugin: runtime closed")
 	}
+	rt.calls++
 	timer := time.AfterFunc(d, func() { rt.vm.Interrupt(errTimeout) })
 	defer func() { timer.Stop(); rt.vm.ClearInterrupt() }()
-	return run()
+	v, err := run()
+	if err != nil {
+		rt.errors++
+		if errors.Is(err, errTimeout) {
+			rt.timeouts++
+		}
+	}
+	return v, err
 }
 
 func (rt *runtime) record(err error) {
@@ -340,35 +421,80 @@ func (rt *runtime) regRoute(call goja.FunctionCall) goja.Value {
 	method := strings.ToUpper(strings.TrimSpace(call.Argument(0).String()))
 	rawPath := call.Argument(1).String()
 	cb, ok := goja.AssertFunction(call.Argument(2))
-	if method != "GET" && method != "HEAD" {
-		rt.loadErr = fmt.Errorf("route method %q not allowed (GET/HEAD only)", method)
-		return goja.Undefined()
-	}
-	clean := path.Clean("/" + strings.TrimPrefix(rawPath, "/"))
-	if clean == "/" || strings.Contains(clean, "..") {
-		rt.loadErr = fmt.Errorf("invalid route path %q", rawPath)
-		return goja.Undefined()
-	}
 	if !ok {
 		rt.loadErr = errors.New("route handler must be a function")
 		return goja.Undefined()
 	}
-	if !rt.info.hasPermission(PermRegisterRoute) {
-		rt.loadErr = fmt.Errorf("missing permission %q for route", PermRegisterRoute)
+	clean := path.Clean("/" + strings.TrimPrefix(rawPath, "/"))
+	if clean == "/" || hasDotDotSegment(clean) {
+		rt.loadErr = fmt.Errorf("invalid route path %q", rawPath)
 		return goja.Undefined()
 	}
-	if len(rt.routes) >= maxRoutesPerPlugin {
+	if rt.info.HookAPI == HookAPIVersionV2 {
+		spec, found := findManifestRoute(rt.info.Routes, method, clean)
+		if !found {
+			rt.loadErr = fmt.Errorf("route %s %s is not declared in plugin.json", method, clean)
+			return goja.Undefined()
+		}
+		tier := RouteTier(spec.Tier)
+		if tier == "" {
+			tier = RouteTierPublic
+		}
+		if !routeTierPermissionOK(rt.info.Manifest, tier) {
+			rt.loadErr = fmt.Errorf("missing permission for route tier %q", tier)
+			return goja.Undefined()
+		}
+		rt.routes = append(rt.routes, routeEntry{method: method, path: clean, tier: tier, spec: spec, fn: cb, timeout: rt.defaults.route})
+	} else {
+		if method != "GET" && method != "HEAD" {
+			rt.loadErr = fmt.Errorf("route method %q not allowed (GET/HEAD only for hookApi 1)", method)
+			return goja.Undefined()
+		}
+		if strings.Contains(clean, "{") {
+			rt.loadErr = fmt.Errorf("route path params require hookApi 2")
+			return goja.Undefined()
+		}
+		if !rt.info.hasPermission(PermRegisterRoute) {
+			rt.loadErr = fmt.Errorf("missing permission %q for route", PermRegisterRoute)
+			return goja.Undefined()
+		}
+		rt.routes = append(rt.routes, routeEntry{method: method, path: clean, tier: RouteTierPublic, fn: cb, timeout: rt.defaults.route})
+	}
+	if len(rt.routes) > maxRoutesPerPlugin {
 		rt.loadErr = errors.New("too many routes")
 		return goja.Undefined()
 	}
-	for _, r := range rt.routes {
+	for i := 0; i < len(rt.routes)-1; i++ {
+		r := rt.routes[i]
 		if r.method == method && r.path == clean {
 			rt.loadErr = fmt.Errorf("duplicate route %s %s", method, clean)
 			return goja.Undefined()
 		}
 	}
-	rt.routes = append(rt.routes, routeEntry{method: method, path: clean, fn: cb, timeout: rt.defaults.route})
 	return goja.Undefined()
+}
+
+func findManifestRoute(routes []RouteSpec, method, path string) (RouteSpec, bool) {
+	for _, r := range routes {
+		if r.Method == method && r.Path == path {
+			return r, true
+		}
+	}
+	return RouteSpec{}, false
+}
+
+func routeTierPermissionOK(m Manifest, tier RouteTier) bool {
+	switch tier {
+	case RouteTierPublic:
+		return m.hasPermission(PermRegisterRoute)
+	case RouteTierSession:
+		return m.hasPermission(PermHTTPRoutesSession)
+	case RouteTierAdmin:
+		return m.hasPermission(PermHTTPRoutesAdmin)
+	case RouteTierSuperAdmin:
+		return m.hasPermission(PermHTTPRoutesSuper)
+	}
+	return false
 }
 
 // jsLog appends plugin log lines (bounded) and mirrors to the host logger.
@@ -387,17 +513,12 @@ func (rt *runtime) jsLog(call goja.FunctionCall) goja.Value {
 }
 
 // callRoute executes one stored route and converts the JS return value.
-func (rt *runtime) callRoute(ctx context.Context, e routeEntry, q url.Values) (int, interface{}) {
-	query := map[string]interface{}{}
-	for k, vs := range q {
-		if len(vs) > 0 {
-			query[k] = vs[0]
-		}
-	}
+func (rt *runtime) callRoute(ctx context.Context, e routeEntry, req map[string]interface{}) (int, interface{}) {
+	rt.mu.Lock()
+	rt.routeCalls++
+	rt.mu.Unlock()
 	val, err := rt.withTimeout(e.timeout, func() (goja.Value, error) {
-		return e.fn(goja.Undefined(), rt.vm.ToValue(map[string]interface{}{
-			"method": e.method, "path": e.path, "query": query,
-		}))
+		return e.fn(goja.Undefined(), rt.vm.ToValue(req))
 	})
 	_ = ctx
 	if err != nil {

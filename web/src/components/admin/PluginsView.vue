@@ -5,6 +5,7 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { fetchJSON, needToken } from '../../adminApi.js'
 import { api } from '../../api.js'
+import SchemaForm from '../SchemaForm.vue'
 
 const { t } = useI18n()
 
@@ -14,11 +15,20 @@ const actionError = ref('')
 const isSuper = ref(false)
 const readOnly = ref(true)
 
+const configTarget = ref(null)
+const configView = ref(null)
+const configValues = ref({})
+const configError = ref('')
+const configOk = ref('')
+const configSaving = ref(false)
+const guardsBypassed = ref(false)
+
 async function load() {
   loadError.value = ''
   try {
     const d = await fetchJSON('/api/admin/v1/plugins')
     plugins.value = d.plugins || []
+    guardsBypassed.value = !!d.guardsBypassed
   } catch (e) {
     loadError.value = e.message
   }
@@ -31,6 +41,55 @@ async function detectRole() {
     const me = await api.me()
     isSuper.value = Number(me.permission) === 2
   } catch { /* stay read-only */ }
+}
+
+async function openConfig(p) {
+  configTarget.value = p
+  configView.value = null
+  configValues.value = {}
+  configError.value = ''
+  configOk.value = ''
+  try {
+    const d = await fetchJSON(`/api/admin/v1/plugins/${encodeURIComponent(p.name)}/config`)
+    configView.value = d
+    configValues.value = { ...(d.values || {}) }
+  } catch (e) {
+    configError.value = e.message
+  }
+}
+
+async function saveConfig() {
+  if (!configTarget.value || !configView.value) return
+  configSaving.value = true
+  configError.value = ''
+  configOk.value = ''
+  try {
+    const d = await fetchJSON(`/api/admin/v1/plugins/${encodeURIComponent(configTarget.value.name)}/config`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: configValues.value }),
+    })
+    configView.value = d
+    configValues.value = { ...(d.values || {}) }
+    configOk.value = t('admin.pluginsConfigSaved')
+    await load()
+  } catch (e) {
+    configError.value = e.message
+  } finally {
+    configSaving.value = false
+  }
+}
+
+async function toggleBypass() {
+  actionError.value = ''
+  const next = !guardsBypassed.value
+  if (next && !window.confirm(t('admin.pluginsGuardBypassConfirm'))) return
+  try {
+    const d = await fetchJSON('/api/admin/v1/plugins/guards/bypass', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: next }),
+    })
+    guardsBypassed.value = !!d.guardsBypassed
+  } catch (e) { actionError.value = e.message }
 }
 
 async function act(p, action) {
@@ -56,6 +115,10 @@ onMounted(async () => {
     <h2 style="margin-top: 0;">{{ t('admin.pluginsTitle') }}</h2>
     <p class="muted">{{ t('admin.pluginsHint') }}</p>
     <p class="muted" v-if="readOnly">{{ t('admin.pluginsReadOnly') }}</p>
+    <label v-if="isSuper" class="row" style="align-items:center;gap:8px;margin:8px 0;">
+      <input type="checkbox" :checked="guardsBypassed" @change="toggleBypass" style="width:auto;" />
+      <span class="muted">{{ t('admin.pluginsGuardBypass') }}</span>
+    </label>
     <div class="error" v-if="loadError">{{ loadError }}</div>
     <div class="error" v-if="actionError">{{ actionError }}</div>
 
@@ -68,6 +131,8 @@ onMounted(async () => {
           <th>{{ t('admin.colAuthor') }}</th>
           <th>{{ t('admin.colPerms') }}</th>
           <th>{{ t('admin.colState') }}</th>
+          <th>{{ t('admin.colHealth') }}</th>
+          <th>{{ t('admin.colRoutes') }}</th>
           <th>{{ t('admin.colError') }}</th>
           <th v-if="!readOnly">{{ t('admin.colActions') }}</th>
         </tr>
@@ -77,6 +142,7 @@ onMounted(async () => {
           <td>
             <strong>{{ p.title || p.name }}</strong>
             <div class="muted">{{ p.description }}</div>
+            <button class="secondary" style="margin-top: 6px;" @click="openConfig(p)">{{ t('admin.pluginsConfig') }}</button>
           </td>
           <td>{{ p.version }}</td>
           <td>{{ p.author || '—' }}</td>
@@ -86,6 +152,8 @@ onMounted(async () => {
           <td>
             <span class="badge">{{ t('admin.state' + p.state.charAt(0).toUpperCase() + p.state.slice(1)) }}</span>
           </td>
+          <td><span class="badge">{{ p.health || p.state }}</span></td>
+          <td class="muted">{{ p.routes || 0 }} route · {{ p.uiPages || 0 }} UI</td>
           <td class="muted">{{ p.lastError || '—' }}</td>
           <td v-if="!readOnly" class="nowrap">
             <button v-if="!p.enabled" @click="act(p, 'enable')">{{ t('admin.pluginsEnable') }}</button>
@@ -95,5 +163,22 @@ onMounted(async () => {
         </tr>
       </tbody>
     </table>
+
+    <div v-if="configTarget" class="card" style="margin-top: 16px;">
+      <div class="row" style="justify-content: space-between; align-items: center;">
+        <h3 style="margin: 0;">{{ t('admin.pluginsConfigTitle', { name: configTarget.title || configTarget.name }) }}</h3>
+        <button class="secondary" @click="configTarget = null">{{ t('common.close') }}</button>
+      </div>
+      <p class="muted">{{ t('admin.pluginsConfigHint') }}</p>
+      <div class="error" v-if="configError">{{ configError }}</div>
+      <div class="success" v-if="configOk">{{ configOk }}</div>
+      <template v-if="configView">
+        <SchemaForm :schema="configView.schema" v-model="configValues" :disabled="!isSuper || configSaving" />
+        <div class="row" style="margin-top: 12px;">
+          <button :disabled="!isSuper || configSaving" @click="saveConfig">{{ t('admin.pluginsConfigSave') }}</button>
+          <span v-if="!isSuper" class="muted">{{ t('admin.pluginsConfigReadOnly') }}</span>
+        </div>
+      </template>
+    </div>
   </div>
 </template>

@@ -1,0 +1,26 @@
+{
+  "name": "nav-links",
+  "version": "1.0.0",
+  "hookApi": 2,
+  "entrypoint": "index.js",
+  "title": "Nav Links",
+  "description": "v2 UI page + user navigation example",
+  "permissions": ["ui:page", "ui:assets"],
+  "ui": {
+    "assets": "ui/",
+    "pages": [
+      {
+        "id": "links",
+        "path": "/ext/nav-links/links",
+        "area": "user",
+        "nav": { "label": "Links" },
+        "render": { "type": "iframe", "src": "links.html" },
+        "perm": 0
+      }
+    ],
+    "i18n": {
+      "zh-CN": { "title": "链接" },
+      "en": { "title": "Links" }
+    }
+  }
+}

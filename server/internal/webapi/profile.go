@@ -13,6 +13,7 @@ import (
 
 	"skin-nexus/server/internal/plugin"
 	"skin-nexus/server/internal/store"
+	"skin-nexus/server/internal/ygg"
 )
 
 // statFile returns a file's size in bytes (0 on any error — the storage
@@ -87,6 +88,10 @@ func (b *Backend) handleProfileUpdate(w http.ResponseWriter, r *http.Request) {
 	b.Store.InsertAudit(r.Context(), uid, "profile_update", map[string]any{
 		"nickname": req.Nickname, "email": req.Email,
 	})
+	b.emitEvent(r.Context(), "profile.updated", plugin.EventPayload{
+		UserID: uid, PlayerName: req.Nickname, IP: ygg.ClientIP(r),
+		Data: map[string]any{"email": req.Email},
+	})
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }
 
@@ -130,6 +135,7 @@ func (b *Backend) handleAccountDelete(w http.ResponseWriter, r *http.Request) {
 	if b.OnUserLifecycle != nil {
 		b.OnUserLifecycle(r.Context(), plugin.UserLifecycleEvent{Kind: "deleted", UserID: uid})
 	}
+	b.emitEvent(r.Context(), "user.deleted", plugin.EventPayload{UserID: uid, IP: ygg.ClientIP(r)})
 	// Audit carries the (now-gone) uid as actor — audit rows are kept by
 	// contract and actor_uid has no FK to users.
 	b.Store.InsertAudit(r.Context(), uid, "account_self_delete", map[string]any{"uid": uid})
@@ -253,6 +259,9 @@ func (b *Backend) handlePlayerRename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b.Store.InsertAudit(r.Context(), uid, "player_rename_self", map[string]any{"pid": pid, "name": req.Name})
+	b.emitEvent(r.Context(), "player.renamed", plugin.EventPayload{
+		UserID: uid, PlayerID: pid, PlayerName: req.Name, IP: ygg.ClientIP(r),
+	})
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }
 
@@ -280,5 +289,8 @@ func (b *Backend) handlePlayerDeleteSelf(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	b.Store.InsertAudit(r.Context(), uid, "player_delete_self", map[string]any{"pid": pid, "name": name, "uuid": uuid})
+	b.emitEvent(r.Context(), "player.deleted", plugin.EventPayload{
+		UserID: uid, PlayerID: pid, PlayerName: name, UUID: uuid, IP: ygg.ClientIP(r),
+	})
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }

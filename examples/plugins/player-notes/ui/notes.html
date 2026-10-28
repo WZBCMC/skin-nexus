@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Notes</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; color: #222; }
+    textarea { width: 100%; min-height: 70px; box-sizing: border-box; }
+    ul { padding-left: 18px; }
+    .muted { color: #777; font-size: 12px; }
+    .error { color: #b00020; }
+  </style>
+</head>
+<body>
+  <p class="muted">数据存在插件命名空间里，通过宿主的 session 路由读写。</p>
+  <textarea id="text" placeholder="写一条笔记…"></textarea>
+  <p><button id="add">保存</button> <span id="msg" class="muted"></span></p>
+  <ul id="list"></ul>
+  <script>
+    let hostOrigin = '*'
+    let nonce = ''
+    let seq = 0
+    const pending = new Map()
+    const msg = document.getElementById('msg')
+
+    function post(type, payload, id) {
+      parent.postMessage({ v: 1, nonce, type, payload, id }, hostOrigin)
+    }
+    function request(method, path, body) {
+      const id = String(++seq)
+      return new Promise((resolve) => {
+        pending.set(id, resolve)
+        post('request', { method, path, body }, id)
+      })
+    }
+    async function load() {
+      const r = await request('GET', '/notes')
+      const list = document.getElementById('list')
+      list.innerHTML = ''
+      if (!r || r.status !== 200) { msg.textContent = '加载失败'; return }
+      for (const item of (r.body.items || [])) {
+        const li = document.createElement('li')
+        li.textContent = item.doc.text
+        list.appendChild(li)
+      }
+    }
+    document.getElementById('add').onclick = async () => {
+      const text = document.getElementById('text').value.trim()
+      if (!text) return
+      const r = await request('POST', '/notes', { text })
+      if (r && r.status === 200) {
+        document.getElementById('text').value = ''
+        msg.textContent = '已保存'
+        await load()
+      } else {
+        msg.textContent = '保存失败（' + (r ? r.status : '?') + '）'
+      }
+    }
+    window.addEventListener('message', (e) => {
+      const m = e.data
+      if (!m || m.v !== 1) return
+      if (m.type === 'init') {
+        hostOrigin = (m.payload && m.payload.origin) || '*'
+        nonce = m.nonce || ''
+        load()
+      } else if (m.type === 'response') {
+        const done = pending.get(m.id)
+        if (done) { pending.delete(m.id); done(m.payload) }
+      }
+    })
+    window.parent.postMessage({ v: 1, type: 'ready' }, '*')
+  </script>
+</body>
+</html>

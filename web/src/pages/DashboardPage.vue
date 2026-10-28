@@ -6,6 +6,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import MarkdownIt from 'markdown-it'
+import PluginSlot from '../components/plugin/PluginSlot.vue'
 import DOMPurify from 'dompurify'
 import SkinPreview from '../components/SkinPreview.vue'
 import { api, uploadTexture } from '../api.js'
@@ -243,6 +244,7 @@ onBeforeUnmount(() => { if (previewURL.value) URL.revokeObjectURL(previewURL.val
     </table>
     <div v-else class="muted">{{ t('dashboard.texturesEmpty') }}</div>
   </div>
+  <PluginSlot slot="dashboard.cards" />
 </template>
 
 <style scoped>

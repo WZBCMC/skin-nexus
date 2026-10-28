@@ -1,0 +1,19 @@
+{
+  "name": "config-greeter",
+  "version": "1.0.0",
+  "hookApi": 2,
+  "entrypoint": "index.js",
+  "title": "Config Greeter",
+  "description": "v2 config schema + public route example",
+  "permissions": ["config", "http:routes"],
+  "config": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "message": { "type": "string", "title": "Greeting", "default": "Hello from a plugin" },
+        "repeat": { "type": "integer", "title": "Repeat", "minimum": 1, "maximum": 5, "default": 1 }
+      }
+    }
+  },
+  "routes": [{ "method": "GET", "path": "/hello", "tier": "public" }]
+}

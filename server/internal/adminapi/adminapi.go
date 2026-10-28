@@ -26,10 +26,10 @@ type Backend struct {
 	Store          *store.Mysql
 	Ygg            *ygg.Service
 	AdminTok       string
-	union          UnionDeps        // nil until MountUnion (module disabled = no routes)
-	sharedClientID string           // guard: shared launcher client cannot be deleted
-	appearance     *AppearanceDeps  // nil until MountAppearance
-	plugins        *PluginsDeps     // nil until MountPlugins (no plugin routes)
+	union          UnionDeps       // nil until MountUnion (module disabled = no routes)
+	sharedClientID string          // guard: shared launcher client cannot be deleted
+	appearance     *AppearanceDeps // nil until MountAppearance
+	plugins        *PluginsDeps    // nil until MountPlugins (no plugin routes)
 	// SettingsDefaults carries env-derived fallbacks for the settings panel
 	// (injected by main from config).
 	SettingsDefaults map[string]string
@@ -131,6 +131,9 @@ func (b *Backend) Handler() http.Handler {
 	// Plugin host (v0.3.0): list for any admin, mutations super-admin only.
 	if b.plugins != nil {
 		mux.HandleFunc("GET /api/admin/v1/plugins", b.auth(b.handlePluginsList))
+		mux.HandleFunc("GET /api/admin/v1/plugins/{name}/config", b.auth(b.handlePluginConfigGet))
+		mux.HandleFunc("POST /api/admin/v1/plugins/guards/bypass", b.auth(b.handlePluginGuardBypass))
+		mux.HandleFunc("PUT /api/admin/v1/plugins/{name}/config", b.auth(b.handlePluginConfigSave))
 		mux.HandleFunc("POST /api/admin/v1/plugins/{name}/{action}", b.auth(b.handlePluginAction))
 	}
 	// 1 MiB body cap (review B P2) — admin JSON endpoints included.
@@ -243,10 +246,10 @@ func (b *Backend) handleStatus(w http.ResponseWriter, r *http.Request) {
 		migVer = "?"
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"version":     b.Version,
-		"goVersion":   runtime.Version(),
+		"version":      b.Version,
+		"goVersion":    runtime.Version(),
 		"mysqlVersion": mysqlVer,
-		"migration":   migVer,
+		"migration":    migVer,
 		"modules": map[string]bool{
 			"union":      b.union.Status != nil,
 			"appearance": b.appearance != nil,

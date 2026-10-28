@@ -60,16 +60,16 @@ func TestLoadManifestValid(t *testing.T) {
 
 func TestLoadManifestRejects(t *testing.T) {
 	cases := []struct {
-		name    string
-		dirName string
+		name     string
+		dirName  string
 		manifest string
-		script  string // "" = omit entrypoint file
-		setup   func(t *testing.T, dir string)
+		script   string // "" = omit entrypoint file
+		setup    func(t *testing.T, dir string)
 	}{
 		{"name mismatch", "other", goodManifest, "x", nil},
 		{"bad name", "demo", strings.Replace(goodManifest, `"name": "demo"`, `"name": "Demo!"`, 1), "x", nil},
 		{"empty version", "demo", strings.Replace(goodManifest, `"1.0.0"`, `""`, 1), "x", nil},
-		{"hookApi mismatch", "demo", strings.Replace(goodManifest, `"hookApi": 1`, `"hookApi": 2`, 1), "x", nil},
+		{"hookApi mismatch", "demo", strings.Replace(goodManifest, `"hookApi": 1`, `"hookApi": 3`, 1), "x", nil},
 		{"entrypoint traversal", "demo", strings.Replace(goodManifest, `"index.js"`, `"../evil.js"`, 1), "x", nil},
 		{"entrypoint not js", "demo", strings.Replace(goodManifest, `"index.js"`, `"index.txt"`, 1), "x", nil},
 		{"unknown permission", "demo", strings.Replace(goodManifest, `"textures:read"`, `"kernel:panic"`, 1), "x", nil},

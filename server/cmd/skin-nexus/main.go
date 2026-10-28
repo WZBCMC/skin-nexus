@@ -141,15 +141,43 @@ func main() {
 	}
 	appearEng := appearance.NewEngine(st, themeReg)
 
+	accessLog := accesslog.New(st.InsertAccessLog)
+
 	// Plugin host (v0.3.0): scans <data>/plugins; invalid directories are
 	// recorded as errored entries and never abort boot. Hooks are fail-open
 	// so a crashing plugin cannot alter the frozen Yggdrasil wire.
+	var pluginSecrets *plugin.SecretBox
+	if box, err := plugin.NewSecretBox(os.Getenv("SKIN_PLUGIN_SECRET_KEY"), filepath.Join(filepath.Dir(cfg.PluginsDir), "plugin-secrets.key")); err != nil {
+		log.Printf("plugins: secret box disabled: %v", err)
+	} else {
+		pluginSecrets = box
+	}
 	pluginHost := plugin.NewHost(plugin.RuntimeConfig{
-		Dir:         cfg.PluginsDir,
-		HostVersion: version,
-		State:       st,
+		Dir:             cfg.PluginsDir,
+		HostVersion:     version,
+		State:           st,
+		Store:           pluginStore{st: st},
+		SecretBox:       pluginSecrets,
+		SessionResolver: pluginSessionResolver{st: st},
+		SessionCookie:   "skin_session",
+		ClientIP:        ygg.ClientIP,
+		AccessLog: func(ctx context.Context, name, method, path, ip string, status, ms int64, tier string, uid int64) {
+			outcome := accesslog.OutcomeOK
+			switch {
+			case status >= 500:
+				outcome = accesslog.OutcomeError
+			case status == 403 || status == 429:
+				outcome = accesslog.OutcomeDenied
+			case status >= 400:
+				outcome = accesslog.OutcomeFail
+			}
+			accessLog.Log(ctx, accesslog.Entry{
+				Kind: "plugin", Outcome: outcome, UID: uid, Who: name, IP: ip,
+				Detail: fmt.Sprintf("%s %s tier=%s status=%d %dms", method, path, tier, status, ms),
+			})
+		},
 		Audit: func(ctx context.Context, action string, detail map[string]any) {
-			st.InsertAudit(ctx, 0, action, detail)
+			st.InsertAudit(ctx, plugin.ActorFromContext(ctx), action, detail)
 		},
 	})
 	if err := pluginHost.Load(cfg.PluginsDir); err != nil {
@@ -264,7 +292,6 @@ func main() {
 	// 联盟出入站通信统一落 access_logs，管理面板可筛选分页查看。全程
 	// 旁路：nil 安全、写失败吞掉，任何情况下不改变协议响应。保留 90 天，
 	// 每 6h 清一次。
-	accessLog := accesslog.New(st.InsertAccessLog)
 	yggAPI.SetAccess(accessLog)
 	if unionOut != nil {
 		unionOut.SetAccess(accessLog)
@@ -283,6 +310,10 @@ func main() {
 	backend.ProfileFilter = pluginHost.ProfileFilter
 	backend.OnTextureUploaded = pluginHost.EmitTextureUploaded
 	backend.OnUserLifecycle = pluginHost.EmitUserLifecycle
+	backend.CheckGuard = pluginHost.CheckGuard
+	backend.OnEvent = pluginHost.EmitEvent
+	backend.PluginUI = pluginHost.UI
+	yggSvc.JoinGuard = pluginHost.CheckGuard
 	backend.Access = accessLog
 	backend.RequireInvite = cfg.RequireInvite
 	// A1 找回密码: reset-link base + mail subject + env fallbacks for the
@@ -374,7 +405,12 @@ func main() {
 	pub := publicapi.New(st, ts)
 	pub.TextureURL = pluginHost.TextureURL
 	admin := adminapi.New(st, yggSvc)
-	admin.OnUserLifecycle = pluginHost.EmitUserLifecycle
+	admin.OnUserLifecycle = func(ctx context.Context, e plugin.UserLifecycleEvent) {
+		pluginHost.EmitUserLifecycle(ctx, e)
+		if e.Kind == "deleted" {
+			pluginHost.EmitEvent(ctx, "user.deleted", plugin.EventPayload{UserID: e.UserID})
+		}
+	}
 	admin.Version = version
 	// Union hot settings (2026-10-24 拍板「热切换」): the three hot keys apply
 	// on save without a restart; the rest of the union group is marked
@@ -412,33 +448,33 @@ func main() {
 	// B4 keys use blessing原名 defaults (config/options.php) so the panel
 	// shows what an un-set option actually behaves as.
 	admin.SettingsDefaults = map[string]string{
-		"site_name":            cfg.SiteName,
-		"server_name":          cfg.ServerName,
-		"site_url":             cfg.BaseURL,
-		"skin_domains":         strings.Join(cfg.SkinDomains, ","),
-		"invite_required":      boolStr(cfg.RequireInvite),
-		"require_verification": boolStr(cfg.RequireVerification),
-		"rate_limit_auth":      strconv.Itoa(cfg.RateLimitAuth),
-		"login_fail_limit":     strconv.Itoa(cfg.LoginFailLimit),
-		"announcement":         "",
-		"regs_per_ip":          "3",
-		"max_upload_file_size": "1024",
-		"player_name_rule":     "official",
+		"site_name":              cfg.SiteName,
+		"server_name":            cfg.ServerName,
+		"site_url":               cfg.BaseURL,
+		"skin_domains":           strings.Join(cfg.SkinDomains, ","),
+		"invite_required":        boolStr(cfg.RequireInvite),
+		"require_verification":   boolStr(cfg.RequireVerification),
+		"rate_limit_auth":        strconv.Itoa(cfg.RateLimitAuth),
+		"login_fail_limit":       strconv.Itoa(cfg.LoginFailLimit),
+		"announcement":           "",
+		"regs_per_ip":            "3",
+		"max_upload_file_size":   "1024",
+		"player_name_rule":       "official",
 		"player_name_length_min": "3",
 		"player_name_length_max": "16",
-		"ygg_token_expire_1":   "259200",
-		"ygg_token_expire_2":   "604800",
-		"ygg_tokens_limit":     "10",
+		"ygg_token_expire_1":     "259200",
+		"ygg_token_expire_2":     "604800",
+		"ygg_tokens_limit":       "10",
 		"ygg_search_profile_max": "5",
-		"ygg_rate_limit":       "1000",
-		"ygg_mojang_fallback":  boolStr(mojangFallbackDefault),
+		"ygg_rate_limit":         "1000",
+		"ygg_mojang_fallback":    boolStr(mojangFallbackDefault),
 		// Union group (2026-10-24): option-first, env fallback, blessing 原名
-		"union_enabled":        boolStr(cfg.UnionEnabled),
-		"union_api_root":       cfg.UnionAPIRoot,
-		"union_member_key":     cfg.UnionMemberKey,
-		"union_enable_update":  boolStr(cfg.UnionAllowUpdateBkKey),
-		"union_enable_oauth2":  "1",
-		"union_queryemail_mode": cfg.UnionQueryEmailMode,
+		"union_enabled":                boolStr(cfg.UnionEnabled),
+		"union_api_root":               cfg.UnionAPIRoot,
+		"union_member_key":             cfg.UnionMemberKey,
+		"union_enable_update":          boolStr(cfg.UnionAllowUpdateBkKey),
+		"union_enable_oauth2":          "1",
+		"union_queryemail_mode":        cfg.UnionQueryEmailMode,
 		"union_oauth2_sig_private_key": "",
 		"union_oauth2_sig_public_key":  "",
 		// A1 找回密码: SMTP env fallbacks shown as panel placeholders
@@ -617,10 +653,11 @@ func main() {
 	root.Handle("GET /sitemap.xml", sitemapHandler(seoEng, st, cfg.BaseURL))
 	root.Handle("GET /robots.txt", robotsHandler(seoEng))
 	root.Handle("GET /theme-assets/{id}/{file}", themeAssetHandler(themeReg))
+	root.Handle("/plugin-assets/", pluginHost.AssetHandler())
 	// Public server-rendered texture detail page (2026-10-25 拍板: 皮肤详情
 	// 是搜索引擎的内容页). Registered on the root mux so it beats the SPA
 	// catch-all below; private textures render only for their owner (noindex).
-	root.HandleFunc("GET /skinlib/{tid}", texturePageHandler(st, seoEng, appearEng, cfg.SiteName, cfg.BaseURL, pluginHost.TextureURL))
+	root.HandleFunc("GET /skinlib/{tid}", texturePageHandler(st, seoEng, appearEng, cfg.SiteName, cfg.BaseURL, pluginHost.TextureURL, pluginHost.SlotHTML))
 	// Public landing page data (counts + featured library cards + login state).
 	landingFn := func(r *http.Request) landingData {
 		ctx := r.Context()
@@ -656,7 +693,7 @@ func main() {
 		}
 		return d
 	}
-	spa := spaHandler("web/dist", seoEng, appearEng, cfg.SiteName, landingFn)
+	spa := spaHandler("web/dist", seoEng, appearEng, cfg.SiteName, landingFn, pluginHost.HasUIPath)
 	if oidcProvider != nil {
 		spa = oidcProvider.Wrap(spa)
 	}
@@ -784,7 +821,10 @@ func textureHandler(ts *texture.Store) http.HandlerFunc {
 // The exact root path serves the public server-rendered landing page instead
 // of the SPA shell (2026-10-25 拍板: exposure for first-time visitors/crawlers).
 // isKnownSPAPath whitelists the SPA shell routes; anything else is a true 404.
-func isKnownSPAPath(p string) bool {
+func isKnownSPAPath(p string, uiPath func(string) bool) bool {
+	if strings.HasPrefix(p, "ext/") {
+		return uiPath != nil && uiPath(p)
+	}
 	switch p {
 	case "index.html", "login", "register", "forgot-password", "reset-password", "device",
 		"setup", "skinlib", "user/skinlib", "user/closet", "user/profile",
@@ -794,7 +834,7 @@ func isKnownSPAPath(p string) bool {
 	return strings.HasPrefix(p, "user/")
 }
 
-func spaHandler(dir string, seoEng *seo.Engine, appearEng *appearance.Engine, siteName string, landing func(*http.Request) landingData) http.Handler {
+func spaHandler(dir string, seoEng *seo.Engine, appearEng *appearance.Engine, siteName string, landing func(*http.Request) landingData, uiPath func(string) bool) http.Handler {
 	if st, err := os.Stat(dir); err == nil && st.IsDir() {
 		fs := http.FileServer(http.Dir(dir))
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -815,7 +855,7 @@ func spaHandler(dir string, seoEng *seo.Engine, appearEng *appearance.Engine, si
 			// 任何未知 URL 都曾 200 返回登录卡，爬虫把它们当内容页收进索引).
 			// Known shell routes: auth flows, device verification, the public
 			// skinlib list and the /user/* launcher-deep-link family.
-			if inject && !isKnownSPAPath(p) {
+			if inject && !isKnownSPAPath(p, uiPath) {
 				writeTexNotFound(r.Context(), w, siteName, appearEng, "页面不存在。")
 				return
 			}

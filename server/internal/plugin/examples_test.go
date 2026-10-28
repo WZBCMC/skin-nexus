@@ -2,7 +2,10 @@ package plugin
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -13,14 +16,15 @@ func examplesDir() string {
 }
 
 func TestShippedExamplesLoadAndRun(t *testing.T) {
-	m := NewHost(RuntimeConfig{Dir: examplesDir(), HostVersion: "0.3.0"})
+	st := newMemPlatformStore()
+	m := NewHost(RuntimeConfig{Dir: examplesDir(), HostVersion: "0.4.0", Store: st, SessionResolver: fakeSessionResolver{}})
 	t.Cleanup(func() { _ = m.Close() })
 	if err := m.Load(examplesDir()); err != nil {
 		t.Fatal(err)
 	}
 	list := m.List()
-	if len(list) != 2 {
-		t.Fatalf("examples = %d, want 2 (%+v)", len(list), list)
+	if len(list) != 6 {
+		t.Fatalf("examples = %d, want 6 (%+v)", len(list), list)
 	}
 	for _, st := range list {
 		if st.State != "disabled" {
@@ -29,10 +33,24 @@ func TestShippedExamplesLoadAndRun(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	for _, name := range []string{"texture-cdn", "lifecycle-log"} {
+	for _, name := range []string{"texture-cdn", "lifecycle-log", "config-greeter", "nav-links", "signup-guard", "player-notes"} {
 		if err := m.Enable(ctx, name); err != nil {
 			t.Fatalf("enable %s: %v", name, err)
 		}
+	}
+
+	rec := httptest.NewRecorder()
+	m.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/plugins/config-greeter/hello", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Hello from a plugin") {
+		t.Fatalf("config-greeter route = %d %s", rec.Code, rec.Body.String())
+	}
+	if err := m.CheckGuard(ctx, "user.registration.check", EventPayload{
+		Data: map[string]any{"email": "x@blocked.example"},
+	}); err == nil {
+		t.Fatal("signup-guard should deny blocked domain")
+	}
+	if ui := m.UI(); len(ui) != 2 { // nav-links + player-notes
+		t.Fatalf("example UI = %+v", ui)
 	}
 
 	got := m.TextureURL(ctx, "abc123", "http://host/textures/abc123", "skin")
@@ -50,7 +68,7 @@ func TestShippedExamplesLoadAndRun(t *testing.T) {
 	_ = deadline
 	waitForLog(t, m, "lifecycle-log", "lifecycle registered uid=3")
 
-	for _, name := range []string{"texture-cdn", "lifecycle-log"} {
+	for _, name := range []string{"texture-cdn", "lifecycle-log", "config-greeter", "nav-links", "signup-guard", "player-notes"} {
 		if err := m.Disable(ctx, name); err != nil {
 			t.Fatalf("disable %s: %v", name, err)
 		}

@@ -29,23 +29,24 @@ import (
 
 // texDetailData feeds the detail template.
 type texDetailData struct {
-	SiteName  string
-	TID       int64
-	Name      string
-	Type      string // "skin" | "cape"
-	Model     string // "default" | "slim"
-	Nickname  string
-	Likes     int64
-	Liked     bool
-	Public    bool
-	UploadAt  string // "2006-01-02"-style display date, "" when unknown
-	TextureURL string // absolute, for download + JSON-LD
-	PreviewURL string // relative preview image (skin: /preview/{tid}; cape: flat)
+	SiteName      string
+	TID           int64
+	Name          string
+	Type          string // "skin" | "cape"
+	Model         string // "default" | "slim"
+	Nickname      string
+	Likes         int64
+	Liked         bool
+	Public        bool
+	UploadAt      string // "2006-01-02"-style display date, "" when unknown
+	TextureURL    string // absolute, for download + JSON-LD
+	PreviewURL    string // relative preview image (skin: /preview/{tid}; cape: flat)
 	PreviewAbsURL string // absolute preview URL (og:image + JSON-LD)
-	Year      int
+	Year          int
 
 	HeadAnchors template.HTML
 	BodyAnchor  template.HTML
+	PluginSlot  template.HTML
 }
 
 var texDetailTmpl = template.Must(template.New("texdetail").Parse(`<!DOCTYPE html>
@@ -158,6 +159,7 @@ var texDetailTmpl = template.Must(template.New("texdetail").Parse(`<!DOCTYPE htm
         <a class="alt" href="/register">注册使用同款</a>
       </div>
     </article>
+    {{.PluginSlot}}
   </div>
   <footer>
     Powered by <a href="https://github.com/YimingZhanshen/skin-nexus">SkinNexus</a>
@@ -208,8 +210,8 @@ func texJSONLD(d texDetailData, canonical string) string {
 		"author":   map[string]any{"@type": "Person", "name": d.Nickname},
 		"genre":    "Minecraft texture",
 		"interactionStatistic": map[string]any{
-			"@type":           "InteractionCounter",
-			"interactionType": "https://schema.org/LikeAction",
+			"@type":                "InteractionCounter",
+			"interactionType":      "https://schema.org/LikeAction",
 			"userInteractionCount": d.Likes,
 		},
 	}
@@ -226,7 +228,7 @@ func texJSONLD(d texDetailData, canonical string) string {
 // texturePageHandler serves GET /skinlib/{tid}. Visibility: public textures
 // render for everyone; private textures render only for their owner (or an
 // admin) and carry noindex; anything else 404s with a branded page.
-func texturePageHandler(st *store.Mysql, seoEng *seo.Engine, appearEng *appearance.Engine, siteName, baseURL string, texURL func(ctx context.Context, hash, url, typ string) string) http.HandlerFunc {
+func texturePageHandler(st *store.Mysql, seoEng *seo.Engine, appearEng *appearance.Engine, siteName, baseURL string, texURL func(ctx context.Context, hash, url, typ string) string, slotHTML func(string) string) http.HandlerFunc {
 	base := strings.TrimRight(baseURL, "/")
 	return func(w http.ResponseWriter, r *http.Request) {
 		tid, err := strconv.ParseInt(r.PathValue("tid"), 10, 64)
@@ -285,6 +287,9 @@ func texturePageHandler(st *store.Mysql, seoEng *seo.Engine, appearEng *appearan
 			d.TextureURL = texURL(r.Context(), row.Hash, d.TextureURL, row.Type)
 		}
 		d.PreviewAbsURL = absURL(base, d.PreviewURL)
+		if slotHTML != nil {
+			d.PluginSlot = template.HTML(slotHTML("skinlib.detail.sidebar"))
+		}
 
 		canonical := base + "/skinlib/" + strconv.FormatInt(row.TID, 10)
 		pm := seo.PageMeta{

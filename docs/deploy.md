@@ -97,7 +97,7 @@ environment:
 | `SKIN_UNION_ENABLED` | `false` | MUA Union 联盟模块；未接入保持关 = 零路由零表面 |
 | `SKIN_LEGACY_ENV` | 无 | **从老站迁移且用户密码非 bcrypt/argon2 PHC 格式时必设**：指向挂载进容器的老站 `.env`（盐链来源），否则这些存量用户无法登录（见 [migration.md](migration.md)） |
 
-路径/密钥类变量默认值即可，一般无需改动：`SKIN_TEXTURES_DIR`（`<data>/textures`）、`SKIN_SIGN_KEY`（`<data>/sign-key.pem`）、`SKIN_OIDC_SIGN_KEY`（`<data>/oidc-key.pem`）、`SKIN_THEMES_DIR`（`<data>/themes`）、`SKIN_PLUGINS_DIR`（`<data>/plugins`）、`SKIN_MIGRATIONS_DIR`（镜像内 `/app/migrations`）、`SKIN_OIDC_SHARED_CLIENT_ID`（`2`）。
+路径/密钥类变量默认值即可，一般无需改动：`SKIN_TEXTURES_DIR`（`<data>/textures`）、`SKIN_SIGN_KEY`（`<data>/sign-key.pem`）、`SKIN_OIDC_SIGN_KEY`（`<data>/oidc-key.pem`）、`SKIN_THEMES_DIR`（`<data>/themes`）、`SKIN_PLUGINS_DIR`（`<data>/plugins`）、`SKIN_PLUGIN_SECRET_KEY`（插件密钥主密钥；缺省生成 `<data>/plugin-secrets.key`，**需一并备份**）、`SKIN_MIGRATIONS_DIR`（镜像内 `/app/migrations`）、`SKIN_OIDC_SHARED_CLIENT_ID`（`2`）。
 
 > `SKIN_LISTEN` 改值注意：bridge 网络下不要改成 `127.0.0.1:8080`（进程只绑容器环回 → 端口映射
 > connection refused，而 healthcheck 仍报 healthy，极难排查）；反代场景想只对本机开放就改 ports
@@ -249,7 +249,7 @@ WantedBy=multi-user.target
 ```
 
 要点：工作目录须能读到 `web/dist` 与 `migrations/`（或用 `SKIN_MIGRATIONS_DIR` 指定）；
-手动建表按序执行 `migrations/0001…0011`（以目录实际文件为准），或设 `SKIN_AUTO_MIGRATE=true` 让启动时自动应用。
+手动建表按序执行 `migrations/0001…0012`（以目录实际文件为准），或设 `SKIN_AUTO_MIGRATE=true` 让启动时自动应用。
 Nginx 反代与 §三完全相同。日志 `journalctl -u skin-nexus -f`。
 
 ## 六、运维周期检查
