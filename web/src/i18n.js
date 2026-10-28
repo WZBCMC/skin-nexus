@@ -18,7 +18,10 @@ export const i18n = createI18n({
   messages: { 'zh-CN': zhCN, en },
 })
 
+document.documentElement.lang = i18n.global.locale.value
+
 export function setLocale(locale) {
   i18n.global.locale.value = locale
   localStorage.setItem('skin_lang', locale)
+  document.documentElement.lang = locale
 }
