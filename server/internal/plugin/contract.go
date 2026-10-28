@@ -31,6 +31,7 @@ type Manifest struct {
 	Store     *StoreSpec    `json:"store,omitempty"`
 	Routes    []RouteSpec   `json:"routes,omitempty"`
 	UI        *UISpec       `json:"ui,omitempty"`
+	Media     *MediaSpec    `json:"media,omitempty"`
 	Requires  *RequiresSpec `json:"requires,omitempty"`
 	Conflicts []string      `json:"conflicts,omitempty"`
 }
@@ -49,9 +50,11 @@ const (
 	PermUIPage            = "ui:page"
 	PermUISlot            = "ui:slot"
 	PermUIAssets          = "ui:assets"
+	PermUIForms           = "ui:forms"
 	PermHTTPRoutesSession = "http:routes:session"
 	PermHTTPRoutesAdmin   = "http:routes:admin"
 	PermHTTPRoutesSuper   = "http:routes:superadmin"
+	PermHTTPRoutesBearer  = "http:routes:bearer"
 	PermNetHTTP           = "net:http"
 	PermMailSend          = "mail:send"
 	PermScheduleJobs      = "schedule:jobs"
@@ -61,6 +64,10 @@ const (
 	PermAuditWrite        = "audit:write"
 	PermEventsSubscribe   = "events:subscribe"
 	PermAuthGuards        = "auth:guards"
+	PermMediaAvatar       = "media:avatar"
+	PermAccountRead       = "account:read"
+	PermPlayersRead       = "players:read"
+	PermPlayersWrite      = "players:write"
 )
 
 // EventPayload is the safe, host-built shape delivered to generic event
@@ -110,7 +117,25 @@ const (
 	RouteTierSession    RouteTier = "session"
 	RouteTierAdmin      RouteTier = "admin"
 	RouteTierSuperAdmin RouteTier = "superadmin"
+	RouteTierBearer     RouteTier = "bearer"
 )
+
+// BearerResolver maps an Authorization: Bearer credential to a site identity.
+// The host wires it to the Yggdrasil token ledger (opaque tokens and OIDC JWTs
+// both resolve through ygg.Service). It must never trust a client-supplied uid.
+type BearerResolver interface {
+	ResolveBearer(ctx context.Context, token string) (*SessionIdentity, error)
+}
+
+// BearerError lets the resolver choose the HTTP status/code for a rejected
+// token without leaking internals to the route layer.
+type BearerError struct {
+	Status  int
+	Code    string
+	Message string
+}
+
+func (e *BearerError) Error() string { return e.Code + ": " + e.Message }
 
 // SessionIdentity is the safe subset of a web session exposed to plugins.
 type SessionIdentity struct {
@@ -141,6 +166,15 @@ type TextureURLFilter struct {
 	Hash string
 	URL  string
 	Type string // "skin" | "cape"
+}
+
+// AvatarFilter lets a plugin delegate avatar rendering to an external,
+// manifest-allowlisted HTTPS host. URL is empty when the plugin declines.
+type AvatarFilter struct {
+	Hash   string
+	Size   int
+	ThreeD bool
+	URL    string
 }
 
 // TextureUploadedEvent fires after a texture is committed to the store.
@@ -186,6 +220,7 @@ type HookBus interface {
 	OnTextureUploaded(fn func(context.Context, TextureUploadedEvent) error, opts HostOptions) error
 	OnUserLifecycle(fn func(context.Context, UserLifecycleEvent) error, opts HostOptions) error
 	OnAuthPhase(fn func(context.Context, AuthPhaseEvent) error, opts HostOptions) error
+	OnAvatarFilter(fn func(context.Context, *AvatarFilter) error, opts HostOptions) error
 	RegisterRoute(r RouteRegistration) error
 }
 

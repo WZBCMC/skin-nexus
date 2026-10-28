@@ -24,7 +24,7 @@ export const api = {
   // email field + forgot flow available-or-hidden (A1 UX 收敛).
   siteConfig: () => req('GET', '/api/v1/site-config'),
   login: (identifier, password) => req('POST', '/api/v1/login', { identifier, password }),
-  register: (email, nickname, password, invitationCode) => req('POST', '/api/v1/register', { email, nickname, password, invitationCode }),
+  register: (email, nickname, password, invitationCode, pluginData) => req('POST', '/api/v1/register', { email, nickname, password, invitationCode, pluginData }),
   logout: () => req('POST', '/api/v1/logout'),
   changePassword: (currentPassword, newPassword) => req('POST', '/api/v1/me/password', { currentPassword, newPassword }),
   // A1 找回密码: forgot 恒 200（防邮箱枚举，未配置邮件时 503）；reset 消费
@@ -81,12 +81,13 @@ export const union = {
   remapuuid: (me, target) => req('POST', '/api/v1/union/remapuuid', { me, target }),
 }
 
-export async function uploadTexture(type, file, model, description) {
+export async function uploadTexture(type, file, model, description, pluginData) {
   const fd = new FormData()
   fd.append('type', type)
   fd.append('file', file)
   if (model) fd.append('model', model)
   if (description) fd.append('description', description)
+  if (pluginData && Object.keys(pluginData).length) fd.append('pluginData', JSON.stringify(pluginData))
   const res = await fetch('/api/v1/me/textures', { method: 'POST', body: fd })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {

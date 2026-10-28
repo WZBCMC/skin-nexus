@@ -24,6 +24,7 @@ type (
 	uploadHookFn    func(context.Context, TextureUploadedEvent) error
 	lifecycleHookFn func(context.Context, UserLifecycleEvent) error
 	authHookFn      func(context.Context, AuthPhaseEvent) error
+	avatarHookFn    func(context.Context, *AvatarFilter) error
 )
 
 // timed pairs a hook with its per-call budget.
@@ -39,6 +40,7 @@ type hookSet struct {
 	upload    []timed[uploadHookFn]
 	lifecycle []timed[lifecycleHookFn]
 	auth      []timed[authHookFn]
+	avatar    []timed[avatarHookFn]
 	events    map[string][]timed[eventFn]
 	guards    map[string][]guardEntry
 }
@@ -88,6 +90,11 @@ type runtime struct {
 	logSink   func(string)
 	config    *configState
 	store     *storeService
+	hostInfo  func() HostInfo
+	account   func() AccountService
+	routeUser *SessionIdentity
+	routeCtx  context.Context
+	routeIP   string
 	installFn goja.Callable
 	upgradeFn goja.Callable
 }
@@ -96,12 +103,12 @@ type timeouts struct {
 	hook, auth, route, load time.Duration
 }
 
-func newRuntime(info Info, t timeouts, logSink func(string), cfg *configState, store *storeService) (*runtime, error) {
+func newRuntime(info Info, t timeouts, logSink func(string), cfg *configState, store *storeService, hostInfo func() HostInfo, account func() AccountService) (*runtime, error) {
 	src, err := os.ReadFile(info.ScriptPath)
 	if err != nil {
 		return nil, fmt.Errorf("read entrypoint: %w", err)
 	}
-	rt := &runtime{info: info, vm: goja.New(), defaults: t, logSink: logSink, config: cfg, store: store}
+	rt := &runtime{info: info, vm: goja.New(), defaults: t, logSink: logSink, config: cfg, store: store, hostInfo: hostInfo, account: account}
 	rt.hooks.events = map[string][]timed[eventFn]{}
 	rt.hooks.guards = map[string][]guardEntry{}
 	rt.vm.SetMaxCallStackSize(1024)
@@ -146,6 +153,7 @@ func (rt *runtime) installAPI() {
 			"onTextureUploaded":   rt.regHook(hookUpload),
 			"onUserLifecycle":     rt.regHook(hookLifecycle),
 			"onAuthPhase":         rt.regHook(hookAuth),
+			"onAvatarFilter":      rt.regHook(hookAvatar),
 		},
 		"route": rt.regRoute,
 		"log":   rt.jsLog,
@@ -174,7 +182,73 @@ func (rt *runtime) installAPI() {
 		"guards": map[string]interface{}{
 			"on": rt.onGuard,
 		},
+		"host": map[string]interface{}{
+			"info":      rt.jsHostInfo,
+			"hasPlugin": rt.jsHasPlugin,
+		},
+		"account": map[string]interface{}{
+			"get":    rt.jsAccountGet,
+			"limits": rt.jsAccountLimits,
+		},
+		"players": map[string]interface{}{
+			"list":       rt.jsPlayersList,
+			"get":        rt.jsPlayersGet,
+			"create":     rt.jsPlayersCreate,
+			"rename":     rt.jsPlayersRename,
+			"delete":     rt.jsPlayersDelete,
+			"setTexture": rt.jsPlayersSetTexture,
+		},
+		"textures": map[string]interface{}{
+			"list":          rt.jsTexturesList,
+			"uploadBase64":  rt.jsTexturesUpload,
+			"importLibrary": rt.jsTexturesImport,
+		},
+		"library": map[string]interface{}{
+			"list": rt.jsLibraryList,
+			"get":  rt.jsLibraryGet,
+		},
 	})
+}
+
+// jsHostInfo exposes the read-only host snapshot. It requires plugins:read so
+// a plugin cannot enumerate the deployment for free.
+func (rt *runtime) jsHostInfo(call goja.FunctionCall) goja.Value {
+	if !rt.info.hasPermission(PermPluginsRead) {
+		rt.throw(errors.New("missing permission plugins:read"))
+	}
+	info := HostInfo{}
+	if rt.hostInfo != nil {
+		info = rt.hostInfo()
+	}
+	plugins := make([]map[string]any, 0, len(info.Plugins))
+	for _, p := range info.Plugins {
+		plugins = append(plugins, map[string]any{
+			"name": p.Name, "version": p.Version, "title": p.Title, "enabled": p.Enabled,
+		})
+	}
+	return rt.vm.ToValue(map[string]any{
+		"version":      info.Version,
+		"hookApi":      info.HookAPI,
+		"capabilities": info.Capabilities,
+		"plugins":      plugins,
+		"slots":        info.Slots,
+	})
+}
+
+func (rt *runtime) jsHasPlugin(call goja.FunctionCall) goja.Value {
+	if !rt.info.hasPermission(PermPluginsRead) {
+		rt.throw(errors.New("missing permission plugins:read"))
+	}
+	name := call.Argument(0).String()
+	if rt.hostInfo == nil {
+		return rt.vm.ToValue(false)
+	}
+	for _, p := range rt.hostInfo().Plugins {
+		if p.Name == name {
+			return rt.vm.ToValue(true)
+		}
+	}
+	return rt.vm.ToValue(false)
 }
 
 // hook kinds
@@ -184,6 +258,7 @@ const (
 	hookUpload
 	hookLifecycle
 	hookAuth
+	hookAvatar
 )
 
 func hookPermission(kind int) string {
@@ -196,12 +271,14 @@ func hookPermission(kind int) string {
 		return PermEditTextures
 	case hookLifecycle, hookAuth:
 		return PermAuthHooks
+	case hookAvatar:
+		return PermMediaAvatar
 	}
 	return ""
 }
 
 func (rt *runtime) defaultTimeout(kind int) time.Duration {
-	if kind == hookAuth {
+	if kind == hookAuth || kind == hookAvatar {
 		return rt.defaults.auth
 	}
 	return rt.defaults.hook
@@ -238,6 +315,8 @@ func (rt *runtime) regHook(kind int) func(goja.FunctionCall) goja.Value {
 			_ = rt.OnUserLifecycle(rt.wrapLifecycle(cb, d), opts)
 		case hookAuth:
 			_ = rt.OnAuthPhase(rt.wrapAuth(cb, d), opts)
+		case hookAvatar:
+			_ = rt.OnAvatarFilter(rt.wrapAvatar(cb, d), opts)
 		}
 		return goja.Undefined()
 	}
@@ -414,6 +493,30 @@ func (rt *runtime) wrapAuth(cb goja.Callable, d time.Duration) authHookFn {
 	}
 }
 
+// wrapAvatar converts a JS avatar filter into the contract shape. Only a
+// non-empty string return counts; everything else leaves the PNG path intact.
+func (rt *runtime) wrapAvatar(cb goja.Callable, d time.Duration) avatarHookFn {
+	return func(ctx context.Context, a *AvatarFilter) error {
+		val, err := rt.withTimeout(d, func() (goja.Value, error) {
+			return cb(goja.Undefined(), rt.vm.ToValue(map[string]interface{}{
+				"hash": a.Hash, "size": a.Size, "threeD": a.ThreeD,
+			}))
+		})
+		_ = ctx
+		if err != nil {
+			rt.record(err)
+			return nil
+		}
+		if val == nil || goja.IsUndefined(val) || goja.IsNull(val) {
+			return nil
+		}
+		if s, ok := val.Export().(string); ok {
+			a.URL = s
+		}
+		return nil
+	}
+}
+
 // regRoute validates and stores a plugin-contributed route.
 func (rt *runtime) regRoute(call goja.FunctionCall) goja.Value {
 	method := strings.ToUpper(strings.TrimSpace(call.Argument(0).String()))
@@ -441,7 +544,7 @@ func (rt *runtime) regRoute(call goja.FunctionCall) goja.Value {
 		rt.loadErr = fmt.Errorf("missing permission for route tier %q", tier)
 		return goja.Undefined()
 	}
-	rt.routes = append(rt.routes, routeEntry{method: method, path: clean, tier: tier, spec: spec, fn: cb, timeout: rt.defaults.route})
+	rt.routes = append(rt.routes, routeEntry{method: method, path: clean, tier: tier, spec: spec, fn: cb, timeout: routeTimeout(spec, rt.defaults.route)})
 	if len(rt.routes) > maxRoutesPerPlugin {
 		rt.loadErr = errors.New("too many routes")
 		return goja.Undefined()
@@ -454,6 +557,23 @@ func (rt *runtime) regRoute(call goja.FunctionCall) goja.Value {
 		}
 	}
 	return goja.Undefined()
+}
+
+// routeTimeout applies a manifest-declared budget (100ms..10s), falling back
+// to the host route default. Long budgets are only sensible for binary uploads
+// whose Go-side processing cannot be interrupted by vm.Interrupt.
+func routeTimeout(spec RouteSpec, def time.Duration) time.Duration {
+	if spec.TimeoutMS <= 0 {
+		return def
+	}
+	d := time.Duration(spec.TimeoutMS) * time.Millisecond
+	if d < 100*time.Millisecond {
+		d = 100 * time.Millisecond
+	}
+	if d > 10*time.Second {
+		d = 10 * time.Second
+	}
+	return d
 }
 
 func findManifestRoute(routes []RouteSpec, method, path string) (RouteSpec, bool) {
@@ -475,6 +595,8 @@ func routeTierPermissionOK(m Manifest, tier RouteTier) bool {
 		return m.hasPermission(PermHTTPRoutesAdmin)
 	case RouteTierSuperAdmin:
 		return m.hasPermission(PermHTTPRoutesSuper)
+	case RouteTierBearer:
+		return m.hasPermission(PermHTTPRoutesBearer)
 	}
 	return false
 }
@@ -495,11 +617,20 @@ func (rt *runtime) jsLog(call goja.FunctionCall) goja.Value {
 }
 
 // callRoute executes one stored route and converts the JS return value.
-func (rt *runtime) callRoute(ctx context.Context, e routeEntry, req map[string]interface{}) (int, interface{}) {
+func (rt *runtime) callRoute(ctx context.Context, e routeEntry, req map[string]interface{}, id *SessionIdentity) (int, interface{}) {
 	rt.mu.Lock()
 	rt.routeCalls++
 	rt.mu.Unlock()
+	ip, _ := req["ip"].(string)
 	val, err := rt.withTimeout(e.timeout, func() (goja.Value, error) {
+		rt.routeUser = id
+		rt.routeCtx = ctx
+		rt.routeIP = ip
+		defer func() {
+			rt.routeUser = nil
+			rt.routeCtx = nil
+			rt.routeIP = ""
+		}()
 		return e.fn(goja.Undefined(), rt.vm.ToValue(req))
 	})
 	_ = ctx

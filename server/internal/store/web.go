@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 )
+
 // ---- registration & web sessions ----
 
 // CreateUser registers a user. passwordHash is already modern PHC. ip is the
@@ -197,6 +198,35 @@ func (m *Mysql) AddTexture(ctx context.Context, uid int64, typ, hash, model, des
 		return 0, err
 	}
 	return res.LastInsertId()
+}
+
+// AddTexturePrivate inserts a library import as a private copy (no file copy;
+// the content-addressed blob already exists).
+func (m *Mysql) AddTexturePrivate(ctx context.Context, uid int64, typ, hash, model, desc string) (int64, error) {
+	res, err := m.db.ExecContext(ctx,
+		`INSERT INTO textures (uid, type, hash, model, description, public) VALUES (?,?,?,?,?,0)`,
+		uid, typ, hash, nullableStr(model), nullableStr(desc))
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// TextureByOwnerHash returns one of the user's textures with the same content
+// hash and type; upload/import use it for retry idempotency.
+func (m *Mysql) TextureByOwnerHash(ctx context.Context, uid int64, typ, hash string) (TextureRow, bool, error) {
+	var row TextureRow
+	err := m.db.QueryRowContext(ctx,
+		`SELECT id, type, hash, COALESCE(model,''), COALESCE(description,''), upload_at
+		   FROM textures WHERE uid = ? AND type = ? AND hash = ? ORDER BY id LIMIT 1`,
+		uid, typ, hash).Scan(&row.ID, &row.Type, &row.Hash, &row.Model, &row.Description, &row.UploadAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return TextureRow{}, false, nil
+	}
+	if err != nil {
+		return TextureRow{}, false, err
+	}
+	return row, true, nil
 }
 
 // TextureByID returns texture row (for serving raw bytes later).

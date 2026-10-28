@@ -65,6 +65,10 @@ func TestUIMetadataAssetsAndSlots(t *testing.T) {
 	if !strings.Contains(html, "/plugin-assets/ui/slot.html") || !strings.Contains(html, "min-height:120px") {
 		t.Fatalf("slot html = %s", html)
 	}
+	html = host.SlotHTMLContext("skinlib.detail.sidebar", map[string]string{"hash": "abc", "tid": "7", "empty": ""})
+	if !strings.Contains(html, "slot.html?hash=abc&amp;tid=7") {
+		t.Fatalf("slot context = %s", html)
+	}
 	if err := host.Disable(context.Background(), "ui"); err != nil {
 		t.Fatal(err)
 	}

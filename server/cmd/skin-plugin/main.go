@@ -23,6 +23,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runKeygen(args[1:], stdout, stderr)
 	case "pack":
 		return runPack(args[1:], stdout, stderr)
+	case "lint":
+		return runLint(args[1:], stdout, stderr)
 	case "verify":
 		return runVerify(args[1:], stdout, stderr)
 	case "registry":
@@ -43,6 +45,7 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `skin-plugin — signed SkinNexus plugin tooling
 
   keygen          --id ID --out KEY.pem
+  lint            --dir PLUGIN_DIR [--registry FILE] [--host-version V] [--json]
   pack            --dir PLUGIN_DIR --out FILE.zip --key KEY.pem --key-id ID [--meta FILE] [--force] [--json]
   verify          --bundle FILE.zip [--keys KEYS|SKIN_PLUGIN_TRUST_KEYS] [--host-version V] [--json]
   registry        --dist DIR --url-base URL --key KEY.pem --key-id ID [--expires-days 90] [--out FILE] [--json]

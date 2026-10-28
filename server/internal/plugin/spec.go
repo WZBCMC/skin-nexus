@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"path"
 	"regexp"
 	"strings"
@@ -33,20 +34,36 @@ type CollectionSpec struct {
 // RouteSpec is a manifest-declared route. The runtime registration must match
 // this declaration exactly (method + path); the host applies the tier/limits.
 type RouteSpec struct {
-	Method    string `json:"method"`
-	Path      string `json:"path"`
-	Tier      string `json:"tier,omitempty"` // public (default) | session | admin | superadmin
-	RateLimit string `json:"rateLimit,omitempty"`
-	BodyLimit int    `json:"bodyLimit,omitempty"`
-	CSRF      bool   `json:"csrf,omitempty"`
+	Method       string `json:"method"`
+	Path         string `json:"path"`
+	Tier         string `json:"tier,omitempty"` // public (default) | session | admin | superadmin | bearer
+	RateLimit    string `json:"rateLimit,omitempty"`
+	BodyLimit    int    `json:"bodyLimit,omitempty"`
+	CSRF         bool   `json:"csrf,omitempty"`
+	BodyEncoding string `json:"bodyEncoding,omitempty"` // "" | "base64"
+	TimeoutMS    int    `json:"timeoutMS,omitempty"`    // 100..10000, default host route budget
 }
 
 // UISpec is the zero-build UI declaration: fixed slots and optional pages.
 type UISpec struct {
 	Pages  []PageSpec                   `json:"pages,omitempty"`
 	Slots  []SlotSpec                   `json:"slots,omitempty"`
+	Forms  map[string]FormSpec          `json:"forms,omitempty"`
 	Assets string                       `json:"assets,omitempty"`
 	I18n   map[string]map[string]string `json:"i18n,omitempty"`
+}
+
+// FormSpec declares host-rendered fields for a built-in form. The host
+// validates submitted values and forwards them to guards/events; persistence
+// is the plugin's job through its namespaced store.
+type FormSpec struct {
+	Schema json.RawMessage `json:"schema"`
+}
+
+// MediaSpec declares the external hosts a plugin may redirect media to.
+// Hosts are matched exactly or as a "*.example.com" suffix.
+type MediaSpec struct {
+	AvatarHosts []string `json:"avatarHosts,omitempty"`
 }
 
 type PageSpec struct {
@@ -87,18 +104,56 @@ var (
 
 // fixedSlotIDs is the versioned list of UI surfaces plugins may target. It is
 // intentionally closed: an arbitrary slot name would let a plugin inject into
-// pages the host never reviewed.
+// pages the host never reviewed. Every ID here is wired to a real host anchor;
+// nav extension uses pages+nav instead of a slot.
 var fixedSlotIDs = map[string]bool{
 	"app.topbar.after":       true,
-	"app.nav.user":           true,
-	"app.nav.admin":          true,
 	"auth.login.after":       true,
+	"auth.register.after":    true,
 	"dashboard.cards":        true,
-	"skinlib.list.sidebar":   true,
+	"texture.upload.after":   true,
+	"skinlib.list.toolbar":   true,
 	"skinlib.detail.sidebar": true,
 	"profile.card.footer":    true,
 	"player.card.footer":     true,
 	"footer.before":          true,
+}
+
+// fixedSlotOrder keeps capability/slot discovery deterministic.
+var fixedSlotOrder = []string{
+	"app.topbar.after",
+	"auth.login.after",
+	"auth.register.after",
+	"dashboard.cards",
+	"texture.upload.after",
+	"skinlib.list.toolbar",
+	"skinlib.detail.sidebar",
+	"profile.card.footer",
+	"player.card.footer",
+	"footer.before",
+}
+
+// Capability strings let plugins feature-detect additive host surfaces instead
+// of probing for errors. New surfaces append a capability; existing ones never
+// change meaning without a HookAPI bump.
+const (
+	CapHostIntrospect = "host.introspect.v1"
+	CapSlots          = "slots.v1"
+	CapForms          = "forms.v1"
+	CapAvatarFilter   = "avatar.filter.v1"
+	CapBearerAuth     = "bearer-auth.v1"
+	CapBinaryBody     = "binary-body.v1"
+	CapAccount        = "account.v1"
+)
+
+var hostCapabilities = []string{
+	CapHostIntrospect,
+	CapSlots,
+	CapForms,
+	CapAvatarFilter,
+	CapBearerAuth,
+	CapBinaryBody,
+	CapAccount,
 }
 
 var allowedRouteMethods = map[string]bool{
@@ -119,6 +174,9 @@ func validateV2Manifest(m *Manifest, dir string) error {
 		return err
 	}
 	if err := validateRoutes(m); err != nil {
+		return err
+	}
+	if err := validateMedia(m); err != nil {
 		return err
 	}
 	if err := validateUI(m, dir); err != nil {
@@ -198,15 +256,28 @@ func validateRoutes(m *Manifest) error {
 		}
 		tier := RouteTier(r.Tier)
 		switch tier {
-		case RouteTierPublic, RouteTierSession, RouteTierAdmin, RouteTierSuperAdmin:
+		case RouteTierPublic, RouteTierSession, RouteTierAdmin, RouteTierSuperAdmin, RouteTierBearer:
 		default:
 			return fmt.Errorf("route %s %s: invalid tier %q", r.Method, r.Path, r.Tier)
 		}
 		if r.RateLimit != "" && !rateLimitRe.MatchString(r.RateLimit) {
 			return fmt.Errorf("route %s %s: invalid rateLimit %q", r.Method, r.Path, r.RateLimit)
 		}
-		if r.BodyLimit < 0 || r.BodyLimit > 1<<20 {
+		maxBody := 1 << 20
+		if r.BodyEncoding == "base64" {
+			maxBody = 4 << 20
+		}
+		if r.BodyLimit < 0 || r.BodyLimit > maxBody {
 			return fmt.Errorf("route %s %s: bodyLimit out of range", r.Method, r.Path)
+		}
+		switch r.BodyEncoding {
+		case "":
+		case "base64":
+		default:
+			return fmt.Errorf("route %s %s: bodyEncoding must be empty or base64", r.Method, r.Path)
+		}
+		if r.TimeoutMS != 0 && (r.TimeoutMS < 100 || r.TimeoutMS > 10000) {
+			return fmt.Errorf("route %s %s: timeoutMS out of range", r.Method, r.Path)
 		}
 		if (tier == RouteTierSession || tier == RouteTierAdmin || tier == RouteTierSuperAdmin) && r.Method != "GET" && r.Method != "HEAD" && !r.CSRF {
 			return fmt.Errorf("route %s %s: non-GET %s routes must enable csrf", r.Method, r.Path, tier)
@@ -237,6 +308,8 @@ func requireTierPermission(m *Manifest, tier RouteTier) error {
 		need = PermHTTPRoutesAdmin
 	case RouteTierSuperAdmin:
 		need = PermHTTPRoutesSuper
+	case RouteTierBearer:
+		need = PermHTTPRoutesBearer
 	}
 	if need == "" {
 		return nil
@@ -316,6 +389,9 @@ func validateUI(m *Manifest, dir string) error {
 			return fmt.Errorf("slot %q: %w", s.ID, err)
 		}
 	}
+	if err := validateForms(m, u); err != nil {
+		return err
+	}
 	totalI18n := 0
 	for loc, kv := range u.I18n {
 		if loc != "zh-CN" && loc != "en" {
@@ -367,6 +443,62 @@ func validateRender(m *Manifest, r RenderSpec, assets string) error {
 	return nil
 }
 
+// Host-rendered form limits. Forms are rendered by the host's SchemaForm, so
+// the schema subset and caps mirror config schemas.
+const (
+	maxFormSchemaBytes = 16 << 10
+	maxFormFields      = 20
+	maxFormsPerPlugin  = 2
+)
+
+// MaxPluginFormBytes is the total accepted size of a pluginData payload.
+const MaxPluginFormBytes = 16 << 10
+
+var allowedFormIDs = map[string]bool{
+	"auth.register":  true,
+	"texture.upload": true,
+}
+
+func validateForms(m *Manifest, u *UISpec) error {
+	if len(u.Forms) == 0 {
+		return nil
+	}
+	if !m.hasPermission(PermUIForms) {
+		return errors.New("ui.forms requires permission ui:forms")
+	}
+	if len(u.Forms) > maxFormsPerPlugin {
+		return fmt.Errorf("too many ui.forms (max %d)", maxFormsPerPlugin)
+	}
+	for id, f := range u.Forms {
+		if !allowedFormIDs[id] {
+			return fmt.Errorf("unknown ui form %q", id)
+		}
+		if len(f.Schema) == 0 || len(f.Schema) > maxFormSchemaBytes {
+			return fmt.Errorf("form %q schema must be 1..%d bytes", id, maxFormSchemaBytes)
+		}
+		schema, err := parseConfigSchema(f.Schema)
+		if err != nil {
+			return fmt.Errorf("form %q: %w", id, err)
+		}
+		if len(schema.Fields) > maxFormFields {
+			return fmt.Errorf("form %q has too many fields (max %d)", id, maxFormFields)
+		}
+		if hasSecretField(schema.Fields) {
+			return fmt.Errorf("form %q must not declare secret fields", id)
+		}
+	}
+	return nil
+}
+
+func hasSecretField(fields []*ConfigField) bool {
+	for _, f := range fields {
+		if f.Secret || hasSecretField(f.Properties) {
+			return true
+		}
+	}
+	return false
+}
+
 func validateRequires(m *Manifest) error {
 	if m.Requires != nil {
 		for name, constraint := range m.Requires.Plugins {
@@ -387,6 +519,40 @@ func validateRequires(m *Manifest) error {
 }
 
 var paramNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// hostname or wildcard-suffix host; no scheme, port, or path.
+var mediaHostRe = regexp.MustCompile(`^(\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$`)
+
+func validateMedia(m *Manifest) error {
+	if m.Media == nil {
+		return nil
+	}
+	if !m.hasPermission(PermMediaAvatar) {
+		return errors.New("media requires permission media:avatar")
+	}
+	if len(m.Media.AvatarHosts) == 0 {
+		return errors.New("media.avatarHosts must not be empty")
+	}
+	if len(m.Media.AvatarHosts) > 8 {
+		return errors.New("too many media.avatarHosts (max 8)")
+	}
+	seen := map[string]bool{}
+	for i, raw := range m.Media.AvatarHosts {
+		h := strings.ToLower(strings.TrimSpace(raw))
+		if h == "" || len(h) > 253 || !mediaHostRe.MatchString(h) {
+			return fmt.Errorf("invalid media host %q", raw)
+		}
+		if net.ParseIP(strings.TrimPrefix(h, "*.")) != nil {
+			return fmt.Errorf("media host %q must be a hostname, not an IP", raw)
+		}
+		if seen[h] {
+			return fmt.Errorf("duplicate media host %q", h)
+		}
+		seen[h] = true
+		m.Media.AvatarHosts[i] = h
+	}
+	return nil
+}
 
 func validatePathParams(p string) error {
 	segs := strings.Split(strings.Trim(p, "/"), "/")

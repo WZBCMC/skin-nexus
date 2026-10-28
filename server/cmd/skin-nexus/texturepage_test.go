@@ -41,18 +41,18 @@ func TestTexDetailTemplateRenders(t *testing.T) {
 	}
 	body := sb.String()
 	for _, want := range []string{
-		"测试皮肤",           // name in h1
-		"Alice",            // uploader
-		"Alex 瘦臂",         // slim model label
-		"/preview/42",      // static server-rendered preview (crawler-visible)
-		`data-skinview3d`,  // progressive-enhancement canvas marker
+		"测试皮肤",              // name in h1
+		"Alice",             // uploader
+		"Alex 瘦臂",           // slim model label
+		"/preview/42",       // static server-rendered preview (crawler-visible)
+		`data-skinview3d`,   // progressive-enhancement canvas marker
 		`data-model="slim"`, // model passthrough for skinview3d
 		"/assets/viewer.js", // fixed-name enhancement module
-		"下载纹理 PNG",       // download action
-		"材质 ID",           // meta grid label
-		"#42",              // tid
-		"2026-10-01",       // upload date
-		landingHeadAnchors, // injection anchors preserved for SEO/theme layers
+		"下载纹理 PNG",          // download action
+		"材质 ID",             // meta grid label
+		"#42",               // tid
+		"2026-10-01",        // upload date
+		landingHeadAnchors,  // injection anchors preserved for SEO/theme layers
 		landingBodyAnchor,
 	} {
 		if !strings.Contains(body, want) {

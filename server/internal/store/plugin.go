@@ -18,6 +18,8 @@ type PluginMeta struct {
 	Config        []byte
 	SchemaVersion int
 	Source        string
+	Trust         string
+	Signer        string
 	Checksum      string
 	State         string
 	LastError     string
@@ -61,7 +63,7 @@ func scanPluginMeta(row interface{ Scan(...any) error }) (*PluginMeta, error) {
 		lastErr          sql.NullString
 	)
 	err := row.Scan(&m.Name, &m.Version, &m.HookAPI, &m.Runtime, &manifest, &config,
-		&m.SchemaVersion, &m.Source, &m.Checksum, &m.State, &lastErr,
+		&m.SchemaVersion, &m.Source, &m.Trust, &m.Signer, &m.Checksum, &m.State, &lastErr,
 		&m.InstalledAt, &m.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -84,7 +86,7 @@ func scanPluginMeta(row interface{ Scan(...any) error }) (*PluginMeta, error) {
 func (m *Mysql) GetPluginMeta(ctx context.Context, name string) (*PluginMeta, error) {
 	return scanPluginMeta(m.db.QueryRowContext(ctx,
 		`SELECT name, version, hook_api, runtime, manifest, config, schema_version,
-		        source, checksum, state, last_error, installed_at, updated_at
+		        source, trust, signer, checksum, state, last_error, installed_at, updated_at
 		   FROM plugin_meta WHERE name = ?`, name))
 }
 
@@ -105,22 +107,23 @@ func (m *Mysql) UpsertPluginMeta(ctx context.Context, p PluginMeta) error {
 	_, err := m.db.ExecContext(ctx,
 		`INSERT INTO plugin_meta
 		   (name, version, hook_api, runtime, manifest, config, schema_version,
-		    source, checksum, state, last_error, installed_at, updated_at)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,COALESCE(?, CURRENT_TIMESTAMP(3)), CURRENT_TIMESTAMP(3))
+		    source, trust, signer, checksum, state, last_error, installed_at, updated_at)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,COALESCE(?, CURRENT_TIMESTAMP(3)), CURRENT_TIMESTAMP(3))
 		 ON DUPLICATE KEY UPDATE
 		   version=VALUES(version), hook_api=VALUES(hook_api), runtime=VALUES(runtime),
 		   manifest=VALUES(manifest), config=VALUES(config), schema_version=VALUES(schema_version),
-		   source=VALUES(source), checksum=VALUES(checksum), state=VALUES(state),
+		   source=VALUES(source), trust=VALUES(trust), signer=VALUES(signer),
+		   checksum=VALUES(checksum), state=VALUES(state),
 		   last_error=VALUES(last_error), updated_at=CURRENT_TIMESTAMP(3)`,
 		p.Name, p.Version, p.HookAPI, p.Runtime, nullableBytes(p.Manifest), nullableBytes(p.Config),
-		p.SchemaVersion, p.Source, p.Checksum, p.State, nullableStr(p.LastError), installed)
+		p.SchemaVersion, p.Source, p.Trust, p.Signer, p.Checksum, p.State, nullableStr(p.LastError), installed)
 	return err
 }
 
 func (m *Mysql) ListPluginMeta(ctx context.Context) ([]PluginMeta, error) {
 	rows, err := m.db.QueryContext(ctx,
 		`SELECT name, version, hook_api, runtime, manifest, config, schema_version,
-		        source, checksum, state, last_error, installed_at, updated_at
+		        source, trust, signer, checksum, state, last_error, installed_at, updated_at
 		   FROM plugin_meta ORDER BY name`)
 	if err != nil {
 		return nil, err

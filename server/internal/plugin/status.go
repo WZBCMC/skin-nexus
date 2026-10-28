@@ -21,6 +21,10 @@ type Status struct {
 	Routes              int            `json:"routes"`
 	UIPages             int            `json:"uiPages,omitempty"`
 	ConfigSchemaVersion int            `json:"configSchemaVersion,omitempty"`
+	Source              string         `json:"source,omitempty"`
+	Trust               string         `json:"trust,omitempty"`
+	Signer              string         `json:"signer,omitempty"`
+	Digest              string         `json:"digest,omitempty"`
 	LoadedAt            time.Time      `json:"loadedAt,omitempty"`
 	InstalledAt         time.Time      `json:"installedAt,omitempty"`
 	UpdatedAt           time.Time      `json:"updatedAt,omitempty"`
@@ -73,6 +77,10 @@ func (m *Manager) List() []Status {
 			Hooks:               map[string]int{},
 			UIPages:             uiPageCount(inst.info.Manifest),
 			ConfigSchemaVersion: inst.info.configSchemaVersion(),
+			Source:              inst.source,
+			Trust:               inst.trust,
+			Signer:              inst.signer,
+			Digest:              inst.checksum,
 			LoadedAt:            inst.loadedAt,
 			InstalledAt:         inst.installedAt,
 			UpdatedAt:           inst.updatedAt,

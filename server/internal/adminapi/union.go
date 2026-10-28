@@ -38,10 +38,10 @@ type UnionDeps struct {
 	// Blacklist proxy (B5.4): query/add/release(=invalidate, keeps record)/
 	// delete(irreversible). Release and delete are PERMANENT operator actions
 	// — frontend double-confirms and both write audit rows here.
-	BlacklistQuery     func(ctx context.Context, q url.Values) (status int, body json.RawMessage, err error)
-	BlacklistAdd       func(ctx context.Context, body json.RawMessage) (status int, resp json.RawMessage, err error)
-	BlacklistRelease   func(ctx context.Context, id string) (status int, resp json.RawMessage, err error)
-	BlacklistDelete    func(ctx context.Context, id string) (status int, resp json.RawMessage, err error)
+	BlacklistQuery   func(ctx context.Context, q url.Values) (status int, body json.RawMessage, err error)
+	BlacklistAdd     func(ctx context.Context, body json.RawMessage) (status int, resp json.RawMessage, err error)
+	BlacklistRelease func(ctx context.Context, id string) (status int, resp json.RawMessage, err error)
+	BlacklistDelete  func(ctx context.Context, id string) (status int, resp json.RawMessage, err error)
 }
 
 // MountUnion registers the union admin routes when deps are present.
@@ -86,8 +86,8 @@ func (b *Backend) handleUnionKeyUpdate(w http.ResponseWriter, r *http.Request) {
 	b.Store.InsertAudit(r.Context(), actorUID(r), "union_key_update",
 		map[string]any{"switched": switched})
 	writeJSON(w, http.StatusOK, map[string]any{
-		"switched":           switched,
-		"key_fingerprint":    b.union.Status()["key_fingerprint"],
+		"switched":            switched,
+		"key_fingerprint":     b.union.Status()["key_fingerprint"],
 		"private_key_version": b.union.Status()["private_key_version"],
 	})
 }
@@ -130,11 +130,11 @@ func (b *Backend) handleUnionDiagnose(w http.ResponseWriter, r *http.Request) {
 	}
 	st := b.union.Status()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":               rep.Status,
-		"data":                 json.RawMessage(rep.Data),
-		"key_fingerprint":      st["key_fingerprint"],
-		"private_key_version":  st["private_key_version"],
-		"server_list_version":  st["server_list_version"],
+		"status":              rep.Status,
+		"data":                json.RawMessage(rep.Data),
+		"key_fingerprint":     st["key_fingerprint"],
+		"private_key_version": st["private_key_version"],
+		"server_list_version": st["server_list_version"],
 	})
 }
 

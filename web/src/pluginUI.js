@@ -3,7 +3,7 @@
 import { reactive } from 'vue'
 import { i18n } from './i18n.js'
 
-export const pluginUI = reactive({ plugins: [] })
+export const pluginUI = reactive({ plugins: [], capabilities: [], slots: [], hostVersion: '' })
 
 export async function loadPluginUI() {
   try {
@@ -11,12 +11,19 @@ export async function loadPluginUI() {
     if (!r.ok) return
     const d = await r.json()
     pluginUI.plugins = d.plugins || []
+    pluginUI.capabilities = d.capabilities || []
+    pluginUI.slots = d.slots || []
+    pluginUI.hostVersion = d.hostVersion || ''
     for (const p of pluginUI.plugins) {
       for (const [locale, kv] of Object.entries(p.i18n || {})) {
         i18n.global.mergeLocaleMessage(locale, { plugin: { [p.plugin]: kv } })
       }
     }
   } catch { /* plugin UI is best-effort */ }
+}
+
+export function hostHasCapability(cap) {
+  return pluginUI.capabilities.includes(cap)
 }
 
 export function pages(area) {
@@ -56,4 +63,13 @@ export function slotsFor(id) {
 export function assetURL(plugin, src) {
   const rel = String(src || '').replace(/^\/+/, '')
   return `/plugin-assets/${encodeURIComponent(plugin)}/${rel.split('/').map(encodeURIComponent).join('/')}`
+}
+
+export function formsFor(formID) {
+  const out = []
+  for (const p of pluginUI.plugins) {
+    const form = p.forms && p.forms[formID]
+    if (form) out.push({ plugin: p.plugin, title: p.title || p.plugin, schema: form.schema || {} })
+  }
+  return out
 }

@@ -25,6 +25,8 @@ var knownGuards = map[string]bool{
 	"user.registration.check": true,
 	"auth.login.check":        true,
 	"auth.join.check":         true,
+	"profile.update.check":    true,
+	"player.rename.check":     true,
 	"texture.upload.check":    true,
 	"texture.delete.check":    true,
 }

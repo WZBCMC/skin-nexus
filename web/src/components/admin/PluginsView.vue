@@ -121,6 +121,30 @@ async function act(p, action) {
   }
 }
 
+function trustText(p) {
+  switch (p.trust) {
+    case 'verified': return t('admin.trustVerified')
+    case 'unknown-key': return t('admin.trustUnknownKey')
+    case 'unsigned': return t('admin.trustUnsigned')
+    case 'invalid': return t('admin.trustInvalid')
+    default: return t('admin.trustUnrecorded')
+  }
+}
+
+function sourceText(p) {
+  switch (p.source) {
+    case 'market': return t('admin.sourceMarket')
+    case 'upload': return t('admin.sourceUpload')
+    case 'manual': return t('admin.sourceManual')
+    default: return '—'
+  }
+}
+
+function provenanceTitle(p) {
+  return [p.signer ? `${t('admin.marketSigner')}: ${p.signer}` : '', p.digest ? `${t('admin.marketDigest')}: ${p.digest}` : '']
+    .filter(Boolean).join('\n')
+}
+
 onMounted(async () => {
   await detectRole()
   readOnly.value = !isSuper.value
@@ -146,6 +170,7 @@ onMounted(async () => {
         <tr>
           <th>{{ t('admin.colPluginName') }}</th>
           <th>{{ t('admin.colVersion') }}</th>
+          <th>{{ t('admin.colSource') }}</th>
           <th>{{ t('admin.colAuthor') }}</th>
           <th>{{ t('admin.colPerms') }}</th>
           <th>{{ t('admin.colState') }}</th>
@@ -163,6 +188,10 @@ onMounted(async () => {
             <button class="secondary" style="margin-top: 6px;" @click="openConfig(p)">{{ t('admin.pluginsConfig') }}</button>
           </td>
           <td>{{ p.version }}</td>
+          <td :title="provenanceTitle(p)">
+            <span class="badge" :style="p.trust && p.trust !== 'verified' ? 'color:var(--danger);border-color:var(--danger)' : ''">{{ trustText(p) }}</span>
+            <div class="muted">{{ sourceText(p) }}</div>
+          </td>
           <td>{{ p.author || '—' }}</td>
           <td>
             <span class="badge" v-for="perm in p.permissions" :key="perm">{{ perm }}</span>

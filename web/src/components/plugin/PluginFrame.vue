@@ -29,6 +29,7 @@ async function init() {
   await loadContext()
   send('init', {
     plugin: props.plugin, src: props.src, origin: location.origin,
+    path: location.pathname + location.search,
     locale: document.documentElement.lang || 'zh-CN', user, csrf,
   })
 }

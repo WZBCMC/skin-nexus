@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"skin-nexus/server/internal/accesslog"
+	"skin-nexus/server/internal/account"
 	"skin-nexus/server/internal/adminapi"
 	"skin-nexus/server/internal/appearance"
 	"skin-nexus/server/internal/auth"
@@ -46,7 +47,7 @@ import (
 	"skin-nexus/server/internal/ygg"
 )
 
-var version = "0.3.0"
+var version = "0.4.0"
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "version" {
@@ -144,7 +145,7 @@ func main() {
 
 	accessLog := accesslog.New(st.InsertAccessLog)
 
-	// Plugin host (v0.3.0): scans <data>/plugins; invalid directories are
+	// Plugin host: scans <data>/plugins; invalid directories are
 	// recorded as errored entries and never abort boot. Hooks are fail-open
 	// so a crashing plugin cannot alter the frozen Yggdrasil wire.
 	var pluginSecrets *plugin.SecretBox
@@ -224,6 +225,7 @@ func main() {
 	yggSvc.ProfileFilter = pluginHost.ProfileFilter
 	yggSvc.AuthPhase = pluginHost.EmitAuthPhase
 	yggSvc.UserLifecycle = pluginHost.EmitUserLifecycle
+	pluginHost.SetBearerResolver(pluginBearerResolver{ygg: yggSvc, st: st})
 	oidcDiscoveryURL := ""
 	var oidcProvider *oidc.Provider
 	if cfg.OIDCEnabled {
@@ -327,6 +329,18 @@ func main() {
 	backend.CheckGuard = pluginHost.CheckGuard
 	backend.OnEvent = pluginHost.EmitEvent
 	backend.PluginUI = pluginHost.UI
+	backend.PluginHostInfo = pluginHost.HostInfo
+	backend.PluginFormData = pluginHost.ValidateFormData
+	backend.Account = &account.Service{
+		Store: st, Textures: ts, MaxChars: 3, BaseURL: cfg.BaseURL, OIDCEnabled: cfg.OIDCEnabled,
+		CheckGuard: pluginHost.CheckGuard, EmitEvent: pluginHost.EmitEvent,
+		OnTextureUploaded: pluginHost.EmitTextureUploaded,
+		Audit: func(ctx context.Context, uid int64, action string, detail map[string]any) {
+			st.InsertAudit(ctx, uid, action, detail)
+		},
+		UnionSync: backend.SyncProfileCreate,
+	}
+	pluginHost.SetAccountService(pluginAccount{svc: backend.Account, signer: pluginHost.PluginSigner})
 	yggSvc.JoinGuard = pluginHost.CheckGuard
 	backend.Access = accessLog
 	backend.RequireInvite = cfg.RequireInvite
@@ -655,7 +669,7 @@ func main() {
 	// Blessing TextureController static surface (routes/static.php
 	// parity): avatars + previews. Registered at the root mux so they
 	// beat the SPA catch-all below.
-	av := &avatarDeps{st: st, ts: ts}
+	av := &avatarDeps{st: st, ts: ts, redirect: pluginHost.AvatarURL}
 	root.HandleFunc("GET /avatar/player/{name}", av.handleAvatarPlayer)
 	root.HandleFunc("GET /avatar/user/{uid}", av.handleAvatarUser)
 	root.HandleFunc("GET /avatar/hash/{hash}", av.handleAvatarHash)
@@ -671,7 +685,7 @@ func main() {
 	// Public server-rendered texture detail page (2026-10-25 拍板: 皮肤详情
 	// 是搜索引擎的内容页). Registered on the root mux so it beats the SPA
 	// catch-all below; private textures render only for their owner (noindex).
-	root.HandleFunc("GET /skinlib/{tid}", texturePageHandler(st, seoEng, appearEng, cfg.SiteName, cfg.BaseURL, pluginHost.TextureURL, pluginHost.SlotHTML))
+	root.HandleFunc("GET /skinlib/{tid}", texturePageHandler(st, seoEng, appearEng, cfg.SiteName, cfg.BaseURL, pluginHost.TextureURL, pluginHost.SlotHTMLContext))
 	// Public landing page data (counts + featured library cards + login state).
 	landingFn := func(r *http.Request) landingData {
 		ctx := r.Context()

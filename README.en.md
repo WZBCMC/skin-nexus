@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/YimingZhanshen/skin-nexus/actions/workflows/ci.yml"><img src="https://github.com/YimingZhanshen/skin-nexus/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/YimingZhanshen/skin-nexus/releases/tag/v0.3.0"><img src="https://img.shields.io/badge/release-v0.3.0-blue" alt="v0.3.0"></a>
+  <a href="https://github.com/YimingZhanshen/skin-nexus/releases/tag/v0.4.0"><img src="https://img.shields.io/badge/release-v0.4.0-blue" alt="v0.4.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-green" alt="AGPL-3.0"></a>
 </p>
 
@@ -16,7 +16,7 @@
 
 It is a modern rewrite of [blessing-skin-server](https://github.com/bs-community/blessing-skin-server) in **Go + Vue 3**, already proven in a real production migration: **67 users / 61 textures with zero row loss and zero player-UUID drift**.
 
-- **Release**: v0.3.0 (2026-10-28) · iteration history in [`docs/CHANGELOG.md`](docs/CHANGELOG.md) (Chinese)
+- **Release**: v0.4.0 (2026-10-28) · iteration history in [`docs/CHANGELOG.md`](docs/CHANGELOG.md) (Chinese)
 - **License**: AGPL-3.0 · **Author / copyright holder**: YMZS
 
 ## Why SkinNexus
@@ -75,7 +75,7 @@ Measured on a 2-core / 3.5 GB production VPS: ~600 RPS landing, 5182 RPS texture
 
 **Appearance & content**
 - Theme packs (zero build: `theme.json` + CSS + optional JS) with an [AI prompt template](docs/theme-spec.md)
-- Plugin platform v2 (goja): single hookApi 2 with config/secrets, namespaced data, tiered routes, events/guards, sandboxed iframe UI; P2 adds signed bundle install/upgrade/rollback, a single-source signed market and the `skin-plugin` publishing CLI; see [docs/plugin-spec.md](docs/plugin-spec.md)
+- Plugin platform v2 (goja): single hookApi 2 with config/secrets, namespaced data, tiered routes, events/guards, sandboxed iframe UI; P2 adds signed bundle install/upgrade/rollback, a single-source signed market and the `skin-plugin` publishing CLI; official plugin sources and market live in [skin-nexus-plugins](https://github.com/YimingZhanshen/skin-nexus-plugins) with PR contributions signed by CI; the `launcher-api` plugin exposes a Bearer character API for desktop launchers ([spec](docs/launcher-api.md)); see [docs/plugin-spec.md](docs/plugin-spec.md)
 - zh-CN / en built in, language packs extensible
 - SEO: SSR landing and skin detail pages, sitemap, robots, optional site-wide noindex for staging
 
@@ -119,6 +119,7 @@ Full env-var tables, reverse-proxy examples, backup/restore and troubleshooting:
 | [`docs/theme-spec.md`](docs/theme-spec.md) | Theme pack spec and AI prompt template |
 | [`docs/plugin-spec.md`](docs/plugin-spec.md) | Plugin authoring spec (goja host v2: config/data/routes/events/guards/UI) |
 | [`docs/plugin-publishing.md`](docs/plugin-publishing.md) | Signed bundles, registry, GitHub Pages publishing and key custody |
+| [`docs/launcher-api.md`](docs/launcher-api.md) | Launcher API v1 (Bearer/OIDC, characters/textures/library) |
 | [`docs/competitor-analysis.md`](docs/competitor-analysis.md) | Source evidence behind the comparison table |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Iteration history |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contributing: translations / themes / code and docs |
@@ -131,7 +132,7 @@ Most detailed docs are currently in Chinese.
 
 | Status | Item |
 |---|---|
-| ✅ Done | Phases 1–3: full Yggdrasil, OIDC passwordless, Union module, i18n / SEO / theme packs, migration toolchain, admin panel; production migration and cutover; v0.2.0 (password reset / Mojang fallback / ops logs / SEO); v0.3.0 (signed plugin install/market/rollback + publishing CLI) |
+| ✅ Done | Phases 1–3: full Yggdrasil, OIDC passwordless, Union module, i18n / SEO / theme packs, migration toolchain, admin panel; production migration and cutover; v0.2.0 (password reset / Mojang fallback / ops logs / SEO); v0.3.0 (signed plugin install/market/rollback + publishing CLI); v0.4.0 (all slots wired, plugin form fields, avatar CDN, profile/rename guards, capability introspection, local bundle trust levels) |
 | 🔶 In progress | Plugin platform v2 (config/data/routes/events/UI) + P2 signed install/market; real-device launcher acceptance (SJMCL and community launchers: OAuth → character select → join) |
 | ⬜ Planned | Official-account binding (second Auth Source), email verification, plugin marketplace operations / sidecar isolation / first-party native plugins |
 

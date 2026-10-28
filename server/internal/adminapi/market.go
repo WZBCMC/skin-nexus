@@ -147,10 +147,31 @@ func (b *Backend) handleMarketUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	consent := r.FormValue("consent") == "1"
 	ctx := plugin.WithActor(r.Context(), actor)
-	res, err := b.plugins.Host.InstallBytes(ctx, data, consent, "upload")
+	if r.FormValue("inspect") == "1" {
+		insp, ierr := b.plugins.Host.InspectBytes(ctx, data)
+		if ierr != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": ierr.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, insp)
+		return
+	}
+	opts := plugin.InstallOptions{
+		Consent:          consent,
+		Source:           "upload",
+		AcceptUnverified: r.FormValue("acceptUnverified") == "1",
+		ExpectedZipSHA:   strings.TrimSpace(r.FormValue("expectDigest")),
+	}
+	res, err := b.plugins.Host.InstallBytes(ctx, data, opts)
 	switch {
+	case errors.Is(err, plugin.ErrUnverifiedPlugin), errors.Is(err, plugin.ErrDigestMismatch):
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error": err.Error(), "inspection": res.Inspection,
+		})
 	case errors.Is(err, plugin.ErrConsentRequired), errors.Is(err, plugin.ErrInstallBlocked):
-		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "plan": res.Plan})
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error": err.Error(), "plan": res.Plan, "inspection": res.Inspection,
+		})
 	case err != nil:
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 	default:

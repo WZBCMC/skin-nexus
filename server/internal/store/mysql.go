@@ -4,7 +4,7 @@
 // password_algo conventions (docs/phase1-dev-plan.md §0):
 //   - "argon2id" / "bcrypt"  -> modern PHC digest, verify directly
 //   - "legacy"               -> try ALL configured legacy methods in order
-//                                (official strategy: Cipher.php:24-49)
+//     (official strategy: Cipher.php:24-49)
 //   - "legacy:<method>"      -> known method from legacy .env, verify just it
 package store
 
@@ -31,10 +31,10 @@ var ErrNotFound = errors.New("store: not found")
 var ErrForbidden = errors.New("store: forbidden")
 
 type Mysql struct {
-	db       *sql.DB
-	baseURL  string // for texture URLs: <base>/textures/<hash>
-	legacy   *auth.LegacyVerifier // nil = legacy logins rejected
-	now      func() time.Time
+	db      *sql.DB
+	baseURL string               // for texture URLs: <base>/textures/<hash>
+	legacy  *auth.LegacyVerifier // nil = legacy logins rejected
+	now     func() time.Time
 }
 
 // Open connects and pings MySQL. legacy may be nil (no legacy corpus yet).

@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -67,7 +68,7 @@ func TestInstallUpgradeRollback(t *testing.T) {
 	m, kr, priv, _ := newInstallHost(t)
 	dir := t.TempDir()
 	z1 := makeSignedBundle(t, dir, "demo", "1.0.0", kr, priv, "test")
-	res, err := m.InstallBundle(context.Background(), z1, false, "upload")
+	res, err := m.InstallBundle(context.Background(), z1, InstallOptions{Source: "upload"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +79,7 @@ func TestInstallUpgradeRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	z2 := makeSignedBundle(t, dir, "demo", "2.0.0", kr, priv, "test")
-	if _, err := m.InstallBundle(context.Background(), z2, false, "upload"); err != nil {
+	if _, err := m.InstallBundle(context.Background(), z2, InstallOptions{Source: "upload"}); err != nil {
 		t.Fatal(err)
 	}
 	st := m.statusOf("demo")
@@ -106,8 +107,8 @@ func TestInstallRejectsTamperedBundle(t *testing.T) {
 	z := makeSignedBundle(t, dir, "demo", "1.0.0", kr, priv, "test")
 	// Replace index.js after signing: content digest no longer matches.
 	rewriteZipEntry(t, z, "index.js", "tampered")
-	if _, err := m.InstallBundle(context.Background(), z, false, "upload"); err == nil {
-		t.Fatal("tampered bundle accepted")
+	if _, err := m.InstallBundle(context.Background(), z, InstallOptions{Source: "upload"}); !errors.Is(err, ErrUnverifiedPlugin) {
+		t.Fatalf("tampered bundle = %v, want ErrUnverifiedPlugin", err)
 	}
 }
 

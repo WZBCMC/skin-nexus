@@ -6,6 +6,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '../api.js'
 import { guard401 } from '../session.js'
+import PluginSlot from '../components/plugin/PluginSlot.vue'
 
 const { t } = useI18n()
 const emit = defineEmits(['login'])
@@ -142,6 +143,7 @@ onMounted(async () => {
       </select>
       <button v-if="me" class="secondary" :class="{ 'mine-on': mine }" @click="toggleMine">{{ t('skinlib.mineOnly') }}</button>
     </div>
+    <PluginSlot slot="skinlib.list.toolbar" />
 
     <div class="error" v-if="err">{{ err }}</div>
     <div class="success" v-if="ok">{{ ok }}</div>

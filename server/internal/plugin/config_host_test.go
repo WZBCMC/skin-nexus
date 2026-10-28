@@ -65,8 +65,17 @@ func (m *memPlatformStore) UpsertPluginMeta(_ context.Context, meta PluginMetaRe
 	m.metas[meta.Name] = meta
 	return nil
 }
+func (m *memPlatformStore) GetPluginMeta(_ context.Context, name string) (PluginMetaRecord, bool, error) {
+	rec, ok := m.metas[name]
+	return rec, ok, nil
+}
 func (m *memPlatformStore) UpdatePluginState(_ context.Context, name, state, lastErr string) error {
-	m.metas[name] = PluginMetaRecord{Name: name, State: state, LastError: lastErr}
+	rec, ok := m.metas[name]
+	if !ok {
+		rec = PluginMetaRecord{Name: name}
+	}
+	rec.State, rec.LastError = state, lastErr
+	m.metas[name] = rec
 	return nil
 }
 

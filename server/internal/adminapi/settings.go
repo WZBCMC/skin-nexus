@@ -46,7 +46,7 @@ var settingsWhitelist = []struct {
 	{"rate_limit_auth", true, "security", "认证端点每 IP 每 10 分钟请求数上限（0=关闭；重启后生效）"},
 	{"login_fail_limit", true, "security", "同账号连续失败锁定阈值（0=关闭；重启后生效）"},
 	{"skin_domains", true, "ygg", "皮肤域名（CSV，ygg metadata 皮肤来源）"},
-	{"ygg_token_expire_1", false, "ygg", "ygg 令牌软窗口（秒，默认 259200=3 天）：validate/join 有效期，过后可 refresh 换新"},                                                                                   // B5（blessing yggdrasil-connect 原名，callbacks.php:93-98 默认值）
+	{"ygg_token_expire_1", false, "ygg", "ygg 令牌软窗口（秒，默认 259200=3 天）：validate/join 有效期，过后可 refresh 换新"}, // B5（blessing yggdrasil-connect 原名，callbacks.php:93-98 默认值）
 	{"ygg_token_expire_2", false, "ygg", "ygg 令牌硬窗口（秒，默认 604800=7 天）：refresh 有效期，过后须重新登录"},
 	{"ygg_tokens_limit", false, "ygg", "每用户 ygg 令牌数上限（默认 10，0=不限）：超限淘汰最旧令牌并留审计"},
 	{"ygg_search_profile_max", false, "ygg", "批量查角色单次上限（默认 5，1-100）"},
@@ -58,7 +58,7 @@ var settingsWhitelist = []struct {
 	{"player_name_length_min", false, "texture", "角色名最小长度（字符）"},
 	{"player_name_length_max", false, "texture", "角色名最大长度（字符）"},
 	{"texture_name_regexp", false, "texture", "材质备注命名正则（空=不限制，仅拦新上传）"},
-	{"union_enabled", false, "union", "Union 联盟模块开关（热切换：关=全路由 404、签名回本地密钥）"},                                                                                                                                     // Union（blessing yggdrasil-connect 原名；union_enabled 为本项目新增键——老站用插件启停表达，无 option 行。热切换 2026-10-24 拍板）
+	{"union_enabled", false, "union", "Union 联盟模块开关（热切换：关=全路由 404、签名回本地密钥）"}, // Union（blessing yggdrasil-connect 原名；union_enabled 为本项目新增键——老站用插件启停表达，无 option 行。热切换 2026-10-24 拍板）
 	{"union_api_root", false, "union", "Union hub API 根（默认 https://skin.mualliance.ltd/api/union，立即生效）"},
 	{"union_member_key", false, "union", "Union 成员密钥（联盟下发；切勿泄露，立即生效）"},
 	{"union_enable_update", true, "union", "允许 hub 远程轮换成员密钥（updatebackendkey，重启后生效）"},

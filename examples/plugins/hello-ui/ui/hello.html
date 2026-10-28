@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>Hello UI</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 12px; color: #333; }
+  </style>
+</head>
+<body>
+  <p>Hello from a sandboxed plugin iframe.</p>
+  <script>
+    window.parent.postMessage({ v: 1, type: 'ready' }, '*')
+    window.addEventListener('message', function (e) {
+      var m = e.data
+      if (m && m.v === 1 && m.type === 'init') document.body.dataset.ready = '1'
+    })
+  </script>
+</body>
+</html>

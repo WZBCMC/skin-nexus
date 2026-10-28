@@ -62,9 +62,27 @@ func (p pluginStore) UpsertPluginMeta(ctx context.Context, meta plugin.PluginMet
 	return p.st.UpsertPluginMeta(ctx, store.PluginMeta{
 		Name: meta.Name, Version: meta.Version, HookAPI: meta.HookAPI, Runtime: meta.Runtime,
 		Manifest: meta.Manifest, Config: meta.Config, SchemaVersion: meta.SchemaVersion,
-		Source: meta.Source, Checksum: meta.Checksum, State: meta.State, LastError: meta.LastError,
+		Source: meta.Source, Trust: meta.Trust, Signer: meta.Signer, Checksum: meta.Checksum,
+		State: meta.State, LastError: meta.LastError,
 		InstalledAt: meta.InstalledAt, UpdatedAt: meta.UpdatedAt,
 	})
+}
+
+func (p pluginStore) GetPluginMeta(ctx context.Context, name string) (plugin.PluginMetaRecord, bool, error) {
+	m, err := p.st.GetPluginMeta(ctx, name)
+	if errors.Is(err, store.ErrNotFound) {
+		return plugin.PluginMetaRecord{}, false, nil
+	}
+	if err != nil {
+		return plugin.PluginMetaRecord{}, false, err
+	}
+	return plugin.PluginMetaRecord{
+		Name: m.Name, Version: m.Version, HookAPI: m.HookAPI, Runtime: m.Runtime,
+		Manifest: m.Manifest, Config: m.Config, SchemaVersion: m.SchemaVersion,
+		Source: m.Source, Trust: m.Trust, Signer: m.Signer, Checksum: m.Checksum,
+		State: m.State, LastError: m.LastError,
+		InstalledAt: m.InstalledAt, UpdatedAt: m.UpdatedAt,
+	}, true, nil
 }
 
 func (p pluginStore) UpdatePluginState(ctx context.Context, name, state, lastErr string) error {

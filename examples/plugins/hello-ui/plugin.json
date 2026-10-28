@@ -1,0 +1,29 @@
+{
+  "name": "hello-ui",
+  "version": "1.0.0",
+  "hookApi": 2,
+  "entrypoint": "index.js",
+  "title": "Hello UI",
+  "description": "Minimal iframe page + slot example.",
+  "permissions": ["ui:page", "ui:slot", "ui:assets"],
+  "ui": {
+    "assets": "ui/",
+    "pages": [
+      {
+        "id": "hello",
+        "path": "/ext/hello-ui/hello",
+        "area": "user",
+        "nav": { "label": "Hello" },
+        "render": { "type": "iframe", "src": "hello.html" },
+        "perm": 0
+      }
+    ],
+    "slots": [
+      { "id": "app.topbar.after", "render": { "type": "iframe", "src": "hello.html" }, "height": 120 }
+    ],
+    "i18n": {
+      "zh-CN": { "title": "示例" },
+      "en": { "title": "Example" }
+    }
+  }
+}

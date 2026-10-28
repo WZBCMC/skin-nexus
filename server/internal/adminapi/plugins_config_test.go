@@ -53,6 +53,9 @@ func (m *adminMemStore) DeletePluginSecret(_ context.Context, p, k string) error
 func (m *adminMemStore) UpsertPluginMeta(_ context.Context, _ plugin.PluginMetaRecord) error {
 	return nil
 }
+func (m *adminMemStore) GetPluginMeta(_ context.Context, _ string) (plugin.PluginMetaRecord, bool, error) {
+	return plugin.PluginMetaRecord{}, false, nil
+}
 func (m *adminMemStore) UpdatePluginState(_ context.Context, _, _, _ string) error { return nil }
 
 func newConfigAdminBackend(t *testing.T) *Backend {

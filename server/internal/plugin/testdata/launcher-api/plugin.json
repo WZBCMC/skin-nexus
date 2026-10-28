@@ -1,0 +1,38 @@
+{
+  "name": "launcher-api",
+  "version": "1.0.0",
+  "hookApi": 2,
+  "entrypoint": "index.js",
+  "title": "Launcher API",
+  "author": "SkinNexus",
+  "description": "Versioned REST API for desktop launchers: account, characters, textures and the public skin library.",
+  "permissions": [
+    "http:routes",
+    "http:routes:bearer",
+    "account:read",
+    "players:read",
+    "players:write",
+    "textures:read",
+    "textures:write"
+  ],
+  "routes": [
+    { "method": "GET", "path": "/v1/meta", "tier": "public", "rateLimit": "60/m" },
+    { "method": "GET", "path": "/v1/account", "tier": "bearer", "rateLimit": "120/m" },
+    { "method": "GET", "path": "/v1/players", "tier": "bearer", "rateLimit": "120/m" },
+    { "method": "GET", "path": "/v1/players/{pid}", "tier": "bearer", "rateLimit": "120/m" },
+    { "method": "POST", "path": "/v1/players", "tier": "bearer", "rateLimit": "20/h" },
+    { "method": "PATCH", "path": "/v1/players/{pid}", "tier": "bearer", "rateLimit": "30/h" },
+    { "method": "DELETE", "path": "/v1/players/{pid}", "tier": "bearer", "rateLimit": "20/h" },
+    { "method": "PUT", "path": "/v1/players/{pid}/skin", "tier": "bearer", "rateLimit": "10/m", "bodyLimit": 4194304, "bodyEncoding": "base64", "timeoutMS": 10000 },
+    { "method": "PUT", "path": "/v1/players/{pid}/cape", "tier": "bearer", "rateLimit": "10/m", "bodyLimit": 4194304, "bodyEncoding": "base64", "timeoutMS": 10000 },
+    { "method": "DELETE", "path": "/v1/players/{pid}/skin", "tier": "bearer", "rateLimit": "30/m" },
+    { "method": "DELETE", "path": "/v1/players/{pid}/cape", "tier": "bearer", "rateLimit": "30/m" },
+    { "method": "GET", "path": "/v1/textures", "tier": "bearer", "rateLimit": "120/m" },
+    { "method": "POST", "path": "/v1/textures", "tier": "bearer", "rateLimit": "10/m", "bodyLimit": 4194304, "bodyEncoding": "base64", "timeoutMS": 10000 },
+    { "method": "GET", "path": "/v1/library", "tier": "bearer", "rateLimit": "120/m" },
+    { "method": "GET", "path": "/v1/library/{tid}", "tier": "bearer", "rateLimit": "120/m" },
+    { "method": "POST", "path": "/v1/library/{tid}/import", "tier": "bearer", "rateLimit": "10/m" }
+  ],
+  "minServer": ">=0.4.0",
+  "requires": { "plugins": {}, "server": ">=0.4.0" }
+}

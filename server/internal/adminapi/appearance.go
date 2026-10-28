@@ -14,9 +14,9 @@ import (
 
 // AppearanceDeps wires the SEO + appearance engines and the theme registry.
 type AppearanceDeps struct {
-	SEO      *seo.Engine
-	Appear   *appearance.Engine
-	Themes   *theme.Registry
+	SEO    *seo.Engine
+	Appear *appearance.Engine
+	Themes *theme.Registry
 }
 
 // MountAppearance registers the SEO/appearance/theme admin routes.

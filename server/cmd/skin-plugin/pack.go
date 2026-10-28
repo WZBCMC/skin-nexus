@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -146,6 +147,7 @@ func collectEntries(dir, metaFile string, externalMeta bool) ([]signedpkg.Entry,
 		if err != nil {
 			return err
 		}
+		data = normalizeText(rel, data)
 		if len(data) > signedpkg.MaxEntryBytes {
 			return fmt.Errorf("%s exceeds entry size cap", rel)
 		}
@@ -164,10 +166,20 @@ func collectEntries(dir, metaFile string, externalMeta bool) ([]signedpkg.Entry,
 		if err != nil {
 			return nil, err
 		}
-		entries = append(entries, signedpkg.Entry{Name: "market.json", Data: raw})
+		entries = append(entries, signedpkg.Entry{Name: "market.json", Data: normalizeText("market.json", raw)})
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
 	return entries, nil
+}
+
+// normalizeText makes bundles byte-identical across Windows and Linux
+// checkouts: text entries are always stored with LF newlines.
+func normalizeText(name string, data []byte) []byte {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".json", ".js", ".mjs", ".cjs", ".html", ".css", ".md", ".txt", ".svg", ".yml", ".yaml":
+		return bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
+	}
+	return data
 }
 
 func hasEntry(entries []signedpkg.Entry, name string) bool {

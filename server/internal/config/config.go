@@ -80,6 +80,20 @@ func resolveDataPath(explicitEnv string, dataDir, rel string) string {
 	return filepath.Join(dataDir, rel)
 }
 
+// OfficialPluginMarketURL is the signed registry published by the upstream
+// plugin repository. Downstream deployments override SKIN_PLUGIN_MARKET_URL
+// (including setting it empty to disable the market).
+const OfficialPluginMarketURL = "https://yimingzhanshen.github.io/skin-nexus-plugins/v1/registry.json"
+
+// pluginMarketURL distinguishes "unset" (use the official registry) from an
+// explicitly empty value (market disabled).
+func pluginMarketURL() string {
+	if v, ok := os.LookupEnv("SKIN_PLUGIN_MARKET_URL"); ok {
+		return v
+	}
+	return OfficialPluginMarketURL
+}
+
 func Load() (*Config, error) {
 	dataDir := getenv("SKIN_DATA_DIR", "./data")
 	c := &Config{
@@ -114,7 +128,7 @@ func Load() (*Config, error) {
 		ThemesDir:       getenv("SKIN_THEMES_DIR", filepath.Join(dataDir, "themes")),
 		PluginsDir:      resolveDataPath("SKIN_PLUGINS_DIR", dataDir, "plugins"),
 		PluginStateDir:  getenv("SKIN_PLUGIN_STATE_DIR", ""),
-		PluginMarketURL: getenv("SKIN_PLUGIN_MARKET_URL", ""),
+		PluginMarketURL: pluginMarketURL(),
 		PluginTrustKeys: getenv("SKIN_PLUGIN_TRUST_KEYS", ""),
 		PluginUploadMax: int64(atoiDefault(getenv("SKIN_PLUGIN_UPLOAD_MAX", "67108864"), 67108864)),
 		AutoMigrate:     getenv("SKIN_AUTO_MIGRATE", "false") == "true",

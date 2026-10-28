@@ -40,8 +40,10 @@ services:
       SKIN_ADMIN_TOKEN: CHANGE_ME                   # openssl rand -hex 32 (machine/API fallback)
       # optional modules (default off):
       # SKIN_OIDC_ENABLED: 'true'                   # launcher passwordless login (yggc/OIDC)
-      # SKIN_PLUGIN_MARKET_URL: 'https://<user>.github.io/skin-nexus-plugins/v1/registry.json'
-      # SKIN_PLUGIN_TRUST_KEYS: '<keyId>:<base64-public-key>'
+      # Signed plugin market defaults to the upstream registry; override both
+      # values for a fork, or set SKIN_PLUGIN_MARKET_URL='' to disable it.
+      SKIN_PLUGIN_MARKET_URL: '${SKIN_PLUGIN_MARKET_URL:-https://yimingzhanshen.github.io/skin-nexus-plugins/v1/registry.json}'
+      SKIN_PLUGIN_TRUST_KEYS: '${SKIN_PLUGIN_TRUST_KEYS:-market-2026-10:ID2EWgcfs1E4UbGCCX9WjD0aCgTof3oeuHV03IpdGNY=}'
       # SKIN_PLUGIN_STATE_DIR: '/data/plugins/.state'
       # SKIN_PLUGIN_UPLOAD_MAX: '67108864' 
       # SKIN_UNION_ENABLED: 'false'                 # MUA Union member module (zero surface when off)

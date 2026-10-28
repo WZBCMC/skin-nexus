@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { api } from '../api.js'
 import { guard401 } from '../session.js'
 import SkinPreview from '../components/SkinPreview.vue'
+import PluginSlot from '../components/plugin/PluginSlot.vue'
 
 const { t } = useI18n()
 
@@ -133,6 +134,7 @@ onMounted(load)
     </table>
     </div>
     <p class="muted" v-else>{{ t('players.empty') }}</p>
+    <PluginSlot slot="player.card.footer" />
   </div>
 </template>
 

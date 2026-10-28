@@ -18,6 +18,7 @@ package main
 // contract explicitly allows — clients must sniff Content-Type).
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"image"
@@ -32,8 +33,9 @@ import (
 )
 
 type avatarDeps struct {
-	st *store.Mysql
-	ts *texture.Store
+	st       *store.Mysql
+	ts       *texture.Store
+	redirect func(ctx context.Context, hash string, size int, threeD bool) (string, bool)
 }
 
 func avatarSize(r *http.Request) int {
@@ -69,6 +71,15 @@ func (d *avatarDeps) serveAvatar(w http.ResponseWriter, r *http.Request, hash, t
 		return
 	}
 	size := avatarSize(r)
+	// Plugin avatar delegation: only for a real texture hash (never the
+	// default avatar) and only when the plugin's manifest allowlists the host.
+	if hash != "" && d.redirect != nil {
+		if target, ok := d.redirect(r.Context(), hash, size, threeD); ok {
+			w.Header().Set("Cache-Control", "public, max-age=60")
+			http.Redirect(w, r, target, http.StatusFound)
+			return
+		}
+	}
 	var img *image.NRGBA
 	if hash != "" {
 		if f, err := d.ts.Open(hash); err == nil {

@@ -55,7 +55,7 @@
 
 - **单一 API 版本**：插件只支持 `hookApi: 2`（项目尚无存量生态，不维护旧版/blessing 兼容层）；契约以 `server/internal/plugin/contract.go` 为准；
 - **签名安装**：市场/本地上传只接受 Ed25519 签名的 bundle；未签名包会被拒绝，详见 `docs/plugin-spec.md`；
-- 示例插件在 `examples/plugins/`（离线、无网络依赖），改动示例须保持 `go test ./internal/plugin/` 全绿；
+- 示例插件在 `examples/plugins/`（`hello-world` / `hello-ui`，离线无依赖）；官方插件源码在独立仓库 `skin-nexus-plugins`。改动示例须保持 `go test ./internal/plugin/` 全绿；
 - 插件**不进主仓分发**（与主题包同口径）；对**规范本身**的改进欢迎 PR `docs/plugin-spec.md`。
 
 ## 4. 代码与文档

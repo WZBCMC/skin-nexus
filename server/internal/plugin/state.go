@@ -16,6 +16,8 @@ type PluginMetaRecord struct {
 	Config        []byte
 	SchemaVersion int
 	Source        string
+	Trust         string
+	Signer        string
 	Checksum      string
 	State         string
 	LastError     string
@@ -37,6 +39,7 @@ type PlatformStore interface {
 	DeletePluginSecret(ctx context.Context, plugin, key string) error
 
 	UpsertPluginMeta(ctx context.Context, meta PluginMetaRecord) error
+	GetPluginMeta(ctx context.Context, name string) (PluginMetaRecord, bool, error)
 	UpdatePluginState(ctx context.Context, name, state, lastErr string) error
 
 	GetPluginKV(ctx context.Context, plugin, ns, key string) (value string, expires *time.Time, ok bool, err error)

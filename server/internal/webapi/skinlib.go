@@ -139,8 +139,8 @@ func (b *Backend) handleSkinlibPatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Name    *string `json:"name"`
-		Public  *bool   `json:"public"`
+		Name   *string `json:"name"`
+		Public *bool   `json:"public"`
 	}
 	if err := jsonDecode(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid JSON")

@@ -24,29 +24,30 @@ import (
 
 // SkinlibRow is one library entry with uploader + like state.
 type SkinlibRow struct {
-	TID       int64
-	UID       int64
-	Name      string
-	Type      string
-	Model     string
-	Hash      string
-	Public    bool
-	Nickname  string
-	Likes     int64
-	Liked     bool
-	UploadAt  sql.NullTime
+	TID      int64
+	UID      int64
+	Name     string
+	Type     string
+	Model    string
+	Hash     string
+	Public   bool
+	Nickname string
+	Likes    int64
+	Liked    bool
+	UploadAt sql.NullTime
 }
 
 // SkinlibOpts filters one library page.
 type SkinlibOpts struct {
-	ViewerUID  int64  // 0 = anonymous
+	ViewerUID   int64 // 0 = anonymous
 	ViewerAdmin bool
-	Type       string // "", "skin", "cape", "steve", "alex"
-	Keyword    string
-	Uploader   int64  // 0 = any
-	Sort       string // "time" (default) | "likes"
-	Page       int    // 1-based
-	PerPage    int    // default 20, capped 50
+	PublicOnly  bool   // ignore own private rows (public launcher library)
+	Type        string // "", "skin", "cape", "steve", "alex"
+	Keyword     string
+	Uploader    int64  // 0 = any
+	Sort        string // "time" (default) | "likes"
+	Page        int    // 1-based
+	PerPage     int    // default 20, capped 50
 }
 
 func (o *SkinlibOpts) normalize() {
@@ -76,6 +77,8 @@ func (o *SkinlibOpts) normalize() {
 func (o *SkinlibOpts) where() (clause string, args []any) {
 	var conds []string
 	switch {
+	case o.PublicOnly:
+		conds = append(conds, "t.public = 1")
 	case o.ViewerUID == 0:
 		conds = append(conds, "t.public = 1")
 	case o.ViewerAdmin:

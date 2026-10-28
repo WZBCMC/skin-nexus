@@ -17,6 +17,10 @@
 - 所有启停/重载/配置修改写审计（`plugin_enable` / `plugin_disable` / `plugin_reload` /
   `plugin_config_update` / `plugin_guards_bypass`）。
 - UI 第三方代码只能运行在 sandbox iframe 中（不带 `allow-same-origin`）；不要尝试把插件 HTML 直接注入主 SPA。
+- 安装来源与签名等级会写进 `plugin_meta` 并在后台「插件」页标注：
+  `verified`（可信签名）、`unknown-key`（未知密钥）、`unsigned`（未签名）、`invalid`（签名/摘要不匹配）。
+  市场安装**只接受 verified**；本地上传的其余三档必须由超管在风险弹窗中显式勾选确认后才可安装，
+  且确认绑定包摘要（`expectDigest`），换包即失效。
 
 ## 2. 安装 / 启用 / 停用 / 重载
 
@@ -32,7 +36,8 @@
 - 修改入口 JS 或 UI 资源后必须**重载**（或重启）才生效。
 - 推荐安装方式：上传/市场安装**签名 bundle zip**（含 `plugin.json`、`index.js`、`market.json`、`bundle.json`）。
   宿主校验 Ed25519 签名 + 内容摘要后，staging 解压 → 原子替换 → 默认 disabled；
-  升级保留启停状态并保留上一版用于回滚。未签名包一律拒绝。
+  升级保留启停状态并保留上一版用于回滚。市场安装的未签名/未知密钥/签名错误包一律拒绝；
+  本地上传可在风险确认后安装，并在插件列表永久标注来源与信任等级。
 - 作者打包/签名/发布 registry 的完整流程见 [`plugin-publishing.md`](plugin-publishing.md)。
 - 安装状态在 `<data>/plugins/.state/`；手动放目录仍可用于开发，但不会获得签名校验/回滚。
 
@@ -48,8 +53,9 @@ player-notes_1.2.0.zip
 
 `bundle.json` 的 Ed25519 签名覆盖除它自身外的全部 zip 条目内容摘要（按路径排序）；
 `dist.sha256`（市场）覆盖 zip 字节，`bundle.json` 签名覆盖解压后的内容。两层都必须通过。
-管理员在「插件市场」上传/安装；未签名、签名错误、name/version 不一致、zip 越界一律拒绝。
-升级保留原启停状态，并保留上一版用于「回滚」；卸载默认保留插件数据。
+管理员在「插件市场」上传/安装；name/version 不一致、zip 越界一律拒绝。
+本地上传未签名/未知密钥/签名错误的包时，后台先展示检查结果（插件名/版本/权限/签名等级/密钥/摘要），
+超管勾选风险确认后才能安装；市场路径没有这个覆盖开关。
 
 ## 3. plugin.json 字段
 
@@ -66,7 +72,8 @@ player-notes_1.2.0.zip
 | `config` | ⬜ | v2 配置 schema（见 §5） |
 | `store` | ⬜ | v2 命名空间数据声明（见 §6） |
 | `routes` | ⬜ | v2 路由声明（见 §7） |
-| `ui` | ⬜ | v2 页面/插槽/资源/i18n（见 §8） |
+| `ui` | ⬜ | v2 页面/插槽/表单/资源/i18n（见 §8） |
+| `media` | ⬜ | 外部媒体重定向白名单，如 `{"avatarHosts":["cdn.example.com"]}`（见 §10.1） |
 | `requires` / `conflicts` | ⬜ | P2 依赖解析预留；当前解析但不执行 |
 
 上限：脚本 ≤1 MiB、manifest ≤64 KiB、单插件路由 ≤32、全局路由 ≤64、插件总数 ≤64、UI 页面/插槽各 ≤32。
@@ -85,14 +92,19 @@ player-notes_1.2.0.zip
 | `http:routes:session` | v2 session 路由 |
 | `http:routes:admin` | v2 admin 路由 |
 | `http:routes:superadmin` | v2 superadmin 路由 |
+| `http:routes:bearer` | v2 `bearer` 路由（`Authorization: Bearer`，无 cookie/CSRF） |
 | `config` | `skin.config` |
 | `store:kv` | `skin.store.kv` |
 | `store:docs` | `skin.store.collection`、`onInstall`/`onUpgrade` |
 | `ui:page` / `ui:slot` / `ui:assets` | UI 页面 / 插槽 / 静态资源 |
+| `ui:forms` | `ui.forms`：注册/上传的宿主渲染字段 |
+| `media:avatar` | `onAvatarFilter` + `media.avatarHosts` |
+| `account:read` | `skin.account.get/limits` |
+| `players:read` / `players:write` | `skin.players.list/get` / `create/rename/delete/setTexture` |
 | `events:subscribe` | `skin.events.on` |
 | `auth:guards` | `skin.guards.on` |
-| `net:http` / `mail:send` / `schedule:jobs` / `cli:commands` | P2 预留 |
-| `plugins:read` | `skin.plugins.list()`（P1 只读内省） |
+| `net:http` / `mail:send` / `schedule:jobs` / `cli:commands` | 预留（当前无运行时实现） |
+| `plugins:read` | `skin.host.info()` / `skin.host.hasPlugin()` 只读内省 |
 
 ## 5. 配置（`skin.config`）
 
@@ -167,11 +179,19 @@ skin.route("GET", "/notes", function (req) {
 | `session` | `skin_session` | 非 GET 必须 | `req.user = {id,nickname,permission,admin}` |
 | `admin` | permission > 0 | 非 GET 必须 | 同上 |
 | `superadmin` | permission = 2 | 非 GET 必须 | 同上 |
+| `bearer` | `Authorization: Bearer` | **不需要** | `req.user`（Ygg/OIDC token → uid） |
+
+- bearer 档由宿主 `BearerResolver` 解析：接受不透明 Yggdrasil access token 和 OIDC
+  access token（Yggdrasil Connect scope），`permission < 0` 返回 403；401 带
+  `WWW-Authenticate: Bearer`。原生客户端无需 cookie/CSRF。
 
 - 请求对象：`{method, path, params, query, body?, user?, ip, headers}`；**不含 cookies**。
 - 只读安全 header 子集（content-type/accept-language/user-agent/origin/x-request-id）。
 - 路径参数：`{id}` 单段、`{rest...}` 末尾捕获；禁止 `..` 与 `/_csrf`（宿主保留）。
-- body 默认 64 KiB，最大 1 MiB；响应 1 MiB；每路由可声明 `rateLimit`（如 `"60/m"`）。
+- body 默认 64 KiB，最大 1 MiB；声明 `bodyEncoding:"base64"` 的路由可到 4 MiB，
+  原始字节以 base64 字符串传入（JSON 请求仍按 JSON 解析）。响应 1 MiB；
+  每路由可声明 `rateLimit`（如 `"60/m"`）与 `timeoutMS`（100–10000，默认宿主 1s；
+  二进制上传建议 10000）。
 - CSRF：`GET /api/plugins/<name>/_csrf` 获取 token（同时设置 `skin_csrf` cookie）；
   非 GET 的 session/admin 路由必须带 `X-CSRF-Token`。iframe bridge 会自动处理。
 - 错误体：宿主错误统一 `{error, message, code}`；插件返回的 JSON 原样透传。
@@ -199,19 +219,48 @@ v2 的 UI 采用**固定插槽 + iframe/schema 页面**，不允许第三方直�
 }
 ```
 
-固定 slot ID：`app.topbar.after`、`app.nav.user`、`app.nav.admin`、`auth.login.after`、
-`dashboard.cards`、`skinlib.list.sidebar`、`skinlib.detail.sidebar`、`profile.card.footer`、
-`player.card.footer`、`footer.before`。
+固定 slot ID（全部已接线）：`app.topbar.after`、`auth.login.after`、`auth.register.after`、
+`dashboard.cards`、`texture.upload.after`、`skinlib.list.toolbar`、`skinlib.detail.sidebar`、
+`profile.card.footer`、`player.card.footer`、`footer.before`。
+导航入口请用 page + `nav`，不再提供 `app.nav.*` slot。
+
+### 8.1 宿主表单字段（`ui.forms`）
+
+```json
+"ui": {
+  "forms": {
+    "texture.upload": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "source": { "type": "string", "enum": ["self", "other"], "default": "self" },
+          "credit": { "type": "string", "default": "" }
+        }
+      }
+    }
+  }
+}
+```
+
+- formID 固定为 `auth.register` / `texture.upload`；每插件最多 2 个，schema ≤16 KiB，顶层字段 ≤20，
+  值字符串 ≤512，**禁止 `format:"secret"`**（不要在表单里收密码/密钥）。
+- 宿主用 `SchemaForm` 渲染；提交值经 JSON `pluginData`（注册）或 multipart `pluginData`（上传）传入，
+  由宿主按已启用插件的 schema 补默认值、拒未知键，再送 guard 与事件的 `data.pluginData`。
+- 宿主不持久化表单值：插件在 guard 阶段用昵称/邮箱哈希暂存，事件里拿到 userId/hash 后落自己的集合
+  （见 `signup-survey` / `texture-provenance` 示例）。
+- 声明了必填字段的插件会让不带 `pluginData` 的 API 客户端注册/上传失败（400）。
 
 - 页面落在 `/ext/<name>/<page>`；服务端只对已启用插件的已声明页面返回 SPA shell，未知路径仍 404。
 - `iframe` 页面/插槽从 `/plugin-assets/<name>/...` 加载，`sandbox="allow-scripts allow-forms"`；
   **不带 `allow-same-origin`**，iframe 无法读取宿主 cookie/localStorage。
 - iframe bridge（`postMessage`，信封 `{v:1, nonce, id, type, payload}`）：
-  - 宿主→frame：`init`（plugin/src/origin/locale/user/csrf）；
+  - 宿主→frame：`init`（plugin/src/origin/path/locale/user/csrf）；`path` 是宿主当前 URL，便于 slot 识别上下文；
   - frame→宿主：`ready`、`resize`、`toast`、`navigate`、`confirm`、`request`。
   - `request` 由宿主代发到该插件路由，自动带 cookie/CSRF，返回 `{status, body}`。
   - iframe 首次 `ready` 可用 `targetOrigin: "*"`（此时 origin 为 opaque）；之后用 init 里的 `origin`。
-- `schema` 页面/插槽预留给宿主表单渲染；P1 的 schema 页面显示“暂未开放”，配置表单已由 `SchemaForm` 支持。
+- SSR 详情页 slot 会自动追加宿主上下文查询参数：`?tid=<id>&hash=<texture-hash>`，
+  slot 页面可直接从 `location.search` 读取（见 `texture-provenance`）。
+- slot 高度统一 clamp 80–600；`schema` 渲染面仍未开放，`PluginSlot` 会跳过非 iframe 声明。
 - 主题 `slots` 与插件 slot 独立；主题仍是管理员信任的 CSS/JS 面。
 
 ## 9. 事件与 guard
@@ -226,8 +275,12 @@ skin.guards.on("user.registration.check", function (e) {
 
 - 事件目录：`user.registered`、`user.logged_in`、`user.deleted`、`player.added`、`player.renamed`、
   `player.deleted`、`profile.updated`、`texture.uploaded`、`texture.deleted`。事件异步、有界队列，失败 fail-open。
-- guard 目录：`user.registration.check`、`auth.login.check`、`auth.join.check`、`texture.upload.check`、
-  `texture.delete.check`。guard 同步执行，必须显式 `onError: "deny"|"allow"`；超时/异常按该策略处理。
+- guard 目录：`user.registration.check`、`auth.login.check`、`auth.join.check`、`profile.update.check`、
+  `player.rename.check`、`texture.upload.check`、`texture.delete.check`。
+  guard 同步执行，必须显式 `onError: "deny"|"allow"`；超时/异常按该策略处理。
+- guard payload：注册 `{ip,data:{email,nickname,pluginData?}}`；登录 `{ip,data:{identifier}}`；
+  资料修改 `{userId,ip,data:{nickname,email}}`；角色改名 `{userId,playerId,playerName,data:{oldName}}`；
+  上传 `{userId,type,ip,data:{filename,pluginData?}}`。
 - guard 不接收密码/cookie；deny 返回通用 403（错误体带插件提供的 message/code）。
 - 超管可在管理面板开启 `plugin_guards_bypass` 破窗（审计 + 横幅）；仅用于插件故障救急。
 
@@ -239,36 +292,94 @@ skin.hooks.onTextureURLFilter(fn, { timeoutMS })
 skin.hooks.onTextureUploaded(fn)
 skin.hooks.onUserLifecycle(fn)
 skin.hooks.onAuthPhase(fn)
+skin.hooks.onAvatarFilter(fn, { timeoutMS })   // 见 §10.1
 skin.log(...args)
 ```
 
 返回语义：profile 返回 `{SKIN,CAPE}` 覆盖（空字符串删除、undefined 不改）；texture 返回字符串；
 事件返回值忽略；所有 hook 超时/异常 fail-open。过滤器严格在 `AssembleTextures` 签名之前执行。
 
-## 11. 示例
+### 10.1 头像重定向（`onAvatarFilter` + `media`）
 
-`examples/plugins/` 提供 6 个离线示例：
+```json
+"permissions": ["media:avatar"],
+"media": { "avatarHosts": ["cdn.example.com", "*.img.example.net"] }
+```
 
-- `texture-cdn`：纹理 URL 改写；
-- `lifecycle-log`：生命周期日志；
-- `config-greeter`：v2 配置 schema + 公开路由；
-- `nav-links`：v2 UI 页面 + 用户导航 + sandbox iframe；
-- `signup-guard`：v2 fail-closed 注册 guard；
-- `player-notes`：v2 session 路由 + CSRF + 命名空间集合 + UI 页面。
+```js
+skin.hooks.onAvatarFilter(function (a) {  // {hash, size, threeD}
+  return "https://cdn.example.com/avatar/" + a.hash + "/" + a.size + ".png";
+});
+```
 
-复制整个目录到 `<data>/plugins/` 后在管理面板启用即可。v2 示例需要宿主包含 v2 插件平台。
+- 仅作用于 `/avatar/*`，默认头像与 `/preview/*` 永不经过；返回 `undefined` 即回落 PNG。
+- 返回 URL 必须是 HTTPS、无 userinfo、默认端口、≤2048，且 host 命中**同一插件**声明的 `media.avatarHosts`；
+  否则静默回落。命中时返回 302 + `Cache-Control: public, max-age=60`。
+- 注意：启用后客户端 IP 会暴露给该 CDN；预算 50ms，超时/异常 fail-open。
+
+### 10.2 宿主内省（`skin.host`，需 `plugins:read`）
+
+```js
+var info = skin.host.info();
+// {version, hookApi, capabilities:[], plugins:[{name,version,title,enabled}], slots:[]}
+skin.host.hasPlugin("player-notes");
+```
+
+能力表（`capabilities`）：`host.introspect.v1`、`slots.v1`、`forms.v1`、
+`avatar.filter.v1`、`bearer-auth.v1`、`binary-body.v1`、`account.v1`。
+新能力只增不改；插件应据此降级，而不是试探报错。
+
+### 10.3 账号/角色/纹理桥（`skin.account` / `players` / `textures` / `library`）
+
+只能在**已认证路由**内调用（session 或 bearer）；身份来自路由，JS 不能传 uid。
+
+```js
+skin.account.get() / limits()
+skin.players.list() / get(pid) / create(name) / rename(pid,name) / delete(pid)
+skin.players.setTexture(pid, "skin"|"cape", textureId)   // 0 = 清除
+skin.textures.list() / uploadBase64(type, model, desc, b64) / importLibrary(tid)
+skin.library.list({type,q,sort,page,perPage}) / get(tid)
+```
+
+- 返回 `{ok:true,data}` 或 `{ok:false,error:{code,message}}`；非认证路由返回
+  `account.required`，宿主未接线返回 `account.unavailable`。
+- 权限：`account:read`、`players:read/write`、`textures:read/write`。
+- 所有所有权、名称规则、数量上限、guard、事件、审计与 Union 同步由宿主
+  `internal/account` 执行；插件只做映射。视图不含 email/uid。
+- 示例：`launcher-api`（启动器 API v1，见 [`launcher-api.md`](launcher-api.md)）。
+
+## 11. 示例与官方插件
+
+主仓库只保留两个最小夹具（供文档与测试）：
+
+- `examples/plugins/hello-world`：零权限日志；
+- `examples/plugins/hello-ui`：iframe 页面 + slot。
+
+完整官方插件（11 个：config-greeter / nav-links / player-notes / texture-cdn /
+lifecycle-log / signup-guard / texture-provenance / signup-survey / avatar-cdn /
+name-policy / launcher-api）的源码与签名市场在独立公开仓库：
+<https://github.com/YimingZhanshen/skin-nexus-plugins>。
+
+投稿流程：插件仓库提 PR → CI `skin-plugin lint`（无密钥）→ 维护者评审合并 →
+CI 环境密钥签名并更新 registry/Pages → 主站市场 10 分钟内可见。
+下载/复制插件目录到 `<data>/plugins/` 仍可在无市场环境手工启用。
 
 ## 12. 非目标与后续路线
 
-- **P2 Core / v0.3.0（当前）**：签名 bundle 安装/升级/卸载/回滚、单源签名市场、依赖/冲突检查、能力 consent、后台市场页、`skin-plugin` 发布工具链。
-- **后续按需**：多 registry、密钥轮换、插件级 HTTP/mail/cron/CLI、主题 v2、sidecar/native、评分/评论。
+- **v0.4.0（当前）**：slot 全接线、`ui.forms` 注册/上传字段、`media:avatar` 头像重定向、资料/角色改名 guard、
+  宿主能力内省、本地包信任分级与来源标识；官方插件仓库 `skin-nexus-plugins` 统一源码，
+  PR 投稿 + `skin-plugin lint` + CI 签名/续签/Pages 发布；主站默认官方 registry，下游可用
+  `SKIN_PLUGIN_MARKET_URL` 覆盖；新增 Bearer 路由档、账号/角色/纹理桥与二进制上传，
+  官方 `launcher-api` 提供启动器 API v1。
+- **后续按需**：多 registry、插件级 HTTP/mail/cron/CLI、主题 v2、sidecar/native、评分/评论。
 - **不做**：插件直接访问数据库/宿主表/任意文件系统/任意网络；不允许第三方 Vue/Twig/HTML 注入主 SPA。
 - **兼容策略**：项目尚无存量第三方生态，只维护 `hookApi: 2`；不提供旧版/blessing 插件兼容层。
 
 ## 13. 给 AI 的提示词模板
 
 > 为 SkinNexus 插件宿主 v2 写一个插件：目录 `<name>/` 含 `plugin.json`（必要时加 `ui/` 与 `index.js`）。
-> 约束：`hookApi=2`；只声明必需权限（config / store:kv / store:docs / http:routes:session 等）；
-> 数据只用 `skin.store`，配置只用 `skin.config`，路由必须与 manifest `routes` 完全一致；
-> UI 页面/插槽用 iframe + postMessage bridge，不注入主 SPA；guard 必须显式 `onError`；
+> 约束：`hookApi=2`；只声明必需权限（config / store:kv / store:docs / ui:forms / media:avatar /
+> http:routes:session 等）；数据只用 `skin.store`，配置只用 `skin.config`，路由必须与 manifest `routes`
+> 完全一致；UI 页面/插槽用 iframe + postMessage bridge，表单字段用 `ui.forms`（不收集密码/密钥）；
+> guard 必须显式 `onError`；头像外链 host 必须写进 `media.avatarHosts`；
 > 过滤器/事件 fail-open，不改变 Yggdrasil 的 204/错误体/签名顺序。产物需通过 manifest 校验并在管理面板启用。

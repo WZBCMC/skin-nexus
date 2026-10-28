@@ -9,24 +9,36 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"skin-nexus/server/internal/signedpkg"
 )
 
 var (
 	ErrInstallBlocked  = errors.New("plugin install blocked by plan")
 	ErrConsentRequired = errors.New("plugin install requires capability consent")
 	ErrNoRollback      = errors.New("no rollback version available")
+	// ErrUnverifiedPlugin means the bundle is unsigned, signed by an unknown
+	// key, or has an invalid signature. Local uploads may retry with
+	// AcceptUnverified; the market path never does.
+	ErrUnverifiedPlugin = errors.New("plugin bundle is not signed by a trusted key")
+	ErrDigestMismatch   = errors.New("plugin bundle changed since inspection")
 )
+
+// InstallOptions carries the caller's trust decision.
+type InstallOptions struct {
+	Consent          bool
+	Source           string // market | upload | manual
+	AcceptUnverified bool
+	ExpectedZipSHA   string // optional: binds confirmation to inspected bytes
+}
 
 type DataPurger interface {
 	DeletePluginData(ctx context.Context, plugin string) error
 }
 
 type InstallResult struct {
-	Plan   *InstallPlan `json:"plan"`
-	State  string       `json:"state"`
-	Source string       `json:"source,omitempty"`
+	Plan       *InstallPlan      `json:"plan,omitempty"`
+	State      string            `json:"state"`
+	Source     string            `json:"source,omitempty"`
+	Inspection *BundleInspection `json:"inspection,omitempty"`
 }
 
 func (m *Manager) stateDir() string {
@@ -52,9 +64,9 @@ func txID() string {
 }
 
 // InstallBytes writes bytes to a temporary file and installs it. Market
-// downloads already verified the transport SHA-256; the bundle signature is
-// verified again here.
-func (m *Manager) InstallBytes(ctx context.Context, data []byte, consent bool, source string) (*InstallResult, error) {
+// downloads already verified the transport SHA-256; InspectBundle re-checks
+// the signature here.
+func (m *Manager) InstallBytes(ctx context.Context, data []byte, opts InstallOptions) (*InstallResult, error) {
 	if err := m.ensureInstallDirs(); err != nil {
 		return nil, err
 	}
@@ -71,31 +83,38 @@ func (m *Manager) InstallBytes(ctx context.Context, data []byte, consent bool, s
 	if err := tmp.Close(); err != nil {
 		return nil, err
 	}
-	return m.InstallBundle(ctx, path, consent, source)
+	return m.InstallBundle(ctx, path, opts)
 }
 
-// InstallBundle verifies a signed bundle, stages it, and atomically swaps it
-// into the live plugin directory. New installs stay disabled; upgrades keep
-// their previous enabled state.
-func (m *Manager) InstallBundle(ctx context.Context, zipPath string, consent bool, source string) (result *InstallResult, retErr error) {
-	if m.cfg.Keyring == nil {
-		return nil, errors.New("plugin trust keys are not configured")
-	}
+// InstallBundle inspects trust, stages the bundle, and atomically swaps it into
+// the live plugin directory. New installs stay disabled; upgrades keep their
+// previous enabled state.
+func (m *Manager) InstallBundle(ctx context.Context, zipPath string, opts InstallOptions) (result *InstallResult, retErr error) {
 	if err := m.ensureInstallDirs(); err != nil {
 		return nil, err
 	}
-	meta, err := signedpkg.ReadBundleMeta(zipPath)
+	insp, err := m.InspectBundle(zipPath)
 	if err != nil {
 		return nil, err
+	}
+	if opts.ExpectedZipSHA != "" && opts.ExpectedZipSHA != insp.ZipSHA {
+		return &InstallResult{Inspection: insp, State: "stale", Source: opts.Source}, ErrDigestMismatch
+	}
+	if insp.Status != TrustVerified && !opts.AcceptUnverified {
+		return &InstallResult{Inspection: insp, State: "unverified", Source: opts.Source}, ErrUnverifiedPlugin
+	}
+	source := opts.Source
+	if source == "" {
+		source = "manual"
 	}
 	txid := txID()
 	if txStore := m.installTxStore(); txStore != nil {
 		kind, from := "install", ""
-		if cur := m.statusOf(meta.Name); cur != nil {
+		if cur := m.statusOf(insp.Name); cur != nil {
 			kind, from = "upgrade", cur.Version
 		}
 		_ = txStore.CreateInstallTx(ctx, InstallTxRecord{
-			ID: txid, Plugin: meta.Name, Kind: kind, FromVersion: from, ToVersion: meta.Version,
+			ID: txid, Plugin: insp.Name, Kind: kind, FromVersion: from, ToVersion: insp.Version,
 			Source: source, State: "verifying", ActorUID: ActorFromContext(ctx),
 		})
 		defer func() {
@@ -110,9 +129,6 @@ func (m *Manager) InstallBundle(ctx context.Context, zipPath string, consent boo
 			_ = txStore.UpdateInstallTx(context.WithoutCancel(ctx), txid, state, msg)
 		}()
 	}
-	if _, err := signedpkg.VerifyBundle(zipPath, m.cfg.Keyring); err != nil {
-		return nil, err
-	}
 	tx := txID()
 	stage := filepath.Join(m.stateDir(), "staging", tx)
 	if err := os.MkdirAll(stage, 0o755); err != nil {
@@ -126,16 +142,16 @@ func (m *Manager) InstallBundle(ctx context.Context, zipPath string, consent boo
 	if err != nil {
 		return nil, err
 	}
-	info, err := loadManifest(root, meta.Name)
+	info, err := loadManifest(root, insp.Name)
 	if err != nil {
 		return nil, err
 	}
-	if info.Version != meta.Version {
-		return nil, fmt.Errorf("bundle version %s != manifest version %s", meta.Version, info.Version)
+	if info.Version != insp.Version {
+		return nil, fmt.Errorf("bundle version %s != manifest version %s", insp.Version, info.Version)
 	}
 	if m.cfg.HostVersion != "" {
 		if err := info.CheckMinServer(m.cfg.HostVersion); err != nil {
-			return &InstallResult{Plan: &InstallPlan{Name: meta.Name, Version: meta.Version, CanInstall: false, Missing: []string{err.Error()}}, State: "blocked", Source: source}, ErrInstallBlocked
+			return &InstallResult{Plan: &InstallPlan{Name: insp.Name, Version: insp.Version, CanInstall: false, Missing: []string{err.Error()}}, State: "blocked", Source: source, Inspection: insp}, ErrInstallBlocked
 		}
 	}
 	plan, err := m.PlanInstall(PlanInput{
@@ -146,10 +162,10 @@ func (m *Manager) InstallBundle(ctx context.Context, zipPath string, consent boo
 		return nil, err
 	}
 	if !plan.CanInstall {
-		return &InstallResult{Plan: plan, State: "blocked", Source: source}, ErrInstallBlocked
+		return &InstallResult{Plan: plan, State: "blocked", Source: source, Inspection: insp}, ErrInstallBlocked
 	}
-	if len(plan.AddedPermissions) > 0 && !consent {
-		return &InstallResult{Plan: plan, State: "consent", Source: source}, ErrConsentRequired
+	if len(plan.AddedPermissions) > 0 && !opts.Consent {
+		return &InstallResult{Plan: plan, State: "consent", Source: source, Inspection: insp}, ErrConsentRequired
 	}
 	wasEnabled := m.enabledOption(ctx, info.Name)
 	m.stopRuntime(info.Name)
@@ -183,12 +199,17 @@ func (m *Manager) InstallBundle(ctx context.Context, zipPath string, consent boo
 		}
 		return nil, errors.New("plugin activation failed")
 	}
+	m.setProvenance(ctx, info.Name, source, insp.Status, insp.KeyID, insp.ZipSHA)
+	st = m.statusOf(info.Name)
 	action := "plugin_install"
 	if wasEnabled {
 		action = "plugin_upgrade"
 	}
-	m.audit(ctx, action, map[string]any{"plugin": info.Name, "version": info.Version, "source": source})
-	return &InstallResult{Plan: plan, State: st.State, Source: source}, nil
+	m.audit(ctx, action, map[string]any{
+		"plugin": info.Name, "version": info.Version, "source": source,
+		"trust": insp.Status, "signer": insp.KeyID, "digest": insp.ZipSHA,
+	})
+	return &InstallResult{Plan: plan, State: st.State, Source: source, Inspection: insp}, nil
 }
 
 func (m *Manager) statusOf(name string) *Status {
@@ -301,6 +322,7 @@ func (m *Manager) removeInstance(name string) {
 		}
 	}
 	m.order = out
+	m.refreshHostInfoLocked()
 }
 
 // CleanupOldState prunes rollback copies older than the retention window.

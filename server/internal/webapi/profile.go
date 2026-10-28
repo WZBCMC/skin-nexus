@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"skin-nexus/server/internal/account"
 	"skin-nexus/server/internal/plugin"
 	"skin-nexus/server/internal/store"
 	"skin-nexus/server/internal/ygg"
@@ -27,9 +28,9 @@ func statFile(p string) (int64, error) {
 }
 
 // handleProfileUpdate: PUT /api/v1/me/profile {nickname?, email?}
-// - nickname: nickRe + unique; email: mailRe + unique (dup → 409)
-// - email change resets email_verified (blessing semantics: a new address
-//   must re-verify before a verification gate lets them join)
+//   - nickname: nickRe + unique; email: mailRe + unique (dup → 409)
+//   - email change resets email_verified (blessing semantics: a new address
+//     must re-verify before a verification gate lets them join)
 func (b *Backend) handleProfileUpdate(w http.ResponseWriter, r *http.Request) {
 	uid, err := b.currentUser(r)
 	if err != nil {
@@ -51,14 +52,6 @@ func (b *Backend) handleProfileUpdate(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "昵称需为 2-24 位字母/数字/下划线/中文")
 			return
 		}
-		if err := b.Store.UpdateUserNickname(r.Context(), uid, req.Nickname); err != nil {
-			if err == store.ErrDuplicate {
-				writeErr(w, http.StatusConflict, "昵称已被占用")
-				return
-			}
-			writeErr(w, http.StatusInternalServerError, "update failed")
-			return
-		}
 		changed = true
 	}
 	if req.Email != "" {
@@ -67,6 +60,30 @@ func (b *Backend) handleProfileUpdate(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "邮箱格式不正确")
 			return
 		}
+		changed = true
+	}
+	if !changed {
+		writeErr(w, http.StatusBadRequest, "没有可更新的字段")
+		return
+	}
+	if err := b.checkGuard(r.Context(), "profile.update.check", plugin.EventPayload{
+		UserID: uid, IP: ygg.ClientIP(r),
+		Data: map[string]any{"nickname": req.Nickname, "email": req.Email},
+	}); err != nil {
+		writeErr(w, http.StatusForbidden, err.Error())
+		return
+	}
+	if req.Nickname != "" {
+		if err := b.Store.UpdateUserNickname(r.Context(), uid, req.Nickname); err != nil {
+			if err == store.ErrDuplicate {
+				writeErr(w, http.StatusConflict, "昵称已被占用")
+				return
+			}
+			writeErr(w, http.StatusInternalServerError, "update failed")
+			return
+		}
+	}
+	if req.Email != "" {
 		if err := b.Store.UpdateUserEmail(r.Context(), uid, req.Email); err != nil {
 			if err == store.ErrDuplicate {
 				writeErr(w, http.StatusConflict, "邮箱已被占用")
@@ -79,11 +96,6 @@ func (b *Backend) handleProfileUpdate(w http.ResponseWriter, r *http.Request) {
 		if err := b.Store.SetEmailVerified(r.Context(), uid, false); err != nil {
 			b.Store.InsertAudit(r.Context(), uid, "profile_email_unverify_failed", map[string]any{"error": err.Error()})
 		}
-		changed = true
-	}
-	if !changed {
-		writeErr(w, http.StatusBadRequest, "没有可更新的字段")
-		return
 	}
 	b.Store.InsertAudit(r.Context(), uid, "profile_update", map[string]any{
 		"nickname": req.Nickname, "email": req.Email,
@@ -246,23 +258,12 @@ func (b *Backend) handlePlayerRename(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := b.Store.AdminRenamePlayer(r.Context(), pid, req.Name); err != nil {
-		if err == store.ErrDuplicate {
-			writeErr(w, http.StatusConflict, "角色名已被占用")
-			return
-		}
-		if err == store.ErrNotFound {
-			writeErr(w, http.StatusNotFound, "角色不存在")
-			return
-		}
-		writeErr(w, http.StatusInternalServerError, "rename failed")
+	_, invalidated, aerr := b.Account.RenamePlayer(r.Context(), uid, pid, req.Name, account.CallMeta{IP: ygg.ClientIP(r)})
+	if aerr != nil {
+		writeAccountErr(w, aerr)
 		return
 	}
-	b.Store.InsertAudit(r.Context(), uid, "player_rename_self", map[string]any{"pid": pid, "name": req.Name})
-	b.emitEvent(r.Context(), "player.renamed", plugin.EventPayload{
-		UserID: uid, PlayerID: pid, PlayerName: req.Name, IP: ygg.ClientIP(r),
-	})
-	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "tokensInvalidated": invalidated})
 }
 
 // handlePlayerDeleteSelf: DELETE /api/v1/me/players/{id}
@@ -279,18 +280,9 @@ func (b *Backend) handlePlayerDeleteSelf(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	uuid, name, err := b.Store.AdminDeletePlayer(r.Context(), pid)
-	if err != nil {
-		if err == store.ErrNotFound {
-			writeErr(w, http.StatusNotFound, "角色不存在")
-			return
-		}
-		writeErr(w, http.StatusInternalServerError, "delete failed")
+	if aerr := b.Account.DeletePlayer(r.Context(), uid, pid, account.CallMeta{IP: ygg.ClientIP(r)}); aerr != nil {
+		writeAccountErr(w, aerr)
 		return
 	}
-	b.Store.InsertAudit(r.Context(), uid, "player_delete_self", map[string]any{"pid": pid, "name": name, "uuid": uuid})
-	b.emitEvent(r.Context(), "player.deleted", plugin.EventPayload{
-		UserID: uid, PlayerID: pid, PlayerName: name, UUID: uuid, IP: ygg.ClientIP(r),
-	})
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }

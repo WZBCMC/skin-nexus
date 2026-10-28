@@ -22,6 +22,8 @@ const isSuper = ref(false)
 const readOnly = ref(true)
 const uploadFile = ref(null)
 const uploading = ref(false)
+const inspection = ref(null)
+const riskAck = ref(false)
 
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase()
@@ -67,6 +69,18 @@ function openInstall(p) {
 
 function onFile(e) {
   uploadFile.value = e.target.files && e.target.files[0]
+  inspection.value = null
+  riskAck.value = false
+}
+
+function trustText(status) {
+  switch (status) {
+    case 'verified': return t('admin.trustVerified')
+    case 'unknown-key': return t('admin.trustUnknownKey')
+    case 'unsigned': return t('admin.trustUnsigned')
+    case 'invalid': return t('admin.trustInvalid')
+    default: return t('admin.trustUnrecorded')
+  }
 }
 
 async function uploadBundle() {
@@ -76,10 +90,40 @@ async function uploadBundle() {
   try {
     const fd = new FormData()
     fd.append('file', uploadFile.value)
+    fd.append('inspect', '1')
     const r = await fetch('/api/admin/v1/market/upload', { method: 'POST', body: fd, credentials: 'same-origin' })
     const d = await r.json().catch(() => ({}))
-    if (!r.ok) throw new Error(d.error || 'upload failed')
-    uploadFile.value = null
+    if (!r.ok) throw new Error(d.error || 'inspect failed')
+    inspection.value = d
+    riskAck.value = false
+  } catch (e) {
+    actionError.value = e.message
+  } finally {
+    uploading.value = false
+  }
+}
+
+function cancelInspection() {
+  inspection.value = null
+  riskAck.value = false
+  uploadFile.value = null
+}
+
+async function installInspected() {
+  if (!inspection.value || !uploadFile.value) return
+  if (inspection.value.status !== 'verified' && !riskAck.value) return
+  uploading.value = true
+  actionError.value = ''
+  try {
+    const fd = new FormData()
+    fd.append('file', uploadFile.value)
+    fd.append('consent', '1')
+    fd.append('acceptUnverified', inspection.value.status === 'verified' ? '0' : '1')
+    fd.append('expectDigest', inspection.value.zipSha || '')
+    const r = await fetch('/api/admin/v1/market/upload', { method: 'POST', body: fd, credentials: 'same-origin' })
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(d.error || 'install failed')
+    cancelInspection()
     await load()
   } catch (e) {
     actionError.value = e.message
@@ -138,6 +182,35 @@ onMounted(async () => {
       <button class="secondary" :disabled="!isSuper || !uploadFile || uploading" @click="uploadBundle">
         {{ uploading ? t('admin.marketInstalling') : t('admin.marketUpload') }}
       </button>
+    </div>
+
+    <div v-if="inspection" class="card" style="margin: 12px 0;">
+      <h3 style="margin-top: 0;">{{ inspection.name }} <span class="muted">{{ inspection.version }}</span></h3>
+      <p>
+        <span class="badge" :style="inspection.status !== 'verified' ? 'color:var(--danger);border-color:var(--danger)' : ''">{{ trustText(inspection.status) }}</span>
+        <span v-if="inspection.keyId" class="muted" style="margin-left: 8px;">{{ t('admin.marketSigner') }}: {{ inspection.keyId }}</span>
+      </p>
+      <p class="muted" style="font-size: var(--fs-xs); word-break: break-all;">
+        {{ t('admin.marketDigest') }}: {{ inspection.zipSha }}
+      </p>
+      <ul v-if="inspection.permissions && inspection.permissions.length">
+        <li v-for="perm in inspection.permissions" :key="perm"><code>{{ perm }}</code></li>
+      </ul>
+      <div v-if="inspection.status !== 'verified'" class="error">
+        <p style="margin-top: 0;"><strong>{{ t('admin.marketRiskTitle') }}</strong></p>
+        <p>{{ t('admin.marketRiskBody') }}</p>
+        <p v-if="inspection.reason" class="muted">{{ inspection.reason }}</p>
+        <label class="row" style="align-items: center; gap: 8px;">
+          <input v-model="riskAck" type="checkbox" style="width: auto;" />
+          <span>{{ t('admin.marketRiskAck') }}</span>
+        </label>
+      </div>
+      <div class="row" style="margin-top: 12px;">
+        <button :disabled="uploading || (inspection.status !== 'verified' && !riskAck)" @click="installInspected">
+          {{ uploading ? t('admin.marketInstalling') : t('admin.marketInstall') }}
+        </button>
+        <button class="secondary" :disabled="uploading" @click="cancelInspection">{{ t('common.cancel') }}</button>
+      </div>
     </div>
 
     <p v-if="loading" class="muted">{{ t('common.loading') }}</p>

@@ -3,8 +3,10 @@ package plugin
 import (
 	"crypto/rand"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -20,10 +22,11 @@ import (
 const maxRouteResponse = 1 << 20
 
 const (
-	defaultBodyLimit = 64 << 10
-	maxBodyLimit     = 1 << 20
-	csrfCookieName   = "skin_csrf"
-	csrfHeaderName   = "X-CSRF-Token"
+	defaultBodyLimit   = 64 << 10
+	maxBodyLimit       = 1 << 20
+	maxBinaryBodyLimit = 4 << 20
+	csrfCookieName     = "skin_csrf"
+	csrfHeaderName     = "X-CSRF-Token"
 )
 
 // Handler serves /api/plugins/<name>/<path> for enabled plugins. Routes are
@@ -66,25 +69,34 @@ func (m *Manager) Handler() http.Handler {
 
 		var identity *SessionIdentity
 		if entry.tier != RouteTierPublic {
-			identity, ok = m.resolveSession(r)
-			if !ok {
-				m.writePluginError(w, r, http.StatusUnauthorized, "plugin.unauthorized", "authentication required", name, string(entry.tier), start)
-				return
-			}
-			switch entry.tier {
-			case RouteTierAdmin, RouteTierSuperAdmin:
-				if identity.Permission <= 0 {
-					m.writePluginError(w, r, http.StatusForbidden, "plugin.forbidden", "admin permission required", name, string(entry.tier), start)
+			if entry.tier == RouteTierBearer {
+				id, berr := m.resolveBearer(r)
+				if berr != nil {
+					m.writeBearerError(w, r, name, start, berr)
 					return
 				}
-			}
-			if entry.tier == RouteTierSuperAdmin && identity.Permission != 2 {
-				m.writePluginError(w, r, http.StatusForbidden, "plugin.forbidden", "super-admin required", name, string(entry.tier), start)
-				return
-			}
-			if r.Method != http.MethodGet && r.Method != http.MethodHead && !csrfOK(r) {
-				m.writePluginError(w, r, http.StatusForbidden, "plugin.csrf_failed", "csrf validation failed", name, string(entry.tier), start)
-				return
+				identity = id
+			} else {
+				identity, ok = m.resolveSession(r)
+				if !ok {
+					m.writePluginError(w, r, http.StatusUnauthorized, "plugin.unauthorized", "authentication required", name, string(entry.tier), start)
+					return
+				}
+				switch entry.tier {
+				case RouteTierAdmin, RouteTierSuperAdmin:
+					if identity.Permission <= 0 {
+						m.writePluginError(w, r, http.StatusForbidden, "plugin.forbidden", "admin permission required", name, string(entry.tier), start)
+						return
+					}
+				}
+				if entry.tier == RouteTierSuperAdmin && identity.Permission != 2 {
+					m.writePluginError(w, r, http.StatusForbidden, "plugin.forbidden", "super-admin required", name, string(entry.tier), start)
+					return
+				}
+				if r.Method != http.MethodGet && r.Method != http.MethodHead && !csrfOK(r) {
+					m.writePluginError(w, r, http.StatusForbidden, "plugin.csrf_failed", "csrf validation failed", name, string(entry.tier), start)
+					return
+				}
 			}
 		}
 
@@ -103,8 +115,8 @@ func (m *Manager) Handler() http.Handler {
 			return
 		}
 
-		req := buildRouteRequest(r, subPath, params, identity, body, m.cfg.ClientIP)
-		code, out := rt.callRoute(r.Context(), entry, req)
+		req := buildRouteRequest(r, subPath, params, identity, body, entry.spec.BodyEncoding, m.cfg.ClientIP)
+		code, out := rt.callRoute(r.Context(), entry, req, identity)
 		if code < 100 || code > 599 {
 			code = http.StatusInternalServerError
 		}
@@ -126,8 +138,59 @@ func (m *Manager) Handler() http.Handler {
 func (m *Manager) writePluginError(w http.ResponseWriter, r *http.Request, status int, code, msg, name, tier string, start time.Time) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]any{"error": msg, "message": msg, "code": code})
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": code, "message": msg, "code": code})
 	m.logAccess(r, name, r.Method, r.URL.Path, status, RouteTier(tier), nil, start)
+}
+
+// resolveBearer authenticates an Authorization: Bearer credential. The
+// resolver is supplied by main and backed by the Yggdrasil token ledger.
+func (m *Manager) resolveBearer(r *http.Request) (*SessionIdentity, error) {
+	m.mu.RLock()
+	resolver := m.cfg.BearerResolver
+	m.mu.RUnlock()
+	if resolver == nil {
+		return nil, &BearerError{Status: http.StatusServiceUnavailable, Code: "auth.unavailable", Message: "bearer authentication is not configured"}
+	}
+	raw := strings.TrimSpace(r.Header.Get("Authorization"))
+	if raw == "" {
+		return nil, &BearerError{Status: http.StatusUnauthorized, Code: "auth.required", Message: "bearer token required"}
+	}
+	scheme, token, ok := strings.Cut(raw, " ")
+	token = strings.TrimSpace(token)
+	if !ok || !strings.EqualFold(scheme, "Bearer") || token == "" {
+		return nil, &BearerError{Status: http.StatusUnauthorized, Code: "auth.invalid_token", Message: "invalid authorization header"}
+	}
+	if len(token) > 4096 {
+		return nil, &BearerError{Status: http.StatusUnauthorized, Code: "auth.invalid_token", Message: "token too long"}
+	}
+	id, err := resolver.ResolveBearer(r.Context(), token)
+	if err != nil {
+		var be *BearerError
+		if errors.As(err, &be) {
+			return nil, be
+		}
+		return nil, &BearerError{Status: http.StatusUnauthorized, Code: "auth.invalid_token", Message: "invalid or expired token"}
+	}
+	if id == nil || id.ID == 0 {
+		return nil, &BearerError{Status: http.StatusUnauthorized, Code: "auth.invalid_token", Message: "invalid token identity"}
+	}
+	return id, nil
+}
+
+func (m *Manager) writeBearerError(w http.ResponseWriter, r *http.Request, name string, start time.Time, err error) {
+	be := &BearerError{Status: http.StatusUnauthorized, Code: "auth.invalid_token", Message: "invalid token"}
+	var explicit *BearerError
+	if errors.As(err, &explicit) {
+		be = explicit
+	}
+	if be.Status == http.StatusUnauthorized {
+		if be.Code == "auth.required" {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="skin-nexus"`)
+		} else {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="skin-nexus", error="invalid_token"`)
+		}
+	}
+	m.writePluginError(w, r, be.Status, be.Code, be.Message, name, string(RouteTierBearer), start)
 }
 
 func (m *Manager) logAccess(r *http.Request, name, method, path string, status int, tier RouteTier, id *SessionIdentity, start time.Time) {
@@ -272,8 +335,12 @@ func readRouteBody(w http.ResponseWriter, r *http.Request, e routeEntry) (any, e
 	if limit <= 0 {
 		limit = defaultBodyLimit
 	}
-	if limit > maxBodyLimit {
-		limit = maxBodyLimit
+	maxLimit := maxBodyLimit
+	if e.spec.BodyEncoding == "base64" {
+		maxLimit = maxBinaryBodyLimit
+	}
+	if limit > maxLimit {
+		limit = maxLimit
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, int64(limit))
 	raw, err := io.ReadAll(r.Body)
@@ -296,10 +363,13 @@ func readRouteBody(w http.ResponseWriter, r *http.Request, e routeEntry) (any, e
 		}
 		return normalizeJSONNumber(v), nil
 	}
+	if e.spec.BodyEncoding == "base64" {
+		return base64.StdEncoding.EncodeToString(raw), nil
+	}
 	return string(raw), nil
 }
 
-func buildRouteRequest(r *http.Request, subPath string, params map[string]string, id *SessionIdentity, body any, clientIP func(*http.Request) string) map[string]interface{} {
+func buildRouteRequest(r *http.Request, subPath string, params map[string]string, id *SessionIdentity, body any, bodyEncoding string, clientIP func(*http.Request) string) map[string]interface{} {
 	query := map[string]interface{}{}
 	for k, vs := range r.URL.Query() {
 		if len(vs) > 0 {
@@ -322,6 +392,9 @@ func buildRouteRequest(r *http.Request, subPath string, params map[string]string
 	}
 	if body != nil {
 		req["body"] = body
+	}
+	if bodyEncoding != "" {
+		req["bodyEncoding"] = bodyEncoding
 	}
 	if id != nil {
 		req["user"] = map[string]interface{}{

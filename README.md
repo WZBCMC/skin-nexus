@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/YimingZhanshen/skin-nexus/actions/workflows/ci.yml"><img src="https://github.com/YimingZhanshen/skin-nexus/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/YimingZhanshen/skin-nexus/releases/tag/v0.3.0"><img src="https://img.shields.io/badge/release-v0.3.0-blue" alt="v0.3.0"></a>
+  <a href="https://github.com/YimingZhanshen/skin-nexus/releases/tag/v0.4.0"><img src="https://img.shields.io/badge/release-v0.4.0-blue" alt="v0.4.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-green" alt="AGPL-3.0"></a>
 </p>
 
@@ -14,7 +14,7 @@
 
 它是 [blessing-skin-server](https://github.com/bs-community/blessing-skin-server) 的现代化重写（Go + Vue 3），已在一套真实生产环境完成全量迁移与切流：**67 用户 / 61 纹理零丢行、玩家 UUID 零漂移**。
 
-- **当前版本**：v0.3.0（2026-10-28）· 迭代历史见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)
+- **当前版本**：v0.4.0（2026-10-28）· 迭代历史见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)
 - **许可**：AGPL-3.0 · **发起人 / 著作权人**：YMZS
 
 ## 为什么选 SkinNexus
@@ -73,7 +73,7 @@
 
 **外观与内容**
 - 主题包体系（零构建：`theme.json` + CSS + 可选 JS）与 [AI 生成提示词模板](docs/theme-spec.md)
-- 插件平台 v2（goja）：统一 hookApi 2 + 配置/密钥、命名空间数据、三档路由、事件/guard、sandbox iframe UI；P2 起签名 bundle 安装/升级/回滚、单源签名市场与 `skin-plugin` 发布工具链；规范见 [docs/plugin-spec.md](docs/plugin-spec.md)
+- 插件平台 v2（goja）：统一 hookApi 2 + 配置/密钥、命名空间数据、三档路由、事件/guard、sandbox iframe UI；P2 起签名 bundle 安装/升级/回滚、单源签名市场与 `skin-plugin` 发布工具链；官方插件源码与市场仓库 [skin-nexus-plugins](https://github.com/YimingZhanshen/skin-nexus-plugins) 采用 PR 投稿 + CI 签名；`launcher-api` 插件为启动器提供 Bearer 角色管理 API（[规范](docs/launcher-api.md)）；规范见 [docs/plugin-spec.md](docs/plugin-spec.md)
 - 中英双语（zh-CN / en），语言包可扩展
 - SEO：SSR 落地页与皮肤详情页、sitemap、robots、可整站 noindex（预发环境）
 
@@ -117,6 +117,7 @@ docker compose up -d
 | [`docs/theme-spec.md`](docs/theme-spec.md) | 主题包规范与 AI 生成提示词模板 |
 | [`docs/plugin-spec.md`](docs/plugin-spec.md) | 插件创作规范（goja 宿主 v2：配置/数据/路由/事件/guard/UI） |
 | [`docs/plugin-publishing.md`](docs/plugin-publishing.md) | 签名 bundle、registry、GitHub Pages 发布与密钥保管 |
+| [`docs/launcher-api.md`](docs/launcher-api.md) | 启动器 API v1（Bearer/OIDC、角色/纹理/皮肤库） |
 | [`docs/competitor-analysis.md`](docs/competitor-analysis.md) | 竞品对照的源码证据与方法 |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | 迭代历史（按日期倒序） |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | 贡献指南：翻译 / 主题包 / 代码与文档 |
@@ -127,7 +128,7 @@ docker compose up -d
 
 | 状态 | 内容 |
 |---|---|
-| ✅ 已完成 | 一期–三期：Yggdrasil 全量、OIDC 免密、Union 模块、i18n / SEO / 主题包、迁移工具链、管理面板；生产全量迁移与切流；v0.2.0（自助找回 / 官方兜底 / 运维日志 / SEO）；v0.3.0（签名插件安装/市场/回滚 + 发布工具链） |
+| ✅ 已完成 | 一期–三期：Yggdrasil 全量、OIDC 免密、Union 模块、i18n / SEO / 主题包、迁移工具链、管理面板；生产全量迁移与切流；v0.2.0（自助找回 / 官方兜底 / 运维日志 / SEO）；v0.3.0（签名插件安装/市场/回滚 + 发布工具链）；v0.4.0（slot 全接线、注册/上传插件字段、头像 CDN、资料/改名 guard、能力内省、本地包信任分级） |
 | 🔶 进行中 | 真机启动器验收（SJMCL 及社区启动器：OAuth 免密 → 选角 → 进服） |
 | ⬜ 规划中 | 正版账号绑定（Auth Source 第二实现）、邮箱验证流、插件市场运营 / sidecar 隔离 / 第一方原生插件 |
 

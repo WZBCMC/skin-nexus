@@ -5,6 +5,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '../api.js'
 import { guard401 } from '../session.js'
+import PluginSlot from '../components/plugin/PluginSlot.vue'
 
 const { t } = useI18n()
 
@@ -156,6 +157,7 @@ onMounted(load)
       <button class="danger" :disabled="delBusy" @click="deleteAccount">{{ t('profile.deleteBtn') }}</button>
     </div>
     <div class="muted" style="margin-top: 6px; font-size: 12px;">{{ t('profile.deleteHint') }}</div>
+    <PluginSlot slot="profile.card.footer" />
   </div>
 </template>
 

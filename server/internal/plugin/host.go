@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"skin-nexus/server/internal/signedpkg"
@@ -34,6 +35,8 @@ type RuntimeConfig struct {
 
 	SessionResolver SessionResolver
 	SessionCookie   string
+	BearerResolver  BearerResolver // Authorization: Bearer → identity (machine clients)
+	Account         AccountService // host-mediated player/texture bridge
 	SecretBox       *SecretBox
 	ClientIP        func(*http.Request) string
 	AccessLog       func(ctx context.Context, pluginName, method, path, ip string, status, ms int64, tier string, uid int64)
@@ -95,6 +98,10 @@ type instance struct {
 	loadedAt     time.Time
 	installedAt  time.Time
 	updatedAt    time.Time
+	source       string // market | upload | manual
+	trust        string // verified | unknown-key | unsigned | invalid | ""
+	signer       string // bundle key id
+	checksum     string // zip SHA-256
 	configSchema *ConfigSchema
 	config       *configState
 }
@@ -114,6 +121,7 @@ type Manager struct {
 	done      chan struct{}
 	closeOnce sync.Once
 	limits    *routeLimits
+	hostInfo  atomic.Pointer[HostInfo]
 
 	marketMu      sync.Mutex
 	marketCache   *MarketRegistry
@@ -153,6 +161,39 @@ func NewHost(cfg RuntimeConfig) *Manager {
 // Bus exposes host-level hook registration (tests / first-party integrations).
 func (m *Manager) Bus() HookBus { return goBus{m} }
 
+// SetBearerResolver wires machine-client authentication after the Yggdrasil
+// service exists (main constructs it later than the plugin host). It must be
+// called before the HTTP server starts serving requests.
+func (m *Manager) SetBearerResolver(r BearerResolver) {
+	m.mu.Lock()
+	m.cfg.BearerResolver = r
+	m.mu.Unlock()
+}
+
+// SetAccountService wires the player/texture bridge after the web backend
+// exists (main constructs it later than the plugin host).
+func (m *Manager) SetAccountService(s AccountService) {
+	m.mu.Lock()
+	m.cfg.Account = s
+	m.mu.Unlock()
+}
+
+func (m *Manager) accountService() AccountService {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.cfg.Account
+}
+
+// PluginSigner returns the bundle signer id recorded for a plugin, when known.
+func (m *Manager) PluginSigner(name string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if inst := m.instances[name]; inst != nil {
+		return inst.signer
+	}
+	return ""
+}
+
 func (m *Manager) logSink(line string) { log.Print(line) }
 
 func (m *Manager) audit(ctx context.Context, action string, detail map[string]any) {
@@ -191,6 +232,7 @@ func (m *Manager) Load(dir string) error {
 	}
 	m.mu.Lock()
 	sort.Strings(m.order)
+	m.refreshHostInfoLocked()
 	m.mu.Unlock()
 	return nil
 }
@@ -234,6 +276,7 @@ func (m *Manager) insertInstance(name string, inst *instance) {
 			old.rt.close()
 		}
 		m.instances[name] = inst
+		m.refreshHostInfoLocked()
 		return
 	}
 	if inst.installedAt.IsZero() {
@@ -242,6 +285,7 @@ func (m *Manager) insertInstance(name string, inst *instance) {
 	inst.updatedAt = time.Now()
 	m.instances[name] = inst
 	m.order = append(m.order, name)
+	m.refreshHostInfoLocked()
 }
 
 // prepareInstance parses the manifest config (and minServer) without starting
@@ -255,6 +299,14 @@ func (m *Manager) prepareInstance(ctx context.Context, name string, info Info) (
 			inst.health = "error"
 			inst.lastErr = err.Error()
 			return inst, err
+		}
+	}
+	if st := m.platformStore(); st != nil {
+		if meta, ok, err := st.GetPluginMeta(ctx, name); err == nil && ok {
+			inst.source, inst.trust, inst.signer, inst.checksum = meta.Source, meta.Trust, meta.Signer, meta.Checksum
+			if !meta.InstalledAt.IsZero() {
+				inst.installedAt = meta.InstalledAt
+			}
 		}
 	}
 	if info.Config != nil {
@@ -279,7 +331,7 @@ func (m *Manager) startInstance(ctx context.Context, inst *instance) error {
 	if st != nil && (inst.info.hasPermission(PermStoreKV) || inst.info.hasPermission(PermStoreDocs)) {
 		storeSvc = newStoreService(st, inst.info.Name, inst.info.Store, inst.info.hasPermission(PermStoreKV), inst.info.hasPermission(PermStoreDocs))
 	}
-	rt, err := newRuntime(inst.info, m.cfg.timeouts(), m.logSink, inst.config, storeSvc)
+	rt, err := newRuntime(inst.info, m.cfg.timeouts(), m.logSink, inst.config, storeSvc, m.HostInfo, m.accountService)
 	if err != nil {
 		return err
 	}
@@ -333,13 +385,32 @@ func (m *Manager) persistMeta(ctx context.Context, inst *instance) {
 	if inst.enabled {
 		state = "enabled"
 	}
+	source := inst.source
+	if source == "" {
+		source = "manual"
+	}
 	if err := st.UpsertPluginMeta(ctx, PluginMetaRecord{
 		Name: inst.info.Name, Version: inst.info.Version, HookAPI: inst.info.HookAPI,
 		Runtime: inst.info.Runtime, Manifest: manifest, Config: cfg,
-		SchemaVersion: inst.info.configSchemaVersion(), Source: "manual",
+		SchemaVersion: inst.info.configSchemaVersion(), Source: source,
+		Trust: inst.trust, Signer: inst.signer, Checksum: inst.checksum,
 		State: state, LastError: inst.lastErr, InstalledAt: inst.installedAt, UpdatedAt: inst.updatedAt,
 	}); err != nil {
 		log.Printf("plugin: persist meta %s: %v", inst.info.Name, err)
+	}
+}
+
+// setProvenance records how the current version arrived (market/upload/manual)
+// and its signature trust level, then mirrors it to plugin_meta.
+func (m *Manager) setProvenance(ctx context.Context, name, source, trust, signer, checksum string) {
+	m.mu.Lock()
+	inst := m.instances[name]
+	if inst != nil {
+		inst.source, inst.trust, inst.signer, inst.checksum = source, trust, signer, checksum
+	}
+	m.mu.Unlock()
+	if inst != nil {
+		m.persistMeta(ctx, inst)
 	}
 }
 
@@ -404,6 +475,7 @@ func (m *Manager) Disable(ctx context.Context, name string) error {
 	inst.state = "disabled"
 	inst.health = "disabled"
 	inst.updatedAt = time.Now()
+	m.refreshHostInfoLocked()
 	m.mu.Unlock()
 	if rt != nil {
 		rt.close()
@@ -485,6 +557,7 @@ func (m *Manager) replaceInstance(name string, next *instance) {
 	}
 	next.updatedAt = time.Now()
 	m.instances[name] = next
+	m.refreshHostInfoLocked()
 	m.mu.Unlock()
 	if old != nil && old.rt != nil && old.rt != next.rt {
 		old.rt.close()

@@ -47,6 +47,7 @@ type manifestFile struct {
 	Store     *StoreSpec    `json:"store,omitempty"`
 	Routes    []RouteSpec   `json:"routes,omitempty"`
 	UI        *UISpec       `json:"ui,omitempty"`
+	Media     *MediaSpec    `json:"media,omitempty"`
 	Requires  *RequiresSpec `json:"requires,omitempty"`
 	Conflicts []string      `json:"conflicts,omitempty"`
 
@@ -82,9 +83,11 @@ var knownPermissions = map[string]bool{
 	PermUIPage:            true,
 	PermUISlot:            true,
 	PermUIAssets:          true,
+	PermUIForms:           true,
 	PermHTTPRoutesSession: true,
 	PermHTTPRoutesAdmin:   true,
 	PermHTTPRoutesSuper:   true,
+	PermHTTPRoutesBearer:  true,
 	PermNetHTTP:           true,
 	PermMailSend:          true,
 	PermScheduleJobs:      true,
@@ -94,6 +97,10 @@ var knownPermissions = map[string]bool{
 	PermAuditWrite:        true,
 	PermEventsSubscribe:   true,
 	PermAuthGuards:        true,
+	PermMediaAvatar:       true,
+	PermAccountRead:       true,
+	PermPlayersRead:       true,
+	PermPlayersWrite:      true,
 }
 
 // loadManifest reads and validates <dir>/plugin.json. dirName is the parent
@@ -197,6 +204,7 @@ func validate(raw manifestFile, dir, dirName string) (Info, error) {
 			Store:       raw.Store,
 			Routes:      raw.Routes,
 			UI:          raw.UI,
+			Media:       raw.Media,
 			Requires:    raw.Requires,
 			Conflicts:   raw.Conflicts,
 		},

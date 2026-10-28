@@ -45,6 +45,11 @@ func (rt *runtime) OnAuthPhase(fn func(context.Context, AuthPhaseEvent) error, _
 	return nil
 }
 
+func (rt *runtime) OnAvatarFilter(fn func(context.Context, *AvatarFilter) error, _ HostOptions) error {
+	rt.hooks.avatar = append(rt.hooks.avatar, timed[avatarHookFn]{fn: fn})
+	return nil
+}
+
 // RegisterRoute is JS-only in v1: Go callers use Manager.Bus for host-level
 // hooks, while plugin routes come from skin.route inside the entrypoint.
 func (rt *runtime) RegisterRoute(_ RouteRegistration) error {
@@ -88,6 +93,13 @@ func (b goBus) OnAuthPhase(fn func(context.Context, AuthPhaseEvent) error, opts 
 	b.m.mu.Lock()
 	defer b.m.mu.Unlock()
 	b.m.extra.auth = append(b.m.extra.auth, timed[authHookFn]{fn, clampTimeout(opts.TimeoutMS, b.m.cfg.AuthTimeout)})
+	return nil
+}
+
+func (b goBus) OnAvatarFilter(fn func(context.Context, *AvatarFilter) error, opts HostOptions) error {
+	b.m.mu.Lock()
+	defer b.m.mu.Unlock()
+	b.m.extra.avatar = append(b.m.extra.avatar, timed[avatarHookFn]{fn, clampTimeout(opts.TimeoutMS, b.m.cfg.AuthTimeout)})
 	return nil
 }
 

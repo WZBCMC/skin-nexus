@@ -194,5 +194,5 @@ func (m *Manager) MarketInstall(ctx context.Context, name string, consent bool) 
 	if !strings.EqualFold(hex.EncodeToString(sum[:]), pkg.Dist.SHA256) {
 		return nil, errors.New("market artifact sha256 mismatch")
 	}
-	return m.InstallBytes(ctx, raw, consent, "market")
+	return m.InstallBytes(ctx, raw, InstallOptions{Consent: consent, Source: "market"})
 }

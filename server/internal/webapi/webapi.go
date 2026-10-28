@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"regexp"
@@ -20,6 +21,7 @@ import (
 	"time"
 
 	"skin-nexus/server/internal/accesslog"
+	"skin-nexus/server/internal/account"
 	"skin-nexus/server/internal/announce"
 	"skin-nexus/server/internal/auth"
 	"skin-nexus/server/internal/plugin"
@@ -71,10 +73,16 @@ type Backend struct {
 	ProfileFilter     func(ctx context.Context, p *plugin.UserProfileFilter)
 	OnTextureUploaded func(ctx context.Context, e plugin.TextureUploadedEvent)
 	OnUserLifecycle   func(ctx context.Context, e plugin.UserLifecycleEvent)
+	// Account is the shared character/texture service (nil = legacy paths off).
+	Account *account.Service
 	// v2 generic events/guards (nil = no plugins).
 	CheckGuard func(ctx context.Context, kind string, p plugin.EventPayload) error
 	OnEvent    func(ctx context.Context, kind string, p plugin.EventPayload)
 	PluginUI   func() []plugin.UI
+	// PluginHostInfo feeds capability/slot discovery to the SPA (nil = none).
+	PluginHostInfo func() plugin.HostInfo
+	// PluginFormData validates host-rendered plugin form fields (nil = none).
+	PluginFormData func(formID string, data map[string]any) (map[string]any, error)
 
 	// union is the MUA Union hub client (nil or disabled -> no /api/v1/union/*
 	// routes exist at all: zero surface for non-alliance deployments).
@@ -93,6 +101,89 @@ func (b *Backend) emitEvent(ctx context.Context, kind string, p plugin.EventPayl
 	if b.OnEvent != nil {
 		b.OnEvent(ctx, kind, p)
 	}
+}
+
+// pluginFormData decodes {"<plugin>":{...}} and validates it against enabled
+// plugins that declare formID. An empty payload still returns defaults/errors
+// so required plugin fields hold for API clients too.
+func (b *Backend) pluginFormData(formID string, raw map[string]json.RawMessage) (map[string]any, error) {
+	if b.PluginFormData == nil {
+		return nil, nil
+	}
+	data := make(map[string]any, len(raw))
+	for name, v := range raw {
+		var val any
+		if err := json.Unmarshal(v, &val); err != nil {
+			return nil, &plugin.FormFieldError{Plugin: name, Message: "invalid JSON"}
+		}
+		data[name] = val
+	}
+	return b.PluginFormData(formID, data)
+}
+
+func (b *Backend) pluginFormDataJSON(formID, rawJSON string) (map[string]any, error) {
+	if b.PluginFormData == nil {
+		return nil, nil
+	}
+	if len(rawJSON) > plugin.MaxPluginFormBytes {
+		return nil, &plugin.FormFieldError{Message: "pluginData is too large"}
+	}
+	raw := map[string]json.RawMessage{}
+	if strings.TrimSpace(rawJSON) != "" {
+		if err := json.Unmarshal([]byte(rawJSON), &raw); err != nil {
+			return nil, &plugin.FormFieldError{Message: "pluginData must be a JSON object"}
+		}
+	}
+	return b.pluginFormData(formID, raw)
+}
+
+func writePluginFormError(w http.ResponseWriter, err error) {
+	var fe *plugin.FormFieldError
+	if errors.As(err, &fe) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": fe.Error(), "plugin": fe.Plugin, "field": fe.Field,
+		})
+		return
+	}
+	writeErr(w, http.StatusBadRequest, err.Error())
+}
+
+// writeAccountErr maps the shared service's stable codes to the legacy web
+// status codes so existing clients see the same behavior.
+func writeAccountErr(w http.ResponseWriter, err *account.Error) {
+	status := http.StatusInternalServerError
+	switch err.Code {
+	case account.CodeNotFound, account.CodeLibraryNotFnd:
+		status = http.StatusNotFound
+	case account.CodeLimit:
+		status = http.StatusForbidden
+	case account.CodeNameTaken:
+		status = http.StatusConflict
+	case account.CodeInvalidName, account.CodeInvalid, account.CodeTypeMismatch:
+		status = http.StatusBadRequest
+	case account.CodeTooLarge:
+		status = http.StatusRequestEntityTooLarge
+	case account.CodeNotOwned, account.CodeForbidden:
+		status = http.StatusForbidden
+	}
+	writeErr(w, status, err.Message)
+}
+
+// SyncProfileCreate announces a new profile to the Union hub, async and
+// best-effort (shared by the web handler and the account service).
+func (b *Backend) SyncProfileCreate(ctx context.Context, uuid, name string) {
+	if b.union == nil || !b.union.Enabled() {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := b.union.SyncProfileCreate(ctx, uuid, name); err != nil {
+			b.Store.InsertAudit(context.Background(), 0, "union_sync_create_failed",
+				map[string]interface{}{"uuid": uuid, "name": name, "error": err.Error()})
+			log.Printf("union sync create failed uuid=%s name=%s: %v", uuid, name, err)
+		}
+	}()
 }
 
 // webAccessLog records a web-side entry with the request's IP/UA attached
@@ -282,15 +373,24 @@ func randomToken() string {
 //   - mail_configured: smtpConfig != nil (same resolution as forgot: panel
 //     option wins over env default). false → the register email field and
 //     the whole forgot-password flow are unavailable in the UI.
-// handlePluginUI exposes enabled plugin pages/slots/i18n. It is public and
-// contains no secrets; pages are filtered by area/permission client-side and
-// the backend still enforces route tiers.
+//
+// handlePluginUI exposes enabled plugin pages/slots/i18n plus the host's
+// additive capability list. It is public and contains no secrets; pages are
+// filtered by area/permission client-side and the backend still enforces
+// route tiers.
 func (b *Backend) handlePluginUI(w http.ResponseWriter, r *http.Request) {
 	list := []plugin.UI{}
 	if b.PluginUI != nil {
 		list = b.PluginUI()
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"plugins": list})
+	resp := map[string]interface{}{"plugins": list}
+	if b.PluginHostInfo != nil {
+		info := b.PluginHostInfo()
+		resp["capabilities"] = info.Capabilities
+		resp["slots"] = info.Slots
+		resp["hostVersion"] = info.Version
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (b *Backend) handleSiteConfig(w http.ResponseWriter, r *http.Request) {
@@ -307,6 +407,8 @@ func (b *Backend) handleRegister(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 		// invitationCode is the legacy field name (blessing plugin register form).
 		InvitationCode string `json:"invitationCode"`
+		// PluginData carries host-rendered plugin fields keyed by plugin name.
+		PluginData map[string]json.RawMessage `json:"pluginData"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid JSON")
@@ -339,8 +441,17 @@ func (b *Backend) handleRegister(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	pluginData, perr := b.pluginFormData("auth.register", req.PluginData)
+	if perr != nil {
+		writePluginFormError(w, perr)
+		return
+	}
+	guardData := map[string]any{"email": req.Email, "nickname": req.Nickname}
+	if len(pluginData) > 0 {
+		guardData["pluginData"] = pluginData
+	}
 	if err := b.checkGuard(r.Context(), "user.registration.check", plugin.EventPayload{
-		IP: ygg.ClientIP(r), Data: map[string]any{"email": req.Email, "nickname": req.Nickname},
+		IP: ygg.ClientIP(r), Data: guardData,
 	}); err != nil {
 		b.webAccessLog(r, accesslog.Entry{Kind: accesslog.WebRegister,
 			Outcome: accesslog.OutcomeDenied, Who: req.Nickname, Detail: "plugin_guard"})
@@ -386,8 +497,13 @@ func (b *Backend) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if b.OnUserLifecycle != nil {
 		b.OnUserLifecycle(r.Context(), plugin.UserLifecycleEvent{Kind: "registered", UserID: uid})
 	}
+	evData := map[string]any{}
+	if len(pluginData) > 0 {
+		evData["pluginData"] = pluginData
+	}
 	b.emitEvent(r.Context(), "user.registered", plugin.EventPayload{
 		UserID: uid, PlayerName: req.Nickname, IP: ygg.ClientIP(r),
+		Data: evData,
 	})
 	writeJSON(w, http.StatusCreated, map[string]interface{}{"id": uid, "nickname": req.Nickname})
 }
@@ -621,57 +737,26 @@ func (b *Backend) handleUploadTexture(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
-	// Admin upload-size knob (blessing max_upload_file_size, KB; default
-	// 1024) — clamped to the pipeline's hard anti-bomb ceiling, never a
-	// bypass of it.
-	if limitKB := b.Store.MaxUploadKB(r.Context(), texture.MaxUploadBytes>>10); hdr.Size > int64(limitKB)<<10 {
-		writeErr(w, http.StatusRequestEntityTooLarge, "文件超过上传大小上限（"+strconv.Itoa(limitKB)+" KB）")
+	data, err := io.ReadAll(io.LimitReader(file, texture.MaxUploadBytes+1))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "read upload failed")
 		return
 	}
-	// Optional texture naming rule (blessing texture_name_regexp; empty =
-	// no check). Applies to the description field when supplied.
 	desc := strings.TrimSpace(r.FormValue("description"))
-	if desc != "" {
-		if re, _, _ := b.Store.GetOption(r.Context(), "texture_name_regexp"); re != "" {
-			if !regexp.MustCompile(re).MatchString(desc) {
-				writeErr(w, http.StatusBadRequest, "材质备注不符合命名规则")
-				return
-			}
-		}
-	}
-
-	if err := b.checkGuard(r.Context(), "texture.upload.check", plugin.EventPayload{
-		UserID: uid, Type: string(typ), IP: ygg.ClientIP(r),
-		Data: map[string]any{"filename": hdr.Filename},
-	}); err != nil {
-		writeErr(w, http.StatusForbidden, err.Error())
+	pluginData, perr := b.pluginFormDataJSON("texture.upload", r.FormValue("pluginData"))
+	if perr != nil {
+		writePluginFormError(w, perr)
 		return
 	}
-	res, err := texture.Process(file, typ, r.FormValue("model"))
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := b.Textures.Save(res); err != nil {
-		writeErr(w, http.StatusInternalServerError, "save failed")
-		return
-	}
-	tid, err := b.Store.AddTexture(r.Context(), uid, string(typ), res.Hash, res.Model, desc)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "db error")
-		return
-	}
-	if b.OnTextureUploaded != nil {
-		// Fire-and-forget: a plugin failure must never 500 a committed row.
-		b.OnTextureUploaded(r.Context(), plugin.TextureUploadedEvent{
-			UserID: uid, Hash: res.Hash, Type: string(typ),
-		})
-	}
-	b.emitEvent(r.Context(), "texture.uploaded", plugin.EventPayload{
-		UserID: uid, Hash: res.Hash, Type: string(typ), PlayerName: hdr.Filename,
+	v, _, aerr := b.Account.UploadTexture(r.Context(), uid, string(typ), r.FormValue("model"), desc, data, account.CallMeta{
+		IP: ygg.ClientIP(r), Filename: hdr.Filename, PluginData: pluginData,
 	})
+	if aerr != nil {
+		writeAccountErr(w, aerr)
+		return
+	}
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
-		"id": tid, "type": typ, "hash": res.Hash, "url": b.textureURL(r.Context(), res.Hash, string(typ)),
+		"id": v.ID, "type": v.Type, "hash": v.Hash, "url": b.textureURL(r.Context(), v.Hash, v.Type),
 	})
 }
 
@@ -693,10 +778,24 @@ func (b *Backend) handleListPlayers(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "not logged in")
 		return
 	}
-	players, err := b.Store.PlayersByUID(r.Context(), uid)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "db error")
+	rows, aerr := b.Account.ListPlayers(r.Context(), uid)
+	if aerr != nil {
+		writeAccountErr(w, aerr)
 		return
+	}
+	players := make([]ygg.Player, 0, len(rows))
+	for _, p := range rows {
+		lp := ygg.Player{
+			ID: p.ID, UID: p.UID, Name: p.Name, UUID: p.UUID,
+			SkinModel: p.SkinModel, SkinHash: p.SkinHash, CapeHash: p.CapeHash,
+		}
+		if p.SkinHash != "" {
+			lp.SkinURL = b.Store.TextureURL(p.SkinHash)
+		}
+		if p.CapeHash != "" {
+			lp.CapeURL = b.Store.TextureURL(p.CapeHash)
+		}
+		players = append(players, lp)
 	}
 	ctx := r.Context()
 	for i := range players {
@@ -735,53 +834,16 @@ func (b *Backend) handleCreatePlayer(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	req.Name = strings.TrimSpace(req.Name)
-	// Configurable name rule group (blessing parity: player_name_rule +
-	// custom regexp + length bounds; default official 3-16). Only NEW
-	// writes are validated — imported legacy names stay as-is.
-	if err := b.Store.ValidatePlayerName(r.Context(), req.Name); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+	v, created, aerr := b.Account.CreatePlayer(r.Context(), uid, req.Name, account.CallMeta{IP: ygg.ClientIP(r)})
+	if aerr != nil {
+		writeAccountErr(w, aerr)
 		return
 	}
-	// Per-user character limit (review P1: users.player_limit was never
-	// enforced — accounts could create unlimited profiles).
-	limit := b.MaxChars
-	if n, err := b.Store.UserPlayerLimit(r.Context(), uid); err == nil && n > 0 {
-		limit = n
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
 	}
-	if existing, err := b.Store.PlayersByUID(r.Context(), uid); err == nil && len(existing) >= limit {
-		writeErr(w, http.StatusForbidden, "角色数已达上限")
-		return
-	}
-	pid, uuid, err := b.Store.CreatePlayer(r.Context(), uid, req.Name)
-	if err != nil {
-		writeErr(w, http.StatusConflict, "角色名已被占用")
-		return
-	}
-	b.emitEvent(r.Context(), "player.added", plugin.EventPayload{
-		UserID: uid, PlayerID: pid, PlayerName: req.Name, UUID: uuid, IP: ygg.ClientIP(r),
-	})
-	// Union: announce the new profile to the hub (async, 5s bound, never
-	// blocks or fails the user response). Delete is now announced on the
-	// admin user-deletion path (adminapi.Backend.OnUserDeleted, wired in
-	// main.go); rename (SyncProfileRename) is still pending a product
-	// decision, so it stays unwired.
-	if b.union != nil && b.union.Enabled() {
-		name, u := req.Name, uuid
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			if err := b.union.SyncProfileCreate(ctx, u, name); err != nil {
-				// fresh ctx for the audit (MUA review P2: reusing the expired
-				// sync ctx made the compensation record fail on the exact
-				// timeout it exists for) + error logged, not just audited.
-				b.Store.InsertAudit(context.Background(), 0, "union_sync_create_failed",
-					map[string]interface{}{"uuid": u, "name": name, "error": err.Error()})
-				log.Printf("union sync create failed uuid=%s name=%s: %v", u, name, err)
-			}
-		}()
-	}
-	writeJSON(w, http.StatusCreated, map[string]interface{}{"id": pid, "name": req.Name, "uuid": uuid})
+	writeJSON(w, status, map[string]interface{}{"id": v.ID, "name": v.Name, "uuid": v.UUID})
 }
 
 // handleSetSkin / handleSetCape point a player at one of the user's textures.
@@ -806,43 +868,8 @@ func (b *Backend) setPlayerTexture(w http.ResponseWriter, r *http.Request, kind 
 		writeErr(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	// Ownership: texture must belong to this user.
-	if req.TextureID != 0 {
-		owner, err := b.Store.TextureOwner(r.Context(), req.TextureID)
-		if err != nil || owner != uid {
-			writeErr(w, http.StatusForbidden, "not yours")
-			return
-		}
-	}
-	// Ownership: player must belong to this user.
-	players, err := b.Store.PlayersByUID(r.Context(), uid)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "db error")
-		return
-	}
-	found := false
-	for i := range players {
-		if players[i].ID == pid {
-			found = true
-			break
-		}
-	}
-	if !found {
-		writeErr(w, http.StatusNotFound, "player not found")
-		return
-	}
-	skinTid, capeTid, err := b.Store.PlayerTextureIDs(r.Context(), pid)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "db error")
-		return
-	}
-	if kind == "skin" {
-		skinTid = req.TextureID
-	} else {
-		capeTid = req.TextureID
-	}
-	if err := b.Store.SetPlayerTextures(r.Context(), pid, skinTid, capeTid); err != nil {
-		writeErr(w, http.StatusInternalServerError, "db error")
+	if _, aerr := b.Account.SetTexture(r.Context(), uid, pid, kind, req.TextureID, account.CallMeta{IP: ygg.ClientIP(r)}); aerr != nil {
+		writeAccountErr(w, aerr)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "playerId": pid})

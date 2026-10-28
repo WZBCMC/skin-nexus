@@ -1,0 +1,132 @@
+package account
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"os"
+	"regexp"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"skin-nexus/server/internal/plugin"
+	"skin-nexus/server/internal/store"
+	"skin-nexus/server/internal/texture"
+)
+
+func (s *Service) textureView(ctx context.Context, id int64, typ, hash, model, desc string, at time.Time) TextureView {
+	v := TextureView{
+		ID: id, Type: typ, Hash: hash, Model: model, Description: desc,
+		URL: s.textureURL(hash), PreviewURL: s.previewURL(id, typ),
+	}
+	if typ == "skin" {
+		v.AvatarURL = s.avatarURL(hash)
+	}
+	if !at.IsZero() {
+		v.UploadedAt = at.UTC().Format(time.RFC3339)
+	}
+	if s.Textures != nil {
+		if p, err := s.Textures.Path(hash); err == nil {
+			if fi, err := os.Stat(p); err == nil {
+				v.Bytes = fi.Size()
+			}
+		}
+	}
+	return v
+}
+
+func (s *Service) textureRowView(ctx context.Context, row store.TextureRow) TextureView {
+	return s.textureView(ctx, row.ID, row.Type, row.Hash, row.Model, row.Description, row.UploadAt)
+}
+
+func (s *Service) ListTextures(ctx context.Context, uid int64) ([]TextureView, *Error) {
+	if e := s.ensure(); e != nil {
+		return nil, e
+	}
+	rows, err := s.Store.ListTextures(ctx, uid)
+	if err != nil {
+		return nil, errf(CodeInternal, "读取纹理失败", err)
+	}
+	out := make([]TextureView, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, s.textureRowView(ctx, row))
+	}
+	return out, nil
+}
+
+func (s *Service) UploadTexture(ctx context.Context, uid int64, typ, model, desc string, png []byte, meta CallMeta) (TextureView, bool, *Error) {
+	if e := s.ensure(); e != nil {
+		return TextureView{}, false, e
+	}
+	if typ != "skin" && typ != "cape" {
+		return TextureView{}, false, errf(CodeInvalid, "纹理类型必须是 skin 或 cape", nil)
+	}
+	if typ == "skin" {
+		if model == "" {
+			model = "default"
+		}
+		if model != "default" && model != "slim" {
+			return TextureView{}, false, errf(CodeInvalid, "皮肤模型必须是 default 或 slim", nil)
+		}
+	} else {
+		model = ""
+	}
+	desc = strings.TrimSpace(desc)
+	if utf8.RuneCountInString(desc) > 50 {
+		return TextureView{}, false, errf(CodeInvalid, "纹理备注最多 50 个字", nil)
+	}
+	if desc != "" {
+		if re, _, _ := s.Store.GetOption(ctx, "texture_name_regexp"); re != "" {
+			if rx, err := regexp.Compile(re); err == nil && !rx.MatchString(desc) {
+				return TextureView{}, false, errf(CodeInvalid, "材质备注不符合命名规则", nil)
+			}
+		}
+	}
+	limitKB := s.Store.MaxUploadKB(ctx, texture.MaxUploadBytes>>10)
+	if int64(len(png)) > int64(limitKB)<<10 {
+		return TextureView{}, false, errf(CodeTooLarge, "文件超过上传大小上限", texture.ErrTooLarge)
+	}
+	guardData := map[string]any{"filename": meta.Filename}
+	if len(meta.PluginData) > 0 {
+		guardData["pluginData"] = meta.PluginData
+	}
+	if ge := s.guard(ctx, "texture.upload.check", plugin.EventPayload{
+		UserID: uid, Type: typ, IP: meta.IP, Data: guardData,
+	}); ge != nil {
+		return TextureView{}, false, ge
+	}
+	res, err := texture.Process(bytes.NewReader(png), texture.Type(typ), model)
+	if err != nil {
+		if errors.Is(err, texture.ErrTooLarge) {
+			return TextureView{}, false, errf(CodeTooLarge, err.Error(), err)
+		}
+		return TextureView{}, false, errf(CodeInvalid, err.Error(), err)
+	}
+	if err := s.Textures.Save(res); err != nil {
+		return TextureView{}, false, errf(CodeInternal, "保存纹理失败", err)
+	}
+	if existing, ok, err := s.Store.TextureByOwnerHash(ctx, uid, typ, res.Hash); err == nil && ok {
+		return s.textureRowView(ctx, existing), false, nil
+	}
+	tid, err := s.Store.AddTexture(ctx, uid, typ, res.Hash, res.Model, desc)
+	if err != nil {
+		return TextureView{}, false, errf(CodeInternal, "写入纹理失败", err)
+	}
+	if s.OnTextureUploaded != nil {
+		s.OnTextureUploaded(ctx, plugin.TextureUploadedEvent{UserID: uid, Hash: res.Hash, Type: typ})
+	}
+	if s.EmitEvent != nil {
+		data := map[string]any{}
+		if len(meta.PluginData) > 0 {
+			data["pluginData"] = meta.PluginData
+		}
+		s.EmitEvent(ctx, "texture.uploaded", plugin.EventPayload{
+			UserID: uid, Hash: res.Hash, Type: typ, PlayerName: meta.Filename, Data: data,
+		})
+	}
+	s.audit(ctx, uid, meta, "", "plugin_texture_upload", map[string]any{
+		"tid": tid, "hash": res.Hash, "type": typ,
+	})
+	return s.textureView(ctx, tid, typ, res.Hash, res.Model, desc, time.Now()), true, nil
+}

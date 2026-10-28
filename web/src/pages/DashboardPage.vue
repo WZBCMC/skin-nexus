@@ -7,6 +7,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import MarkdownIt from 'markdown-it'
 import PluginSlot from '../components/plugin/PluginSlot.vue'
+import PluginFields from '../components/plugin/PluginFields.vue'
 import DOMPurify from 'dompurify'
 import SkinPreview from '../components/SkinPreview.vue'
 import { api, uploadTexture } from '../api.js'
@@ -27,6 +28,7 @@ const uploading = ref(false)
 const pageErr = ref('') // 页面级数据错误（不混进上传卡）
 const uploadErr = ref('')
 const uploadOk = ref('')
+const uploadPluginData = ref({})
 // 选中文件的本地预览（objectURL，随选择换新、卸载时回收）
 const previewURL = ref('')
 const dragging = ref(false)
@@ -140,7 +142,7 @@ async function doUpload() {
   if (!uploadFile.value) { uploadErr.value = t('dashboard.pickPng'); return }
   uploadErr.value = ''; uploadOk.value = ''; uploading.value = true
   try {
-    await uploadTexture(uploadType.value, uploadFile.value, uploadType.value === 'skin' ? uploadModel.value : '', '')
+    await uploadTexture(uploadType.value, uploadFile.value, uploadType.value === 'skin' ? uploadModel.value : '', '', uploadPluginData.value)
     uploadOk.value = t('dashboard.uploadSuccess')
     clearPreview()
     await load()
@@ -213,6 +215,7 @@ onBeforeUnmount(() => { if (previewURL.value) URL.revokeObjectURL(previewURL.val
         </div>
         <div class="error" v-if="uploadErr">{{ uploadErr }}</div>
         <div class="success" v-if="uploadOk">{{ uploadOk }}</div>
+        <PluginFields form="texture.upload" v-model="uploadPluginData" />
         <div class="muted">{{ t('dashboard.uploadHint') }}</div>
       </div>
       <div class="prev-box">
@@ -224,6 +227,7 @@ onBeforeUnmount(() => { if (previewURL.value) URL.revokeObjectURL(previewURL.val
         <span v-else class="muted">{{ t('dashboard.previewEmpty') }}</span>
       </div>
     </div>
+    <PluginSlot slot="texture.upload.after" />
   </div>
 
   <!-- textures -->

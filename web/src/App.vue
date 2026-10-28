@@ -14,6 +14,7 @@ import PlayersPage from './pages/PlayersPage.vue'
 import ProfilePage from './pages/ProfilePage.vue'
 import PluginPage from './components/plugin/PluginPage.vue'
 import PluginSlot from './components/plugin/PluginSlot.vue'
+import PluginFields from './components/plugin/PluginFields.vue'
 import { loadPluginUI, navPages, pageByPath } from './pluginUI.js'
 import { setLocale } from './i18n.js'
 import { setUnauthorizedHandler } from './session.js'
@@ -31,6 +32,8 @@ const view = ref('login')
 const extPath = ref('')
 const pendingExt = ref('')
 const authErr = ref('') // login + register cards
+// Host-rendered plugin fields on the register card (ui.forms "auth.register").
+const pluginFormData = ref({})
 
 
 // login form
@@ -259,7 +262,7 @@ async function doRegister() {
     authErr.value = t('auth.inviteRequiredErr'); return
   }
   try {
-    user.value = await api.register(email.value, nickname.value, password.value, invitationCode.value.trim())
+    user.value = await api.register(email.value, nickname.value, password.value, invitationCode.value.trim(), pluginFormData.value)
   } catch (e) { authErr.value = e.message; return }
   finishAuth()
 }
@@ -357,6 +360,7 @@ onMounted(() => { boot(); window.addEventListener('popstate', onPopState) })
         <button @click="doLogin">{{ t('common.login') }}</button>
         <button class="secondary" @click="view = 'register'">{{ t('common.register') }}</button>
       </div>
+      <PluginSlot slot="auth.login.after" />
     </div>
 
     <!-- REGISTER -->
@@ -374,11 +378,13 @@ onMounted(() => { boot(); window.addEventListener('popstate', onPopState) })
         <label :class="{ required: inviteIsRequired }">{{ inviteIsRequired ? t('auth.invitationCodeRequired') : t('auth.invitationCode') }}</label>
         <input v-model="invitationCode" @keyup.enter="doRegister" />
       </template>
+      <PluginFields form="auth.register" v-model="pluginFormData" />
       <div class="error" v-if="authErr">{{ authErr }}</div>
       <div class="row" style="margin-top: 16px;">
         <button @click="doRegister">{{ t('common.register') }}</button>
         <button class="secondary" @click="view = 'login'">{{ t('auth.toLogin') }}</button>
       </div>
+      <PluginSlot slot="auth.register.after" />
     </div>
 
     <!-- FORGOT PASSWORD (A1 找回密码) -->

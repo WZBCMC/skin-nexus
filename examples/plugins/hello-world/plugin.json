@@ -1,0 +1,8 @@
+{
+  "name": "hello-world",
+  "version": "1.0.0",
+  "hookApi": 2,
+  "entrypoint": "index.js",
+  "title": "Hello World",
+  "description": "Minimal zero-permission plugin: writes one log line on load."
+}
