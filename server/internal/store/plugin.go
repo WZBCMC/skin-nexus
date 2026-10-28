@@ -375,7 +375,8 @@ func (m *Mysql) DeletePluginData(ctx context.Context, plugin string) error {
 		`DELETE FROM plugin_docs WHERE plugin=?`,
 		`DELETE FROM plugin_secrets WHERE plugin=?`,
 		`DELETE FROM plugin_migrations WHERE plugin=?`,
-		`DELETE FROM plugin_meta WHERE plugin=?`,
+		`DELETE FROM plugin_install_tx WHERE plugin=?`,
+		`DELETE FROM plugin_meta WHERE name=?`,
 	} {
 		if _, err := tx.ExecContext(ctx, q, plugin); err != nil {
 			return err

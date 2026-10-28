@@ -141,3 +141,18 @@ func (p pluginStore) PluginMigrationLatest(ctx context.Context, name string) (in
 func (p pluginStore) RecordPluginMigration(ctx context.Context, name string, version int) error {
 	return p.st.RecordPluginMigration(ctx, name, version)
 }
+
+func (p pluginStore) DeletePluginData(ctx context.Context, name string) error {
+	return p.st.DeletePluginData(ctx, name)
+}
+
+func (p pluginStore) CreateInstallTx(ctx context.Context, tx plugin.InstallTxRecord) error {
+	return p.st.CreateInstallTx(ctx, store.InstallTxRecord{
+		ID: tx.ID, Plugin: tx.Plugin, Kind: tx.Kind, FromVersion: tx.FromVersion,
+		ToVersion: tx.ToVersion, Source: tx.Source, State: tx.State, Error: tx.Error, ActorUID: tx.ActorUID,
+	})
+}
+
+func (p pluginStore) UpdateInstallTx(ctx context.Context, id, state, errText string) error {
+	return p.st.UpdateInstallTx(ctx, id, state, errText)
+}

@@ -107,3 +107,113 @@ func checkMinServer(constraint, hostVersion string) (bool, error) {
 	}
 	return true, nil
 }
+
+// satisfiesVersion implements the dependency-constraint subset used by
+// manifests: comparators, ^, ~, *, x wildcards, and ||. Malformed constraints
+// fail closed (error), never "allow everything".
+func satisfiesVersion(version, constraint string) (bool, error) {
+	v, err := parseSemVersion(version)
+	if err != nil {
+		return false, err
+	}
+	for _, group := range strings.Split(constraint, "||") {
+		ok, err := satisfiesGroup(v, group)
+		if err != nil {
+			return false, err
+		}
+		if ok {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func satisfiesGroup(v semVersion, group string) (bool, error) {
+	tokens := strings.FieldsFunc(group, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t'
+	})
+	if len(tokens) == 0 {
+		return false, fmt.Errorf("empty constraint")
+	}
+	for _, tok := range tokens {
+		ok, err := satisfiesToken(v, tok)
+		if err != nil {
+			return false, err
+		}
+		if !ok {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func satisfiesToken(v semVersion, tok string) (bool, error) {
+	tok = strings.TrimSpace(tok)
+	if tok == "" {
+		return true, nil
+	}
+	if tok == "*" || strings.EqualFold(tok, "x") {
+		return true, nil
+	}
+	// 1.2.x / 1.x: treat as a minor/major range.
+	if strings.Contains(strings.ToLower(tok), "x") || strings.Contains(tok, "*") {
+		parts := strings.Split(strings.TrimLeft(tok, "=vV"), ".")
+		if len(parts) < 2 {
+			return true, nil
+		}
+		base, err := strconv.Atoi(parts[0])
+		if err != nil {
+			return false, fmt.Errorf("invalid wildcard %q", tok)
+		}
+		if len(parts) >= 2 && parts[1] != "x" && parts[1] != "X" && parts[1] != "*" {
+			minor, err := strconv.Atoi(parts[1])
+			if err != nil {
+				return false, fmt.Errorf("invalid wildcard %q", tok)
+			}
+			return v.major == base && v.minor == minor, nil
+		}
+		return v.major == base, nil
+	}
+	op := ""
+	for _, p := range []string{">=", "<=", ">", "<", "=", "^", "~"} {
+		if strings.HasPrefix(tok, p) {
+			op = p
+			tok = strings.TrimSpace(strings.TrimPrefix(tok, p))
+			break
+		}
+	}
+	want, err := parseSemVersion(tok)
+	if err != nil {
+		return false, fmt.Errorf("constraint %q: %w", tok, err)
+	}
+	c := v.compare(want)
+	switch op {
+	case "", "=":
+		return c == 0, nil
+	case ">=":
+		return c >= 0, nil
+	case "<=":
+		return c <= 0, nil
+	case ">":
+		return c > 0, nil
+	case "<":
+		return c < 0, nil
+	case "^":
+		if c < 0 {
+			return false, nil
+		}
+		if want.major > 0 {
+			return v.major == want.major, nil
+		}
+		if want.minor > 0 {
+			return v.major == 0 && v.minor == want.minor, nil
+		}
+		return v.major == 0 && v.minor == 0 && v.patch == want.patch, nil
+	case "~":
+		if c < 0 {
+			return false, nil
+		}
+		return v.major == want.major && v.minor == want.minor, nil
+	}
+	return false, fmt.Errorf("unsupported constraint %q", tok)
+}

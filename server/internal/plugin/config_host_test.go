@@ -153,7 +153,7 @@ func TestPluginConfigRequiredSecretMissingBlocksStart(t *testing.T) {
 
 func TestMinServerBlocksLoad(t *testing.T) {
 	root := t.TempDir()
-	writePlugin(t, root, "future", `{"name":"future","version":"1","hookApi":1,"entrypoint":"index.js","permissions":[],"minServer":">=9.0.0"}`, "skin.log('x');")
+	writePlugin(t, root, "future", `{"name":"future","version":"1","hookApi":2,"entrypoint":"index.js","permissions":[],"minServer":">=9.0.0"}`, "skin.log('x');")
 	host := NewHost(RuntimeConfig{Dir: root, HostVersion: "0.4.0"})
 	t.Cleanup(func() { _ = host.Close() })
 	if err := host.Load(root); err != nil {
@@ -167,7 +167,7 @@ func TestMinServerBlocksLoad(t *testing.T) {
 
 func TestActorReachesAudit(t *testing.T) {
 	root := t.TempDir()
-	writePlugin(t, root, "demo", `{"name":"demo","version":"1","hookApi":1,"entrypoint":"index.js","permissions":[]}`, "skin.log('x');")
+	writePlugin(t, root, "demo", `{"name":"demo","version":"1","hookApi":2,"entrypoint":"index.js","permissions":[]}`, "skin.log('x');")
 	st := newMemPlatformStore()
 	var got int64
 	host := NewHost(RuntimeConfig{Dir: root, HostVersion: "0.4.0", Store: st, Audit: func(ctx context.Context, _ string, _ map[string]any) {
@@ -189,7 +189,7 @@ func TestActorReachesAudit(t *testing.T) {
 
 func TestPluginMetaPersisted(t *testing.T) {
 	root := t.TempDir()
-	writePlugin(t, root, "demo", `{"name":"demo","version":"2.0.0","hookApi":1,"entrypoint":"index.js","permissions":[]}`, "skin.log('x');")
+	writePlugin(t, root, "demo", `{"name":"demo","version":"2.0.0","hookApi":2,"entrypoint":"index.js","permissions":[]}`, "skin.log('x');")
 	st := newMemPlatformStore()
 	host := NewHost(RuntimeConfig{Dir: root, HostVersion: "0.4.0", Store: st})
 	t.Cleanup(func() { _ = host.Close() })
@@ -219,7 +219,7 @@ func TestSecretBoxKeyFilePermissions(t *testing.T) {
 
 func TestEntrypointLoadTimeout(t *testing.T) {
 	root := t.TempDir()
-	writePlugin(t, root, "loop", `{"name":"loop","version":"1","hookApi":1,"entrypoint":"index.js","permissions":[]}`, "while (true) {}")
+	writePlugin(t, root, "loop", `{"name":"loop","version":"1","hookApi":2,"entrypoint":"index.js","permissions":[]}`, "while (true) {}")
 	host := NewHost(RuntimeConfig{Dir: root, HostVersion: "0.4.0", LoadTimeout: 100 * time.Millisecond})
 	t.Cleanup(func() { _ = host.Close() })
 	if err := host.Load(root); err != nil {

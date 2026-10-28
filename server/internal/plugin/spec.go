@@ -77,6 +77,7 @@ type RenderSpec struct {
 
 type RequiresSpec struct {
 	Plugins map[string]string `json:"plugins,omitempty"` // name -> semver constraint
+	Server  string            `json:"server,omitempty"`  // host version constraint
 }
 
 var (

@@ -10,15 +10,13 @@ package plugin
 
 import "context"
 
-// HookAPIVersion is the v1 hook contract major. HookAPIVersionV2 opts into
-// host services (config/store/UI/tiered routes) while keeping the v1 hooks.
-const (
-	HookAPIVersion   = 1
-	HookAPIVersionV2 = 2
-)
+// HookAPIVersion is the single, current plugin contract major. There is no
+// legacy version to support: this project has no pre-existing third-party
+// plugin ecosystem yet.
+const HookAPIVersion = 2
 
-// Manifest is the plugin's plugin.json. The v1 fields stay unchanged; the v2
-// blocks are optional and only honoured when HookAPI == HookAPIVersionV2.
+// Manifest is the plugin's plugin.json. All service blocks are optional, but
+// declaring one without its permission is a load error.
 type Manifest struct {
 	Name        string   `json:"name"`
 	Version     string   `json:"version"`
@@ -40,11 +38,9 @@ type Manifest struct {
 // Permission strings (declarative, audited on load).
 const (
 	PermReadProfiles  = "profiles:read"
-	PermEditProfiles  = "profiles:write"
 	PermReadTextures  = "textures:read"
 	PermEditTextures  = "textures:write"
 	PermRegisterRoute = "http:routes" // v1 public GET/HEAD routes
-	PermMenuEntry     = "admin:menu"  // reserved
 	PermAuthHooks     = "auth:hooks"  // covers join/hasJoined-adjacent hooks
 
 	PermConfig            = "config"
@@ -177,12 +173,10 @@ type RouteRegistration struct {
 	Handler func(ctx context.Context, req map[string]interface{}) (int, interface{})
 }
 
-// HostOptions carries per-hook policy decided by the host. FailClosed is
-// reserved for guard hooks (P1); filters and events stay fail-open so a
-// crashing plugin never blocks login or changes a response status.
+// HostOptions carries per-hook policy decided by the host. Filters and
+// events stay fail-open so a crashing plugin never changes a response status.
 type HostOptions struct {
-	TimeoutMS  int  // default 100; join/hasJoined hooks default 50
-	FailClosed bool // reserved for guards; not implemented for v1 filters
+	TimeoutMS int // default 100; join/hasJoined hooks default 50
 }
 
 // HookBus is the extension surface plugins program against.

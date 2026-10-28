@@ -72,11 +72,9 @@ type Info struct {
 // knownPermissions mirrors the contract's declarative permission strings.
 var knownPermissions = map[string]bool{
 	PermReadProfiles:      true,
-	PermEditProfiles:      true,
 	PermReadTextures:      true,
 	PermEditTextures:      true,
 	PermRegisterRoute:     true,
-	PermMenuEntry:         true,
 	PermAuthHooks:         true,
 	PermConfig:            true,
 	PermStoreKV:           true,
@@ -134,8 +132,8 @@ func validate(raw manifestFile, dir, dirName string) (Info, error) {
 	if raw.Version == "" || len(raw.Version) > maxVersionLen {
 		return Info{}, errors.New("version must be a non-empty string <= 64 chars")
 	}
-	if raw.HookAPI != HookAPIVersion && raw.HookAPI != HookAPIVersionV2 {
-		return Info{}, fmt.Errorf("hookApi %d unsupported (host supports %d and %d)", raw.HookAPI, HookAPIVersion, HookAPIVersionV2)
+	if raw.HookAPI != HookAPIVersion {
+		return Info{}, fmt.Errorf("hookApi %d unsupported (host supports %d)", raw.HookAPI, HookAPIVersion)
 	}
 	if !entryRe.MatchString(raw.Entrypoint) {
 		return Info{}, fmt.Errorf("invalid entrypoint %q", raw.Entrypoint)
@@ -161,12 +159,7 @@ func validate(raw manifestFile, dir, dirName string) (Info, error) {
 		return Info{}, errors.New("homepage must be an http(s) URL or empty")
 	}
 
-	hasV2Fields := raw.Runtime != "" || raw.Config != nil || raw.Store != nil ||
-		len(raw.Routes) > 0 || raw.UI != nil || raw.Requires != nil || len(raw.Conflicts) > 0
-	if raw.HookAPI == HookAPIVersion && hasV2Fields {
-		return Info{}, errors.New("hookApi 1 cannot declare v2 fields (set hookApi to 2)")
-	}
-	if raw.HookAPI == HookAPIVersionV2 && raw.Runtime == "" {
+	if raw.Runtime == "" {
 		raw.Runtime = "goja"
 	}
 
@@ -214,10 +207,8 @@ func validate(raw manifestFile, dir, dirName string) (Info, error) {
 		ScriptPath: script,
 		ScriptSize: lst.Size(),
 	}
-	if raw.HookAPI == HookAPIVersionV2 {
-		if err := validateV2Manifest(&info.Manifest, dir); err != nil {
-			return Info{}, err
-		}
+	if err := validateV2Manifest(&info.Manifest, dir); err != nil {
+		return Info{}, err
 	}
 	return info, nil
 }

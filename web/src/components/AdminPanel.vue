@@ -15,6 +15,7 @@ import StatusView from './admin/StatusView.vue'
 import UnionView from './admin/UnionView.vue'
 import AccessLogsView from './admin/AccessLogsView.vue'
 import PluginsView from './admin/PluginsView.vue'
+import MarketView from './admin/MarketView.vue'
 import PluginPage from './plugin/PluginPage.vue'
 import { loadPluginUI, navPages } from '../pluginUI.js'
 
@@ -32,6 +33,7 @@ const nav = [
   { id: 'access', labelKey: 'admin.navAccess', comp: AccessLogsView },
   { id: 'union', labelKey: 'admin.navUnion', comp: UnionView },
   { id: 'plugins', labelKey: 'admin.navPlugins', comp: PluginsView },
+  { id: 'market', labelKey: 'admin.navMarket', comp: MarketView },
 ]
 const current = ref('dashboard')
 const currentComp = shallowRef(DashboardView)

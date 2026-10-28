@@ -5,7 +5,7 @@
 > 后由管理面板启用即生效。
 >
 > 宿主实现：`server/internal/plugin/`（校验规则以代码为准，本规范与代码逐项对齐）。
-> v1 插件（`hookApi: 1`）保持兼容；v2 是增量能力，不会破坏已有插件。
+> 当前只有**单一插件 API 版本**（`hookApi: 2`）。项目尚无存量第三方生态，不维护旧版兼容层。
 
 ## 1. 信任模型与安全边界
 
@@ -30,7 +30,25 @@
 - 放入目录后**重载或重启**才会被发现（宿主进程内一次加载）。
 - 管理面板「插件」页可启用/停用/重载、编辑配置、查看健康/路由/最近日志。
 - 修改入口 JS 或 UI 资源后必须**重载**（或重启）才生效。
-- v1/v2 均无 zip 安装与市场；P2 之后引入（见 §12）。
+- 推荐安装方式（P2 Core）：上传**签名 bundle zip**（含 `plugin.json`、`index.js`、`bundle.json`）。
+  宿主校验 Ed25519 签名 + 内容摘要后，staging 解压 → 原子替换 → 默认 disabled；
+  升级保留启停状态并保留上一版用于回滚。未签名包一律拒绝。
+- 安装状态在 `<data>/plugins/.state/`；手动放目录仍可用于开发，但不会获得签名校验/回滚。
+
+### 2.1 签名 bundle 格式
+
+```text
+player-notes_1.2.0.zip
+  plugin.json          # hookApi=2 清单
+  index.js
+  ui/...               # 可选
+  bundle.json          # {"name","version","keyId","signature"}
+```
+
+`bundle.json` 的 Ed25519 签名覆盖除它自身外的全部 zip 条目内容摘要（按路径排序）；
+`dist.sha256`（市场）覆盖 zip 字节，`bundle.json` 签名覆盖解压后的内容。两层都必须通过。
+管理员在「插件市场」上传/安装；未签名、签名错误、name/version 不一致、zip 越界一律拒绝。
+升级保留原启停状态，并保留上一版用于「回滚」；卸载默认保留插件数据。
 
 ## 3. plugin.json 字段
 
@@ -38,7 +56,7 @@
 |---|---|---|
 | `name` | ✅ | 唯一 ID，必须等于目录名；`^[a-z0-9][a-z0-9_-]{1,63}$` |
 | `version` | ✅ | 字符串，≤64 字符 |
-| `hookApi` | ✅ | `1`（v1 兼容）或 `2`（启用 v2 服务） |
+| `hookApi` | ✅ | 必须为 `2`（单一 API 版本） |
 | `entrypoint` | ✅ | 目录内单个 `.js` 文件名（拒绝 `..`/绝对路径/符号链接） |
 | `permissions` | ✅ | 声明的能力数组（见 §4）；未知权限直接拒绝加载 |
 | `runtime` | ⬜ | v2 目前只接受 `goja`（native/sidecar 为后续路线） |
@@ -62,7 +80,7 @@
 | `textures:read` | `onTextureURLFilter` |
 | `textures:write` | `onTextureUploaded` |
 | `auth:hooks` | `onUserLifecycle`、`onAuthPhase` |
-| `http:routes` | v1 公开 GET/HEAD；v2 public 路由 |
+| `http:routes` | public 路由 |
 | `http:routes:session` | v2 session 路由 |
 | `http:routes:admin` | v2 admin 路由 |
 | `http:routes:superadmin` | v2 superadmin 路由 |
@@ -74,7 +92,6 @@
 | `auth:guards` | `skin.guards.on` |
 | `net:http` / `mail:send` / `schedule:jobs` / `cli:commands` | P2 预留 |
 | `plugins:read` | `skin.plugins.list()`（P1 只读内省） |
-| `admin:menu` | 预留 |
 
 ## 5. 配置（`skin.config`）
 
@@ -157,7 +174,7 @@ skin.route("GET", "/notes", function (req) {
 - CSRF：`GET /api/plugins/<name>/_csrf` 获取 token（同时设置 `skin_csrf` cookie）；
   非 GET 的 session/admin 路由必须带 `X-CSRF-Token`。iframe bridge 会自动处理。
 - 错误体：宿主错误统一 `{error, message, code}`；插件返回的 JSON 原样透传。
-- v1 兼容：`hookApi: 1` 仍只允许公开 GET/HEAD，路径参数需 v2。
+- 所有路由必须先在 manifest `routes` 中声明，未声明即加载失败。
 
 ## 8. UI（`ui`）
 
@@ -213,7 +230,7 @@ skin.guards.on("user.registration.check", function (e) {
 - guard 不接收密码/cookie；deny 返回通用 403（错误体带插件提供的 message/code）。
 - 超管可在管理面板开启 `plugin_guards_bypass` 破窗（审计 + 横幅）；仅用于插件故障救急。
 
-## 10. v1 hook（兼容保留）
+## 10. 基础 hook
 
 ```js
 skin.hooks.onUserProfileFilter(fn, { timeoutMS })
@@ -224,15 +241,15 @@ skin.hooks.onAuthPhase(fn)
 skin.log(...args)
 ```
 
-返回语义不变：profile 返回 `{SKIN,CAPE}` 覆盖（空字符串删除、undefined 不改）；texture 返回字符串；
+返回语义：profile 返回 `{SKIN,CAPE}` 覆盖（空字符串删除、undefined 不改）；texture 返回字符串；
 事件返回值忽略；所有 hook 超时/异常 fail-open。过滤器严格在 `AssembleTextures` 签名之前执行。
 
 ## 11. 示例
 
 `examples/plugins/` 提供 6 个离线示例：
 
-- `texture-cdn`：v1 URL 改写；
-- `lifecycle-log`：v1 生命周期日志；
+- `texture-cdn`：纹理 URL 改写；
+- `lifecycle-log`：生命周期日志；
 - `config-greeter`：v2 配置 schema + 公开路由；
 - `nav-links`：v2 UI 页面 + 用户导航 + sandbox iframe；
 - `signup-guard`：v2 fail-closed 注册 guard；
@@ -242,11 +259,10 @@ skin.log(...args)
 
 ## 12. 非目标与后续路线
 
-- **P1（当前）**：配置/密钥、KV/集合、session/admin 路由、事件/guard、UI 页面/插槽/assets、管理面。
-- **P2**：出站 HTTP allowlist + SSRF 防护、邮件、Cron/CLI、zip 安装/升级/卸载、依赖/冲突、
-  checksum/签名/市场、主题 `themeApi` v2。
-- **P3**：sidecar 隔离运行时、第一方 Go 原生插件（AuthMe/论坛/云存储/微软验证）、SDK/类型/测试夹具。
+- **P2 Core（当前）**：签名 bundle 安装/升级/卸载/回滚、单源签名市场、依赖/冲突检查、能力 consent、后台市场页。
+- **后续按需**：多 registry、密钥轮换、插件级 HTTP/mail/cron/CLI、主题 v2、sidecar/native、评分/评论。
 - **不做**：插件直接访问数据库/宿主表/任意文件系统/任意网络；不允许第三方 Vue/Twig/HTML 注入主 SPA。
+- **兼容策略**：项目尚无存量第三方生态，只维护 `hookApi: 2`；不提供旧版/blessing 插件兼容层。
 
 ## 13. 给 AI 的提示词模板
 

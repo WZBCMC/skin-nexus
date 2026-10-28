@@ -1,7 +1,7 @@
 {
   "name": "lifecycle-log",
   "version": "1.0.0",
-  "hookApi": 1,
+  "hookApi": 2,
   "entrypoint": "index.js",
   "permissions": ["auth:hooks"],
   "title": "Lifecycle log",

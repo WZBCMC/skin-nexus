@@ -79,6 +79,24 @@ async function saveConfig() {
   }
 }
 
+async function rollback(p) {
+  actionError.value = ''
+  if (!window.confirm(t('admin.pluginsRollbackConfirm', { name: p.title || p.name }))) return
+  try {
+    await fetchJSON(`/api/admin/v1/plugins/${encodeURIComponent(p.name)}/rollback`, { method: 'POST' })
+    await load()
+  } catch (e) { actionError.value = e.message }
+}
+
+async function uninstall(p) {
+  actionError.value = ''
+  if (!window.confirm(t('admin.pluginsUninstallConfirm', { name: p.title || p.name }))) return
+  try {
+    await fetchJSON(`/api/admin/v1/plugins/${encodeURIComponent(p.name)}`, { method: 'DELETE' })
+    await load()
+  } catch (e) { actionError.value = e.message }
+}
+
 async function toggleBypass() {
   actionError.value = ''
   const next = !guardsBypassed.value
@@ -159,6 +177,8 @@ onMounted(async () => {
             <button v-if="!p.enabled" @click="act(p, 'enable')">{{ t('admin.pluginsEnable') }}</button>
             <button v-else class="secondary" @click="act(p, 'disable')">{{ t('admin.pluginsDisable') }}</button>
             <button class="secondary" style="margin-left: 6px;" @click="act(p, 'reload')">{{ t('admin.pluginsReload') }}</button>
+            <button class="secondary" style="margin-left: 6px;" @click="rollback(p)">{{ t('admin.pluginsRollback') }}</button>
+            <button class="danger-outline" style="margin-left: 6px;" @click="uninstall(p)">{{ t('admin.pluginsUninstall') }}</button>
           </td>
         </tr>
       </tbody>

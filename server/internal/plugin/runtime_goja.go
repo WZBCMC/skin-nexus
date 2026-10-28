@@ -120,11 +120,9 @@ func newRuntime(info Info, t timeouts, logSink func(string), cfg *configState, s
 	if rt.loadErr != nil {
 		return nil, rt.loadErr
 	}
-	if info.HookAPI == HookAPIVersionV2 {
-		for _, spec := range info.Routes {
-			if !rt.hasRoute(spec.Method, spec.Path) {
-				return nil, fmt.Errorf("declared route %s %s was not registered by the entrypoint", spec.Method, spec.Path)
-			}
+	for _, spec := range info.Routes {
+		if !rt.hasRoute(spec.Method, spec.Path) {
+			return nil, fmt.Errorf("declared route %s %s was not registered by the entrypoint", spec.Method, spec.Path)
 		}
 	}
 	return rt, nil
@@ -430,36 +428,20 @@ func (rt *runtime) regRoute(call goja.FunctionCall) goja.Value {
 		rt.loadErr = fmt.Errorf("invalid route path %q", rawPath)
 		return goja.Undefined()
 	}
-	if rt.info.HookAPI == HookAPIVersionV2 {
-		spec, found := findManifestRoute(rt.info.Routes, method, clean)
-		if !found {
-			rt.loadErr = fmt.Errorf("route %s %s is not declared in plugin.json", method, clean)
-			return goja.Undefined()
-		}
-		tier := RouteTier(spec.Tier)
-		if tier == "" {
-			tier = RouteTierPublic
-		}
-		if !routeTierPermissionOK(rt.info.Manifest, tier) {
-			rt.loadErr = fmt.Errorf("missing permission for route tier %q", tier)
-			return goja.Undefined()
-		}
-		rt.routes = append(rt.routes, routeEntry{method: method, path: clean, tier: tier, spec: spec, fn: cb, timeout: rt.defaults.route})
-	} else {
-		if method != "GET" && method != "HEAD" {
-			rt.loadErr = fmt.Errorf("route method %q not allowed (GET/HEAD only for hookApi 1)", method)
-			return goja.Undefined()
-		}
-		if strings.Contains(clean, "{") {
-			rt.loadErr = fmt.Errorf("route path params require hookApi 2")
-			return goja.Undefined()
-		}
-		if !rt.info.hasPermission(PermRegisterRoute) {
-			rt.loadErr = fmt.Errorf("missing permission %q for route", PermRegisterRoute)
-			return goja.Undefined()
-		}
-		rt.routes = append(rt.routes, routeEntry{method: method, path: clean, tier: RouteTierPublic, fn: cb, timeout: rt.defaults.route})
+	spec, found := findManifestRoute(rt.info.Routes, method, clean)
+	if !found {
+		rt.loadErr = fmt.Errorf("route %s %s is not declared in plugin.json", method, clean)
+		return goja.Undefined()
 	}
+	tier := RouteTier(spec.Tier)
+	if tier == "" {
+		tier = RouteTierPublic
+	}
+	if !routeTierPermissionOK(rt.info.Manifest, tier) {
+		rt.loadErr = fmt.Errorf("missing permission for route tier %q", tier)
+		return goja.Undefined()
+	}
+	rt.routes = append(rt.routes, routeEntry{method: method, path: clean, tier: tier, spec: spec, fn: cb, timeout: rt.defaults.route})
 	if len(rt.routes) > maxRoutesPerPlugin {
 		rt.loadErr = errors.New("too many routes")
 		return goja.Undefined()

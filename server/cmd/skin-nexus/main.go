@@ -37,6 +37,7 @@ import (
 	"skin-nexus/server/internal/publicapi"
 	"skin-nexus/server/internal/ratelimit"
 	"skin-nexus/server/internal/seo"
+	"skin-nexus/server/internal/signedpkg"
 	"skin-nexus/server/internal/store"
 	"skin-nexus/server/internal/texture"
 	"skin-nexus/server/internal/theme"
@@ -152,8 +153,19 @@ func main() {
 	} else {
 		pluginSecrets = box
 	}
+	var trustKeys signedpkg.Keyring
+	if cfg.PluginTrustKeys != "" {
+		if keys, err := signedpkg.ParseKeys(cfg.PluginTrustKeys); err != nil {
+			log.Printf("plugins: trust keys invalid: %v", err)
+		} else {
+			trustKeys = keys
+		}
+	}
 	pluginHost := plugin.NewHost(plugin.RuntimeConfig{
 		Dir:             cfg.PluginsDir,
+		StateDir:        cfg.PluginStateDir,
+		Keyring:         trustKeys,
+		MarketURL:       cfg.PluginMarketURL,
 		HostVersion:     version,
 		State:           st,
 		Store:           pluginStore{st: st},

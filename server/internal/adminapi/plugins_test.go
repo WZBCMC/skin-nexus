@@ -20,7 +20,7 @@ func newPluginBackend(t *testing.T) (*Backend, *plugin.Manager) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	manifest := `{"name":"demo","version":"1.0.0","hookApi":1,"entrypoint":"index.js","permissions":["textures:read"]}`
+	manifest := `{"name":"demo","version":"1.0.0","hookApi":2,"entrypoint":"index.js","permissions":["textures:read"]}`
 	if err := os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}

@@ -63,7 +63,7 @@ func newTestHost(t *testing.T, root string) *Manager {
 const cdnManifest = `{
   "name": "cdn",
   "version": "1.0.0",
-  "hookApi": 1,
+  "hookApi": 2,
   "entrypoint": "index.js",
   "permissions": ["textures:read", "http:routes"],
   "title": "CDN mirror",
@@ -74,9 +74,6 @@ const cdnScript = `
 skin.hooks.onTextureURLFilter(function (e) {
   if (e.type !== "skin") { return undefined; }
   return "https://cdn.example.com/textures/" + e.hash;
-});
-skin.route("GET", "/ping", function (req) {
-  return { status: 200, body: { pong: req.query.q || "none" } };
 });
 `
 
@@ -120,7 +117,13 @@ func TestLoadDefaultDisabledAndEnable(t *testing.T) {
 }
 
 func TestRouteDispatch(t *testing.T) {
-	root := putPlugin(t, "cdn", cdnManifest, cdnScript)
+	manifest := strings.Replace(cdnManifest, `"title": "CDN mirror"`, `"routes": [{"method": "GET", "path": "/ping", "tier": "public"}], "title": "CDN mirror"`, 1)
+	script := cdnScript + `
+skin.route("GET", "/ping", function (req) {
+  return { status: 200, body: { pong: req.query.q || "none" } };
+});
+`
+	root := putPlugin(t, "cdn", manifest, script)
 	m := newTestHost(t, root)
 	_ = m.Load(root)
 	_ = m.Enable(context.Background(), "cdn")

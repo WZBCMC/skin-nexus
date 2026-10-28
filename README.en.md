@@ -75,7 +75,7 @@ Measured on a 2-core / 3.5 GB production VPS: ~600 RPS landing, 5182 RPS texture
 
 **Appearance & content**
 - Theme packs (zero build: `theme.json` + CSS + optional JS) with an [AI prompt template](docs/theme-spec.md)
-- Plugin host v2 (goja): v1 hooks plus config/secrets, namespaced KV/collections, session/admin routes, events/guards, sandboxed iframe UI; super-admin lifecycle, fail-open; see [docs/plugin-spec.md](docs/plugin-spec.md)
+- Plugin platform v2 (goja): single hookApi 2 with config/secrets, namespaced data, tiered routes, events/guards, sandboxed iframe UI; P2 adds signed bundle install/upgrade/rollback and a single-source signed market; see [docs/plugin-spec.md](docs/plugin-spec.md)
 - zh-CN / en built in, language packs extensible
 - SEO: SSR landing and skin detail pages, sitemap, robots, optional site-wide noindex for staging
 
@@ -131,7 +131,7 @@ Most detailed docs are currently in Chinese.
 | Status | Item |
 |---|---|
 | ✅ Done | Phases 1–3: full Yggdrasil, OIDC passwordless, Union module, i18n / SEO / theme packs, migration toolchain, admin panel; production migration and cutover; v0.2.0 (password reset / Mojang fallback / ops logs / SEO content pages) |
-| 🔶 In progress | Plugin host v1 (goja runtime + admin panel, shipping with v0.3.0); real-device launcher acceptance (SJMCL and community launchers: OAuth → character select → join) |
+| 🔶 In progress | Plugin platform v2 (config/data/routes/events/UI) + P2 signed install/market; real-device launcher acceptance (SJMCL and community launchers: OAuth → character select → join) |
 | ⬜ Planned | Official-account binding (second Auth Source), email verification, plugin marketplace / sidecar isolation / first-party native plugins |
 
 ## Frozen compatibility contracts

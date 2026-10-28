@@ -133,12 +133,18 @@ func (b *Backend) Handler() http.Handler {
 		mux.HandleFunc("GET /api/admin/v1/plugins", b.auth(b.handlePluginsList))
 		mux.HandleFunc("GET /api/admin/v1/plugins/{name}/config", b.auth(b.handlePluginConfigGet))
 		mux.HandleFunc("POST /api/admin/v1/plugins/guards/bypass", b.auth(b.handlePluginGuardBypass))
+		mux.HandleFunc("POST /api/admin/v1/plugins/{name}/rollback", b.auth(b.handlePluginRollback))
+		mux.HandleFunc("DELETE /api/admin/v1/plugins/{name}", b.auth(b.handlePluginUninstall))
+		mux.HandleFunc("GET /api/admin/v1/market/catalog", b.auth(b.handleMarketCatalog))
+		mux.HandleFunc("POST /api/admin/v1/market/plan", b.auth(b.handleMarketPlan))
+		mux.HandleFunc("POST /api/admin/v1/market/install", b.auth(b.handleMarketInstall))
+		mux.HandleFunc("POST /api/admin/v1/market/upload", b.auth(b.handleMarketUpload))
 		mux.HandleFunc("PUT /api/admin/v1/plugins/{name}/config", b.auth(b.handlePluginConfigSave))
 		mux.HandleFunc("POST /api/admin/v1/plugins/{name}/{action}", b.auth(b.handlePluginAction))
 	}
 	// 1 MiB body cap (review B P2) — admin JSON endpoints included.
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Body != nil {
+		if r.Body != nil && r.URL.Path != "/api/admin/v1/market/upload" {
 			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		}
 		mux.ServeHTTP(w, r)

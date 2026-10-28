@@ -28,7 +28,7 @@ func writePlugin(t *testing.T, root, name, manifest, script string) string {
 const goodManifest = `{
   "name": "demo",
   "version": "1.0.0",
-  "hookApi": 1,
+  "hookApi": 2,
   "entrypoint": "index.js",
   "permissions": ["textures:read"],
   "title": "Demo",
@@ -44,7 +44,7 @@ func TestLoadManifestValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("valid manifest: %v", err)
 	}
-	if info.Name != "demo" || info.Version != "1.0.0" || info.HookAPI != 1 {
+	if info.Name != "demo" || info.Version != "1.0.0" || info.HookAPI != 2 {
 		t.Fatalf("parsed = %+v", info.Manifest)
 	}
 	if info.Title != "Demo" || info.Author != "YMZS" || info.Homepage != "https://example.com" {
@@ -69,7 +69,7 @@ func TestLoadManifestRejects(t *testing.T) {
 		{"name mismatch", "other", goodManifest, "x", nil},
 		{"bad name", "demo", strings.Replace(goodManifest, `"name": "demo"`, `"name": "Demo!"`, 1), "x", nil},
 		{"empty version", "demo", strings.Replace(goodManifest, `"1.0.0"`, `""`, 1), "x", nil},
-		{"hookApi mismatch", "demo", strings.Replace(goodManifest, `"hookApi": 1`, `"hookApi": 3`, 1), "x", nil},
+		{"hookApi mismatch", "demo", strings.Replace(goodManifest, `"hookApi": 2`, `"hookApi": 3`, 1), "x", nil},
 		{"entrypoint traversal", "demo", strings.Replace(goodManifest, `"index.js"`, `"../evil.js"`, 1), "x", nil},
 		{"entrypoint not js", "demo", strings.Replace(goodManifest, `"index.js"`, `"index.txt"`, 1), "x", nil},
 		{"unknown permission", "demo", strings.Replace(goodManifest, `"textures:read"`, `"kernel:panic"`, 1), "x", nil},

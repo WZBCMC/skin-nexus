@@ -10,8 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
+
+	"skin-nexus/server/internal/signedpkg"
 )
 
 // StateStore is the minimal options K/V surface the host needs to persist
@@ -35,6 +38,10 @@ type RuntimeConfig struct {
 	ClientIP        func(*http.Request) string
 	AccessLog       func(ctx context.Context, pluginName, method, path, ip string, status, ms int64, tier string, uid int64)
 
+	StateDir  string            // default <Dir>/.state
+	Keyring   signedpkg.Keyring // required for signed bundle install
+	MarketURL string            // signed static registry URL (empty = market off)
+
 	HookTimeout  time.Duration // default 100ms
 	AuthTimeout  time.Duration // default 50ms
 	RouteTimeout time.Duration // default 1s
@@ -56,6 +63,9 @@ func (c *RuntimeConfig) withDefaults() {
 	}
 	if c.SessionCookie == "" {
 		c.SessionCookie = "skin_session"
+	}
+	if c.StateDir == "" && c.Dir != "" {
+		c.StateDir = filepath.Join(c.Dir, ".state")
 	}
 }
 
@@ -100,6 +110,10 @@ type Manager struct {
 	done      chan struct{}
 	closeOnce sync.Once
 	limits    *routeLimits
+
+	marketMu      sync.Mutex
+	marketCache   *MarketRegistry
+	marketFetched time.Time
 }
 
 type eventItem struct {
@@ -161,7 +175,7 @@ func (m *Manager) Load(dir string) error {
 	ctx := context.Background()
 	count := 0
 	for _, e := range entries {
-		if !e.IsDir() {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
 		if count >= maxPlugins {

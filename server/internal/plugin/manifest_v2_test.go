@@ -56,7 +56,7 @@ func TestManifestV2Rejections(t *testing.T) {
 		json string
 		want string
 	}{
-		{"v1 with v2 field", `{"name":"notes","version":"1","hookApi":1,"entrypoint":"index.js","permissions":[],"config":{"schema":{"type":"object"}}}`, "hookApi 1 cannot declare v2"},
+		{"old hook api", `{"name":"notes","version":"1","hookApi":1,"entrypoint":"index.js","permissions":[]}`, "hookApi 1 unsupported"},
 		{"bad runtime", `{"name":"notes","version":"1","hookApi":2,"runtime":"php","entrypoint":"index.js","permissions":[]}`, "runtime"},
 		{"bad hook api", `{"name":"notes","version":"1","hookApi":3,"entrypoint":"index.js","permissions":[]}`, "hookApi 3"},
 		{"bad tier", `{"name":"notes","version":"1","hookApi":2,"entrypoint":"index.js","permissions":["http:routes:session"],"routes":[{"method":"GET","path":"/a","tier":"root"}]}`, "invalid tier"},
