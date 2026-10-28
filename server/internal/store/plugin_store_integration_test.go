@@ -3,7 +3,9 @@
 package store
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 )
@@ -25,7 +27,7 @@ func TestPluginStoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if meta.Version != "1.2.3" || meta.SchemaVersion != 3 || string(meta.Config) != `{"x":1}` {
+	if meta.Version != "1.2.3" || meta.SchemaVersion != 3 || !jsonEqual(meta.Config, []byte(`{"x":1}`)) {
 		t.Fatalf("meta = %+v", meta)
 	}
 	if err := m.UpdatePluginState(ctx, name, "loaded", ""); err != nil {
@@ -40,7 +42,7 @@ func TestPluginStoreRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg, err := m.GetPluginConfig(ctx, name)
-	if err != nil || string(cfg) != `{"x":2}` {
+	if err != nil || !jsonEqual(cfg, []byte(`{"x":2}`)) {
 		t.Fatalf("config=%s err=%v", cfg, err)
 	}
 
@@ -120,4 +122,12 @@ func TestPluginStoreRoundTrip(t *testing.T) {
 	if _, err := m.GetPluginMeta(ctx, name); err == nil {
 		t.Fatal("meta survived delete")
 	}
+}
+
+func jsonEqual(a, b []byte) bool {
+	var ab, bb bytes.Buffer
+	if json.Compact(&ab, a) != nil || json.Compact(&bb, b) != nil {
+		return false
+	}
+	return ab.String() == bb.String()
 }
