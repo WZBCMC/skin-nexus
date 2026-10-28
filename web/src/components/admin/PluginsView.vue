@@ -145,6 +145,9 @@ function provenanceTitle(p) {
     .filter(Boolean).join('\n')
 }
 
+function shownPerms(p) { return (p.permissions || []).slice(0, 5) }
+function morePerms(p) { return Math.max(0, (p.permissions || []).length - 5) }
+
 onMounted(async () => {
   await detectRole()
   readOnly.value = !isSuper.value
@@ -165,53 +168,50 @@ onMounted(async () => {
     <div class="error" v-if="actionError">{{ actionError }}</div>
 
     <p v-if="!plugins.length" class="muted">{{ t('admin.pluginsEmpty') }}</p>
-    <table v-else>
-      <thead>
-        <tr>
-          <th>{{ t('admin.colPluginName') }}</th>
-          <th>{{ t('admin.colVersion') }}</th>
-          <th>{{ t('admin.colSource') }}</th>
-          <th>{{ t('admin.colAuthor') }}</th>
-          <th>{{ t('admin.colPerms') }}</th>
-          <th>{{ t('admin.colState') }}</th>
-          <th>{{ t('admin.colHealth') }}</th>
-          <th>{{ t('admin.colRoutes') }}</th>
-          <th>{{ t('admin.colError') }}</th>
-          <th v-if="!readOnly">{{ t('admin.colActions') }}</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="p in plugins" :key="p.name">
-          <td>
+    <div v-else class="plugin-list">
+      <div v-for="p in plugins" :key="p.name" class="plugin-row">
+        <div class="plugin-info">
+          <div class="plugin-title-row">
             <strong>{{ p.title || p.name }}</strong>
-            <div class="muted">{{ p.description }}</div>
-            <button class="secondary" style="margin-top: 6px;" @click="openConfig(p)">{{ t('admin.pluginsConfig') }}</button>
-          </td>
-          <td>{{ p.version }}</td>
-          <td :title="provenanceTitle(p)">
-            <span class="badge" :style="p.trust && p.trust !== 'verified' ? 'color:var(--danger);border-color:var(--danger)' : ''">{{ trustText(p) }}</span>
-            <div class="muted">{{ sourceText(p) }}</div>
-          </td>
-          <td>{{ p.author || '—' }}</td>
-          <td>
-            <span class="badge" v-for="perm in p.permissions" :key="perm">{{ perm }}</span>
-          </td>
-          <td>
-            <span class="badge">{{ t('admin.state' + p.state.charAt(0).toUpperCase() + p.state.slice(1)) }}</span>
-          </td>
-          <td><span class="badge">{{ p.health || p.state }}</span></td>
-          <td class="muted">{{ p.routes || 0 }} route · {{ p.uiPages || 0 }} UI</td>
-          <td class="muted">{{ p.lastError || '—' }}</td>
-          <td v-if="!readOnly" class="nowrap">
+            <span class="badge">v{{ p.version }}</span>
+            <span class="badge" :style="p.trust && p.trust !== 'verified' ? 'color:var(--danger);border-color:var(--danger)' : ''"
+                  :title="provenanceTitle(p)">{{ trustText(p) }}</span>
+            <span class="muted">{{ sourceText(p) }}</span>
+          </div>
+          <div class="plugin-desc">{{ p.description }}</div>
+          <div class="plugin-meta">
+            <span><span class="meta-label">{{ t('admin.colAuthor') }}</span>{{ p.author || '—' }}</span>
+            <span>
+              <span class="meta-label">{{ t('admin.colState') }}</span>
+              <span class="badge">{{ t('admin.state' + p.state.charAt(0).toUpperCase() + p.state.slice(1)) }}</span>
+            </span>
+            <span>
+              <span class="meta-label">{{ t('admin.colHealth') }}</span>
+              <span class="badge" :class="{ 'badge-ok': (p.health || p.state) === 'ok' }">{{ p.health || p.state }}</span>
+            </span>
+            <span><span class="meta-label">{{ t('admin.colRoutes') }}</span>{{ p.routes || 0 }} · {{ p.uiPages || 0 }} UI</span>
+            <span v-if="p.lastError" class="error-text" :title="p.lastError">
+              <span class="meta-label">{{ t('admin.colError') }}</span>{{ p.lastError }}
+            </span>
+          </div>
+          <div class="plugin-perms">
+            <span class="meta-label">{{ t('admin.colPerms') }}</span>
+            <span class="badge" v-for="perm in shownPerms(p)" :key="perm">{{ perm }}</span>
+            <span v-if="morePerms(p)" class="badge" :title="(p.permissions || []).join(', ')">+{{ morePerms(p) }}</span>
+          </div>
+        </div>
+        <div class="plugin-actions">
+          <button class="secondary" @click="openConfig(p)">{{ t('admin.pluginsConfig') }}</button>
+          <template v-if="!readOnly">
             <button v-if="!p.enabled" @click="act(p, 'enable')">{{ t('admin.pluginsEnable') }}</button>
             <button v-else class="secondary" @click="act(p, 'disable')">{{ t('admin.pluginsDisable') }}</button>
-            <button class="secondary" style="margin-left: 6px;" @click="act(p, 'reload')">{{ t('admin.pluginsReload') }}</button>
-            <button class="secondary" style="margin-left: 6px;" @click="rollback(p)">{{ t('admin.pluginsRollback') }}</button>
-            <button class="danger-outline" style="margin-left: 6px;" @click="uninstall(p)">{{ t('admin.pluginsUninstall') }}</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+            <button class="secondary" @click="act(p, 'reload')">{{ t('admin.pluginsReload') }}</button>
+            <button class="secondary" @click="rollback(p)">{{ t('admin.pluginsRollback') }}</button>
+            <button class="danger-outline" @click="uninstall(p)">{{ t('admin.pluginsUninstall') }}</button>
+          </template>
+        </div>
+      </div>
+    </div>
 
     <div v-if="configTarget" class="card" style="margin-top: 16px;">
       <div class="row" style="justify-content: space-between; align-items: center;">
@@ -231,3 +231,36 @@ onMounted(async () => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.plugin-list { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.plugin-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-l);
+  background: var(--ink-3);
+  align-items: start;
+  transition: border-color var(--t-fast) var(--ease);
+}
+.plugin-row:hover { border-color: var(--line-strong); }
+.plugin-info { min-width: 0; }
+.plugin-title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.plugin-title-row strong { font-size: var(--fs-m); }
+.plugin-desc { margin: 6px 0 10px; color: var(--muted); font-size: var(--fs-s); line-height: 1.6; }
+.plugin-meta { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: var(--fs-xs); color: var(--muted); align-items: center; }
+.plugin-meta > span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.meta-label { color: var(--muted); opacity: .72; }
+.plugin-perms { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+.plugin-actions { display: flex; flex-wrap: wrap; gap: 8px; align-content: flex-start; justify-content: flex-end; max-width: 280px; }
+.plugin-actions .danger-outline { border-color: var(--danger); color: var(--danger); }
+.plugin-actions .danger-outline:hover { background: var(--danger); color: var(--on-danger); }
+.error-text { color: var(--danger); max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge-ok { color: var(--ok); border-color: var(--ok); }
+@media (max-width: 900px) {
+  .plugin-row { grid-template-columns: 1fr; }
+  .plugin-actions { justify-content: flex-start; max-width: none; }
+}
+</style>
