@@ -92,7 +92,7 @@ func TestPluginStoreRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	doc, err := m.GetPluginDoc(ctx, name, "notes", "n1")
-	if err != nil || string(doc.Doc) != `{"text":"hi"}` {
+	if err != nil || !jsonEqual(doc.Doc, []byte(`{"text":"hi"}`)) {
 		t.Fatalf("doc=%s err=%v", doc, err)
 	}
 	docs, err := m.ListPluginDocs(ctx, name, "notes", "n", 10)
