@@ -53,7 +53,8 @@
 
 插件在服务进程内的 goja VM 中运行，规范见 [`docs/plugin-spec.md`](docs/plugin-spec.md)（v2：配置/密钥、命名空间数据、三档路由、事件/guard、sandbox iframe UI）：
 
-- **契约冻结**：hook 形状与权限字符串以 `server/internal/plugin/contract.go` 为准，新增能力走 additive 版本；
+- **单一 API 版本**：插件只支持 `hookApi: 2`（项目尚无存量生态，不维护旧版/blessing 兼容层）；契约以 `server/internal/plugin/contract.go` 为准；
+- **签名安装**：市场/本地上传只接受 Ed25519 签名的 bundle；未签名包会被拒绝，详见 `docs/plugin-spec.md`；
 - 示例插件在 `examples/plugins/`（离线、无网络依赖），改动示例须保持 `go test ./internal/plugin/` 全绿；
 - 插件**不进主仓分发**（与主题包同口径）；对**规范本身**的改进欢迎 PR `docs/plugin-spec.md`。
 

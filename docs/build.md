@@ -118,3 +118,14 @@ cd web && npm ci && npm run build                              # 前端改动自
 ```
 
 改动 Yggdrasil 面必须额外跑 `go test ./internal/ygg/` 且不动契约断言；改动 union 包前先读该包 doc 注的冻结区说明（[`AGENTS.md`](../AGENTS.md) 铁律 1/6）。
+
+
+## 插件平台自检
+
+```bash
+cd server
+go test ./internal/plugin/ ./internal/signedpkg/ ./internal/outbound/
+go test -tags integration ./internal/store/   # 需 SKIN_TEST_DSN
+```
+
+插件市场/安装相关环境变量见 `docs/deploy.md`（`SKIN_PLUGIN_MARKET_URL`、`SKIN_PLUGIN_TRUST_KEYS`、`SKIN_PLUGIN_STATE_DIR`）。
