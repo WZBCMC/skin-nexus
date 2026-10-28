@@ -123,6 +123,7 @@ docker compose up -d
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | 贡献指南：翻译 / 主题包 / 代码与文档 |
 | [`AGENTS.md`](AGENTS.md) | 仓库地图、七条铁律与协作纪律（AI agent 首读） |
 | [`GOVERNANCE.md`](GOVERNANCE.md) · [`CITATION.cff`](CITATION.cff) | 治理结构（BDFL）与引用格式 |
+| [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) · [`SECURITY.md`](SECURITY.md) · [`ACCESSIBILITY.md`](ACCESSIBILITY.md) | 社区行为准则、漏洞报告流程、无障碍声明 |
 
 ## 路线图
 

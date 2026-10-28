@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞（私密报告）
+    url: https://github.com/YimingZhanshen/skin-nexus/security/advisories/new
+    about: 认证绕过、越权、沙箱逃逸、供应链等问题请走私密渠道，不要公开细节。
+  - name: 官方插件仓库
+    url: https://github.com/YimingZhanshen/skin-nexus-plugins/issues
+    about: 官方插件本身的问题、插件投稿与市场元数据请到插件仓库提交。
+  - name: 使用与部署文档
+    url: https://github.com/YimingZhanshen/skin-nexus/tree/main/docs
+    about: 部署、构建、迁移、插件与主题规范。

@@ -75,6 +75,9 @@ docker build -t skin-nexus:latest .   # 本地源码构建（离线/内网场景
 | web | `npm ci && npm run build` |
 | docker | 多阶段镜像推 GHCR：`ghcr.io/yimingzhanshen/skin-nexus:latest` 与 `:sha-<commit>`（GHA 缓存；仅 push main 触发推送，PR 构建不推镜像） |
 
+server/web 两个 job 启用 Go modules 与 npm 依赖缓存（`cache-dependency-path`），
+workflow 级 `concurrency` 会在同一 ref 有新推送时取消旧运行，避免排队浪费额度。
+
 **部署机推荐只拉不编**（compose 已默认 `pull_policy: always`）：
 
 ```bash

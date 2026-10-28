@@ -1,0 +1,89 @@
+name: Bug 报告
+description: 站内功能、Yggdrasil/OIDC、插件平台、迁移或部署异常
+title: "[bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先查 [`docs/CHANGELOG.md`](https://github.com/YimingZhanshen/skin-nexus/blob/main/docs/CHANGELOG.md)
+        与现有 issue，确认不是已知问题。
+        **安全漏洞请勿在此提交**，走 [私密报告](https://github.com/YimingZhanshen/skin-nexus/security/advisories/new)。
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: 部署方式
+      options:
+        - Docker Compose（GHCR 镜像）
+        - Docker Compose（本地构建）
+        - 源码运行
+        - 其他
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 镜像 tag、release tag 或 commit（`git rev-parse --short HEAD`）
+      placeholder: "sha-xxxxxxxx / v0.4.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: database
+    attributes:
+      label: 数据库
+      options:
+        - MySQL 8.0
+        - MySQL 5.7
+        - MariaDB
+        - 其他
+    validations:
+      required: false
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 现象
+      description: 实际发生了什么？影响哪些页面/接口/客户端？
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / 报错
+      description: 粘贴关键输出；**先脱敏**：删除 token、密码、邮箱、IP、玩家数据。
+      render: shell
+    validations:
+      required: false
+  - type: input
+    id: client
+    attributes:
+      label: 浏览器或客户端（界面问题）
+      placeholder: "Chrome 130 / SJMCL 2.x / authlib-injector"
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认
+      options:
+        - label: 我已搜索现有 issue，未发现重复
+          required: true
+        - label: 我已删除日志中的密钥、token 与个人隐私
+          required: true
+        - label: 这不是安全漏洞（安全漏洞走私密报告）
+          required: true
