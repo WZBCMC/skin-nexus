@@ -7,6 +7,8 @@ import (
 	"path"
 	"regexp"
 	"strings"
+
+	"skin-nexus/server/internal/marketfmt"
 )
 
 // ConfigSpec is the declarative config block. Schema is a JSON Schema subset
@@ -75,10 +77,7 @@ type RenderSpec struct {
 	Schema string `json:"schema,omitempty"`
 }
 
-type RequiresSpec struct {
-	Plugins map[string]string `json:"plugins,omitempty"` // name -> semver constraint
-	Server  string            `json:"server,omitempty"`  // host version constraint
-}
+type RequiresSpec = marketfmt.Requires
 
 var (
 	pageIDRe     = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)

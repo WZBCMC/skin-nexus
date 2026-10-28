@@ -128,8 +128,9 @@ func (b *Backend) handleMarketUpload(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<20+1024)
-	if err := r.ParseMultipartForm(64 << 20); err != nil {
+	maxUpload := b.plugins.Host.UploadMax()
+	r.Body = http.MaxBytesReader(w, r.Body, maxUpload+1<<20)
+	if err := r.ParseMultipartForm(maxUpload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "multipart parse failed"})
 		return
 	}
@@ -139,8 +140,8 @@ func (b *Backend) handleMarketUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, 64<<20+1))
-	if err != nil || len(data) > 64<<20 {
+	data, err := io.ReadAll(io.LimitReader(f, maxUpload+1))
+	if err != nil || int64(len(data)) > maxUpload {
 		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"error": "bundle too large"})
 		return
 	}

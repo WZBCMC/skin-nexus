@@ -113,6 +113,7 @@ func Load() (*Config, error) {
 		DataDir:         dataDir,
 		ThemesDir:       getenv("SKIN_THEMES_DIR", filepath.Join(dataDir, "themes")),
 		PluginsDir:      resolveDataPath("SKIN_PLUGINS_DIR", dataDir, "plugins"),
+		PluginStateDir:  getenv("SKIN_PLUGIN_STATE_DIR", ""),
 		PluginMarketURL: getenv("SKIN_PLUGIN_MARKET_URL", ""),
 		PluginTrustKeys: getenv("SKIN_PLUGIN_TRUST_KEYS", ""),
 		PluginUploadMax: int64(atoiDefault(getenv("SKIN_PLUGIN_UPLOAD_MAX", "67108864"), 67108864)),
@@ -121,6 +122,9 @@ func Load() (*Config, error) {
 	}
 	if c.PluginStateDir == "" {
 		c.PluginStateDir = filepath.Join(c.PluginsDir, ".state")
+	}
+	if c.PluginUploadMax <= 0 {
+		c.PluginUploadMax = 64 << 20
 	}
 	if c.DatabaseDSN == "" {
 		return nil, fmt.Errorf("config: SKIN_DATABASE_DSN is required")

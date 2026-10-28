@@ -5,15 +5,39 @@
   "entrypoint": "index.js",
   "title": "Config Greeter",
   "description": "v2 config schema + public route example",
-  "permissions": ["config", "http:routes"],
+  "permissions": [
+    "config",
+    "http:routes"
+  ],
   "config": {
     "schema": {
       "type": "object",
       "properties": {
-        "message": { "type": "string", "title": "Greeting", "default": "Hello from a plugin" },
-        "repeat": { "type": "integer", "title": "Repeat", "minimum": 1, "maximum": 5, "default": 1 }
+        "message": {
+          "type": "string",
+          "title": "Greeting",
+          "default": "Hello from a plugin"
+        },
+        "repeat": {
+          "type": "integer",
+          "title": "Repeat",
+          "minimum": 1,
+          "maximum": 5,
+          "default": 1
+        }
       }
     }
   },
-  "routes": [{ "method": "GET", "path": "/hello", "tier": "public" }]
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/hello",
+      "tier": "public"
+    }
+  ],
+  "minServer": ">=0.3.0",
+  "requires": {
+    "plugins": {},
+    "server": ">=0.3.0"
+  }
 }

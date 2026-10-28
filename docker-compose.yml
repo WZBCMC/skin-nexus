@@ -2,7 +2,7 @@
 #
 # Image source: GitHub Actions builds the production image on every push to
 # main and publishes it to GHCR — deployment hosts only pull, never build.
-#   image: ghcr.io/yimingzhanshen/skin-nexus:latest
+#   image: ghcr.io/yimingzhanshen/skin-nexus:${SKIN_IMAGE_TAG:-latest}
 # Pin a version with :sha-<commit> for reproducible upgrades / easy rollback.
 # Offline / air-gapped: switch back to `build: .` and run `up -d --build`.
 #
@@ -24,7 +24,7 @@
 
 services:
   skin-nexus:
-    image: ghcr.io/yimingzhanshen/skin-nexus:latest
+    image: ghcr.io/yimingzhanshen/skin-nexus:${SKIN_IMAGE_TAG:-latest}
     # build: .                                            # source-build alternative
     pull_policy: always
     restart: unless-stopped
@@ -40,6 +40,10 @@ services:
       SKIN_ADMIN_TOKEN: CHANGE_ME                   # openssl rand -hex 32 (machine/API fallback)
       # optional modules (default off):
       # SKIN_OIDC_ENABLED: 'true'                   # launcher passwordless login (yggc/OIDC)
+      # SKIN_PLUGIN_MARKET_URL: 'https://<user>.github.io/skin-nexus-plugins/v1/registry.json'
+      # SKIN_PLUGIN_TRUST_KEYS: '<keyId>:<base64-public-key>'
+      # SKIN_PLUGIN_STATE_DIR: '/data/plugins/.state'
+      # SKIN_PLUGIN_UPLOAD_MAX: '67108864' 
       # SKIN_UNION_ENABLED: 'false'                 # MUA Union member module (zero surface when off)
       # SKIN_INVITE_REQUIRED: 'true'                # registration requires an invitation code
     volumes:

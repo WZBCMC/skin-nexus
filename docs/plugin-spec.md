@@ -30,9 +30,10 @@
 - 放入目录后**重载或重启**才会被发现（宿主进程内一次加载）。
 - 管理面板「插件」页可启用/停用/重载、编辑配置、查看健康/路由/最近日志。
 - 修改入口 JS 或 UI 资源后必须**重载**（或重启）才生效。
-- 推荐安装方式（P2 Core）：上传**签名 bundle zip**（含 `plugin.json`、`index.js`、`bundle.json`）。
+- 推荐安装方式：上传/市场安装**签名 bundle zip**（含 `plugin.json`、`index.js`、`market.json`、`bundle.json`）。
   宿主校验 Ed25519 签名 + 内容摘要后，staging 解压 → 原子替换 → 默认 disabled；
   升级保留启停状态并保留上一版用于回滚。未签名包一律拒绝。
+- 作者打包/签名/发布 registry 的完整流程见 [`plugin-publishing.md`](plugin-publishing.md)。
 - 安装状态在 `<data>/plugins/.state/`；手动放目录仍可用于开发，但不会获得签名校验/回滚。
 
 ### 2.1 签名 bundle 格式
@@ -259,7 +260,7 @@ skin.log(...args)
 
 ## 12. 非目标与后续路线
 
-- **P2 Core（当前）**：签名 bundle 安装/升级/卸载/回滚、单源签名市场、依赖/冲突检查、能力 consent、后台市场页。
+- **P2 Core / v0.3.0（当前）**：签名 bundle 安装/升级/卸载/回滚、单源签名市场、依赖/冲突检查、能力 consent、后台市场页、`skin-plugin` 发布工具链。
 - **后续按需**：多 registry、密钥轮换、插件级 HTTP/mail/cron/CLI、主题 v2、sidecar/native、评分/评论。
 - **不做**：插件直接访问数据库/宿主表/任意文件系统/任意网络；不允许第三方 Vue/Twig/HTML 注入主 SPA。
 - **兼容策略**：项目尚无存量第三方生态，只维护 `hookApi: 2`；不提供旧版/blessing 插件兼容层。

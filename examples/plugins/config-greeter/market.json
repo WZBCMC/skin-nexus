@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "title": { "zh-CN": "配置问候", "en": "Config Greeter" },
+  "description": { "zh-CN": "演示配置 schema、管理表单与公开路由。", "en": "Demonstrates config schema, admin form and a public route." },
+  "author": "SkinNexus",
+  "changelog": "1.0.0 — first signed market release.",
+  "requires": { "plugins": {}, "server": ">=0.3.0" },
+  "conflicts": [],
+  "capabilities": ["config", "http:routes"],
+  "minServer": ">=0.3.0"
+}

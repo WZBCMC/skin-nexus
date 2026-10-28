@@ -129,3 +129,4 @@ go test -tags integration ./internal/store/   # 需 SKIN_TEST_DSN
 ```
 
 插件市场/安装相关环境变量见 `docs/deploy.md`（`SKIN_PLUGIN_MARKET_URL`、`SKIN_PLUGIN_TRUST_KEYS`、`SKIN_PLUGIN_STATE_DIR`）。
+签名打包工具：`go run ./cmd/skin-plugin keygen|pack|registry|verify|verify-registry`，完整流程见 `docs/plugin-publishing.md`。

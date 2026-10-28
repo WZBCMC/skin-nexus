@@ -46,7 +46,7 @@ import (
 	"skin-nexus/server/internal/ygg"
 )
 
-var version = "0.2.0"
+var version = "0.3.0"
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "version" {
@@ -166,6 +166,7 @@ func main() {
 		StateDir:        cfg.PluginStateDir,
 		Keyring:         trustKeys,
 		MarketURL:       cfg.PluginMarketURL,
+		UploadMax:       cfg.PluginUploadMax,
 		HostVersion:     version,
 		State:           st,
 		Store:           pluginStore{st: st},
@@ -192,6 +193,7 @@ func main() {
 			st.InsertAudit(ctx, plugin.ActorFromContext(ctx), action, detail)
 		},
 	})
+	log.Printf("plugins: market=%q trustKeys=%d stateDir=%s uploadMax=%d", cfg.PluginMarketURL, len(trustKeys), cfg.PluginStateDir, cfg.PluginUploadMax)
 	if err := pluginHost.Load(cfg.PluginsDir); err != nil {
 		log.Printf("plugins: load %s: %v", cfg.PluginsDir, err)
 	} else if n := len(pluginHost.List()); n > 0 {

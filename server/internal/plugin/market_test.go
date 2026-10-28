@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"skin-nexus/server/internal/marketfmt"
 	"skin-nexus/server/internal/signedpkg"
 )
 
@@ -17,7 +18,7 @@ func TestMarketRegistrySignatureAndCatalog(t *testing.T) {
 		ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
 		KeyID:     "test", Packages: []MarketPackage{{Name: "demo", Version: "2.0.0"}},
 	}
-	payload, err := (&Manager{}).marketRegistryPayload(reg)
+	payload, err := marketfmt.Payload(*reg)
 	if err != nil {
 		t.Fatal(err)
 	}

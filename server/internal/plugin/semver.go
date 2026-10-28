@@ -217,3 +217,8 @@ func satisfiesToken(v semVersion, tok string) (bool, error) {
 	}
 	return false, fmt.Errorf("unsupported constraint %q", tok)
 }
+
+// CheckMinServer is the exported host-version gate used by the packaging CLI.
+func CheckMinServer(constraint, hostVersion string) (bool, error) {
+	return checkMinServer(constraint, hostVersion)
+}

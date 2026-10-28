@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "title": { "zh-CN": "导航链接", "en": "Nav Links" },
+  "description": { "zh-CN": "演示用户导航、iframe 页面与 sandbox bridge。", "en": "Demonstrates user navigation, an iframe page and the sandbox bridge." },
+  "author": "SkinNexus",
+  "changelog": "1.0.0 — first signed market release.",
+  "requires": { "plugins": {}, "server": ">=0.3.0" },
+  "conflicts": [],
+  "capabilities": ["ui:page", "ui:assets"],
+  "minServer": ">=0.3.0"
+}

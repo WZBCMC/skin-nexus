@@ -28,7 +28,8 @@ server/         Go 后端（模块 skin-nexus/server）
   internal/theme      主题包注册与加载（docs/theme-spec.md）
   internal/i18n       服务端多语言资源
   internal/ratelimit  认证限流（滑动窗口 + 失败锁定）
-  internal/plugin     goja 宿主 v2（manifest/config/secrets/KV/docs/事件/guard/UI/三档路由/签名安装）+ signedpkg/outbound
+  internal/plugin     goja 宿主 v2（manifest/config/secrets/KV/docs/事件/guard/UI/三档路由/签名安装）+ signedpkg/marketfmt/outbound
+  cmd/skin-plugin     离线打包/签名/registry/校验 CLI（私钥不入仓）
   migrations/         DDL（InnoDB utf8mb4；0001 基础 … 0012 plugin platform，追踪式逐文件记标）
 web/            Vue 3 + Vite（npm ci && npm run build → web/dist）
 docs/           构建 / 部署 / 迁移 / 兼容矩阵 / 竞品证据 / 主题规范 / CHANGELOG（公开）；

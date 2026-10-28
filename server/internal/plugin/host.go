@@ -41,6 +41,7 @@ type RuntimeConfig struct {
 	StateDir  string            // default <Dir>/.state
 	Keyring   signedpkg.Keyring // required for signed bundle install
 	MarketURL string            // signed static registry URL (empty = market off)
+	UploadMax int64             // admin bundle upload cap (default 64 MiB)
 
 	HookTimeout  time.Duration // default 100ms
 	AuthTimeout  time.Duration // default 50ms
@@ -60,6 +61,9 @@ func (c *RuntimeConfig) withDefaults() {
 	}
 	if c.LoadTimeout <= 0 {
 		c.LoadTimeout = 2 * time.Second
+	}
+	if c.UploadMax <= 0 {
+		c.UploadMax = 64 << 20
 	}
 	if c.SessionCookie == "" {
 		c.SessionCookie = "skin_session"
@@ -670,4 +674,12 @@ func (m *Manager) EmitUserLifecycle(_ context.Context, e UserLifecycleEvent) {
 
 func (m *Manager) EmitAuthPhase(_ context.Context, e AuthPhaseEvent) {
 	m.emit(eventAuth, e)
+}
+
+// UploadMax returns the configured admin bundle size cap.
+func (m *Manager) UploadMax() int64 {
+	if m.cfg.UploadMax > 0 {
+		return m.cfg.UploadMax
+	}
+	return 64 << 20
 }

@@ -1,11 +1,9 @@
 package plugin
 
 import (
-	"archive/zip"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -31,13 +29,6 @@ type InstallResult struct {
 	Source string       `json:"source,omitempty"`
 }
 
-type bundleMeta struct {
-	Name      string `json:"name"`
-	Version   string `json:"version"`
-	KeyID     string `json:"keyId"`
-	Signature string `json:"signature"`
-}
-
 func (m *Manager) stateDir() string {
 	if m.cfg.StateDir != "" {
 		return m.cfg.StateDir
@@ -58,33 +49,6 @@ func txID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
-}
-
-func readBundleMeta(zipPath string) (bundleMeta, error) {
-	zr, err := zip.OpenReader(zipPath)
-	if err != nil {
-		return bundleMeta{}, err
-	}
-	defer zr.Close()
-	for _, f := range zr.File {
-		if f.Name != "bundle.json" {
-			continue
-		}
-		rc, err := f.Open()
-		if err != nil {
-			return bundleMeta{}, err
-		}
-		defer rc.Close()
-		var meta bundleMeta
-		if err := json.NewDecoder(rc).Decode(&meta); err != nil {
-			return bundleMeta{}, fmt.Errorf("bundle.json: %w", err)
-		}
-		if meta.Name == "" || meta.Version == "" || meta.KeyID == "" || meta.Signature == "" {
-			return bundleMeta{}, errors.New("bundle.json is missing name/version/keyId/signature")
-		}
-		return meta, nil
-	}
-	return bundleMeta{}, errors.New("bundle.json missing (signed bundles only)")
 }
 
 // InstallBytes writes bytes to a temporary file and installs it. Market
@@ -120,7 +84,7 @@ func (m *Manager) InstallBundle(ctx context.Context, zipPath string, consent boo
 	if err := m.ensureInstallDirs(); err != nil {
 		return nil, err
 	}
-	meta, err := readBundleMeta(zipPath)
+	meta, err := signedpkg.ReadBundleMeta(zipPath)
 	if err != nil {
 		return nil, err
 	}
@@ -146,15 +110,7 @@ func (m *Manager) InstallBundle(ctx context.Context, zipPath string, consent boo
 			_ = txStore.UpdateInstallTx(context.WithoutCancel(ctx), txid, state, msg)
 		}()
 	}
-	digest, err := signedpkg.ContentDigest(zipPath, "bundle.json")
-	if err != nil {
-		return nil, err
-	}
-	sig, err := signedpkg.DecodeSignature(meta.Signature)
-	if err != nil {
-		return nil, err
-	}
-	if err := m.cfg.Keyring.Verify(meta.KeyID, signedpkg.BundlePayload(meta.Name, meta.Version, digest), sig); err != nil {
+	if _, err := signedpkg.VerifyBundle(zipPath, m.cfg.Keyring); err != nil {
 		return nil, err
 	}
 	tx := txID()

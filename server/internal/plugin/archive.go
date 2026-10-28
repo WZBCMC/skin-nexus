@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
+
+	"skin-nexus/server/internal/signedpkg"
 )
 
 const (
@@ -18,14 +19,6 @@ const (
 	maxZipRatio      = 200
 	maxZipNameBytes  = 512
 )
-
-var windowsReserved = map[string]bool{
-	"con": true, "prn": true, "aux": true, "nul": true,
-	"com1": true, "com2": true, "com3": true, "com4": true, "com5": true,
-	"com6": true, "com7": true, "com8": true, "com9": true,
-	"lpt1": true, "lpt2": true, "lpt3": true, "lpt4": true, "lpt5": true,
-	"lpt6": true, "lpt7": true, "lpt8": true, "lpt9": true,
-}
 
 // extractZip safely extracts a plugin bundle into an empty staging directory.
 // It rejects traversal, absolute paths, backslashes, symlinks, Windows
@@ -101,28 +94,7 @@ func extractZip(zipPath, dest string) error {
 }
 
 func validateZipName(name string) error {
-	if name == "" || len(name) > maxZipNameBytes || strings.Contains(name, "\\") {
-		return fmt.Errorf("invalid zip entry name %q", name)
-	}
-	if strings.HasPrefix(name, "/") || path.IsAbs(name) || strings.Contains(name, "\x00") {
-		return fmt.Errorf("absolute/unsafe zip entry %q", name)
-	}
-	for _, seg := range strings.Split(name, "/") {
-		if seg == "" || seg == "." || seg == ".." {
-			return fmt.Errorf("traversal zip entry %q", name)
-		}
-		if strings.HasSuffix(seg, ".") || strings.HasSuffix(seg, " ") {
-			return fmt.Errorf("unsafe zip entry %q", name)
-		}
-		base := strings.ToLower(strings.TrimSuffix(seg, filepath.Ext(seg)))
-		if windowsReserved[base] {
-			return fmt.Errorf("reserved zip entry %q", name)
-		}
-		if strings.Contains(seg, ":") {
-			return fmt.Errorf("unsafe zip entry %q", name)
-		}
-	}
-	return nil
+	return signedpkg.ValidateEntryName(name)
 }
 
 // findPluginRoot accepts either a bundle with plugin.json at the root or one

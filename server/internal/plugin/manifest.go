@@ -243,3 +243,9 @@ func (m Manifest) hasPermission(p string) bool {
 	}
 	return false
 }
+
+// InspectDir validates a plugin directory exactly as the host loader does.
+// CLI packers use it so they cannot emit a bundle the host would reject.
+func InspectDir(dir string) (Info, error) {
+	return loadManifest(dir, filepath.Base(filepath.Clean(dir)))
+}
