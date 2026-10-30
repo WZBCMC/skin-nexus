@@ -60,6 +60,39 @@ func TestRenderHeadInjectsMeta(t *testing.T) {
 	}
 }
 
+func TestRenderHeadEmitsSiteGraph(t *testing.T) {
+	e := NewEngine(&fakeOpts{kv: map[string]string{"seo_description": "示例描述"}},
+		Defaults{SiteName: "示例站", BaseURL: "https://skin.test"})
+	html := e.RenderHead(context.Background(), "<!--skin-seo-->")
+	for _, want := range []string{
+		`"@type":"WebSite"`,
+		`"@type":"Organization"`,
+		`property="og:site_name" content="示例站"`,
+		`name="twitter:card"`,
+		`https://skin.test/favicon.svg`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("missing %q in %q", want, html)
+		}
+	}
+}
+
+func TestLLMSTxt(t *testing.T) {
+	e := NewEngine(&fakeOpts{}, Defaults{SiteName: "示例站", BaseURL: "https://skin.test"})
+	txt := e.LLMSTxt(context.Background())
+	for _, want := range []string{
+		"# 示例站",
+		"https://skin.test/",
+		"https://skin.test/skinlib",
+		"https://skin.test/sitemap.xml",
+		"launcher-api",
+	} {
+		if !strings.Contains(txt, want) {
+			t.Fatalf("missing %q in %q", want, txt)
+		}
+	}
+}
+
 func TestRenderHeadEscapes(t *testing.T) {
 	e := NewEngine(&fakeOpts{kv: map[string]string{
 		"seo_title": `<script>alert(1)</script>`,
@@ -157,7 +190,8 @@ func TestDefaultTitleKeepsLongSiteName(t *testing.T) {
 	}
 }
 
-func TestSaveRoundTrip(t *testing.T) {	e := NewEngine(&fakeOpts{}, Defaults{SiteName: "X", BaseURL: "https://skin.test"})
+func TestSaveRoundTrip(t *testing.T) {
+	e := NewEngine(&fakeOpts{}, Defaults{SiteName: "X", BaseURL: "https://skin.test"})
 	s := e.FillDefaults(context.Background())
 	s.Title = "新标题"
 	if err := e.Save(context.Background(), s); err != nil {

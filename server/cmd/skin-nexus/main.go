@@ -680,6 +680,7 @@ func main() {
 	root.Handle("GET /healthz", healthzHandler(st))
 	root.Handle("GET /sitemap.xml", sitemapHandler(seoEng, st, cfg.BaseURL))
 	root.Handle("GET /robots.txt", robotsHandler(seoEng))
+	root.Handle("GET /llms.txt", llmsHandler(seoEng))
 	root.Handle("GET /theme-assets/{id}/{file}", themeAssetHandler(themeReg))
 	root.Handle("/plugin-assets/", pluginHost.AssetHandler())
 	// Public server-rendered texture detail page (2026-10-25 拍板: 皮肤详情
@@ -955,6 +956,15 @@ func robotsHandler(seoEng *seo.Engine) http.Handler {
 		s := seoEng.Settings(r.Context())
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte(s.Robots))
+	})
+}
+
+// llmsHandler serves /llms.txt for AI answer engines.
+func llmsHandler(seoEng *seo.Engine) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		_, _ = w.Write([]byte(seoEng.LLMSTxt(r.Context())))
 	})
 }
 

@@ -22,7 +22,7 @@
 - **迁移不丢数据**：主键保留、UUID 零漂移、密码全兼容（12 种旧算式 + argon2id 惰性重哈希）；`preflight → dry-run → import` 三步可回滚，不是「导 CSV 碰运气」。
 - **登录链路现代化**：内置 OIDC 免密登录（设备码 + refresh 轮换），不再需要 Janus 外挂；SJMCL 等社区启动器的免密链路已实现，真机验收进行中。
 - **运维看得见**：登录与联盟通信日志（90 天）、审计、认证限流、登录/认证/`hasJoined` 三层封禁、面板自助诊断。
-- **内容能被搜到**：落地页与皮肤详情页服务端渲染，`sitemap.xml`、`robots.txt`、逐页 meta/OG/JSON-LD 全量注入——这是三家主流竞品都没有的完整能力。
+- **内容能被搜到**：落地页与皮肤详情页服务端渲染，`sitemap.xml`、`robots.txt`、`llms.txt`、逐页 meta/OG/Twitter Card 与 WebSite/Organization/CreativeWork JSON-LD 全量注入——这是三家主流竞品都没有的完整能力。
 - **部署与升级简单**：Go 单二进制或 Docker Compose；CI 每次 push `main` 自动构建镜像推 GHCR，部署机只拉不编。
 
 性能实测（2 核 / 3.5 GB 生产 VPS，详见 CHANGELOG）：落地页 ~600 RPS、纹理分发 5182 RPS、Yggdrasil 元数据 2365 RPS，全程零错误。

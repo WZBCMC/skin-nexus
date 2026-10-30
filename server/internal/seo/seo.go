@@ -8,6 +8,7 @@ package seo
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"strings"
 	"sync"
@@ -192,6 +193,101 @@ type PageMeta struct {
 	// script element early.
 }
 
+// siteJSONLD builds the site-wide schema.org graph (WebSite + Organization).
+// It is emitted on every rendered page so search and AI crawlers can resolve
+// the site entity even before they reach a detail page.
+func (e *Engine) siteJSONLD(s Settings) string {
+	base := strings.TrimRight(s.Canonical, "/")
+	if base == "" {
+		base = strings.TrimRight(e.def.BaseURL, "/")
+	}
+	if base == "" {
+		return ""
+	}
+	name := strings.TrimSpace(e.def.SiteName)
+	if name == "" {
+		name = strings.TrimSpace(s.Title)
+	}
+	if name == "" {
+		return ""
+	}
+	desc := s.Description
+	if desc == "" {
+		desc = defaultDescription(e.def.SiteName)
+	}
+	logo := s.OGImage
+	if logo == "" {
+		logo = base + "/favicon.svg"
+	}
+	siteID := base + "/#website"
+	orgID := base + "/#organization"
+	obj := map[string]any{
+		"@context": "https://schema.org",
+		"@graph": []any{
+			map[string]any{
+				"@type":       "WebSite",
+				"@id":         siteID,
+				"url":         base + "/",
+				"name":        name,
+				"description": desc,
+				"inLanguage":  "zh-CN",
+				"publisher":   map[string]any{"@id": orgID},
+				"potentialAction": map[string]any{
+					"@type":       "SearchAction",
+					"target":      base + "/skinlib?q={search_term_string}",
+					"query-input": "required name=search_term_string",
+				},
+			},
+			map[string]any{
+				"@type":       "Organization",
+				"@id":         orgID,
+				"url":         base + "/",
+				"name":        name,
+				"description": desc,
+				"logo": map[string]any{
+					"@type": "ImageObject",
+					"url":   logo,
+				},
+			},
+		},
+	}
+	b, err := json.Marshal(obj)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// LLMSTxt renders /llms.txt: a compact, crawl-friendly map of public pages
+// for AI answer engines. It is generated from live SEO settings, so it stays
+// in sync with the canonical base and description.
+func (e *Engine) LLMSTxt(ctx context.Context) string {
+	s := e.Settings(ctx)
+	base := strings.TrimRight(s.Canonical, "/")
+	if base == "" {
+		base = strings.TrimRight(e.def.BaseURL, "/")
+	}
+	name := strings.TrimSpace(e.def.SiteName)
+	if name == "" {
+		name = strings.TrimSpace(s.Title)
+	}
+	desc := s.Description
+	if desc == "" {
+		desc = defaultDescription(e.def.SiteName)
+	}
+	var sb strings.Builder
+	sb.WriteString("# " + name + "\n\n> " + desc + "\n\n")
+	sb.WriteString("## Pages\n\n")
+	sb.WriteString("- [Home](" + base + "/): latest public skins and site introduction\n")
+	sb.WriteString("- [Skin library](" + base + "/skinlib): public Minecraft skins and capes\n")
+	sb.WriteString("- [Sitemap](" + base + "/sitemap.xml): crawlable public texture pages\n\n")
+	sb.WriteString("## Technical\n\n")
+	sb.WriteString("- Yggdrasil-compatible authentication: `" + base + "/api/yggdrasil`\n")
+	sb.WriteString("- Launcher API v1 (when the `launcher-api` plugin is enabled): `" + base + "/api/plugins/launcher-api/v1/meta`\n")
+	sb.WriteString("- Public texture detail pages are server-rendered; account pages and private textures are `noindex`.\n")
+	return sb.String()
+}
+
 // RenderHead replaces the SEO placeholders in the SPA index.html template.
 // The template carries markers <!--skin-seo--> so injection is a pure string
 // replace — no HTML parsing dependency.
@@ -234,6 +330,10 @@ func (e *Engine) RenderHeadWith(ctx context.Context, indexHTML string, pm PageMe
 	}
 	sb.WriteString(`<meta property="og:title" content="` + esc(title) + `">` + "\n")
 	sb.WriteString(`<meta property="og:type" content="website">` + "\n")
+	siteName := strings.TrimSpace(e.def.SiteName)
+	if siteName != "" {
+		sb.WriteString(`<meta property="og:site_name" content="` + esc(siteName) + `">` + "\n")
+	}
 	if canonical != "" {
 		sb.WriteString(`<meta property="og:url" content="` + esc(canonical) + `">` + "\n")
 	}
@@ -246,6 +346,18 @@ func (e *Engine) RenderHeadWith(ctx context.Context, indexHTML string, pm PageMe
 	}
 	if ogImage != "" {
 		sb.WriteString(`<meta property="og:image" content="` + esc(ogImage) + `">` + "\n")
+		sb.WriteString(`<meta name="twitter:card" content="summary_large_image">` + "\n")
+		sb.WriteString(`<meta name="twitter:image" content="` + esc(ogImage) + `">` + "\n")
+	} else {
+		sb.WriteString(`<meta name="twitter:card" content="summary">` + "\n")
+	}
+	sb.WriteString(`<meta name="twitter:title" content="` + esc(title) + `">` + "\n")
+	if desc != "" {
+		sb.WriteString(`<meta name="twitter:description" content="` + esc(desc) + `">` + "\n")
+	}
+	if siteLD := e.siteJSONLD(s); siteLD != "" {
+		sb.WriteString(`<script type="application/ld+json">` +
+			strings.ReplaceAll(siteLD, "</", "<\\/") + `</script>` + "\n")
 	}
 	if pm.JSONLD != "" {
 		// "</" → "<\/" keeps JSON semantics intact (legal in JSON strings)
