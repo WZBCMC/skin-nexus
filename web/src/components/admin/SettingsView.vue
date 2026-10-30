@@ -234,6 +234,10 @@ onMounted(load)
       </div>
       <label>站点标题</label>
       <input v-model="seo.title" />
+      <p class="muted">
+        当前 {{ (seo.title || '').length }} 字符；建议 15–30 个字符。
+        搜索引擎会把过短的标题判定为信息不足（Bing 阈值 15 字符）。
+      </p>
       <label>meta description</label>
       <textarea v-model="seo.description" rows="2"></textarea>
       <label>meta keywords（逗号分隔）</label>

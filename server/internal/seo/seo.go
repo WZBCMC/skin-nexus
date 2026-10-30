@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // Settings is the SEO configuration (options keys, all optional).
@@ -89,7 +90,7 @@ func (e *Engine) Settings(ctx context.Context) Settings {
 
 	// defaults
 	if s.Title == "" {
-		s.Title = e.def.SiteName
+		s.Title = defaultTitle(e.def.SiteName)
 	}
 	if s.Canonical == "" {
 		s.Canonical = strings.TrimRight(e.def.BaseURL, "/")
@@ -127,14 +128,37 @@ func (e *Engine) Save(ctx context.Context, s Settings) error {
 	return nil
 }
 
+// titleDescriptor keeps generated titles above search engines' minimum
+// length; a bare site name is often too short (Bing flags <15 characters).
+const titleDescriptor = "Minecraft 皮肤站 · 皮肤、披风与角色管理"
+
+func defaultTitle(siteName string) string {
+	name := strings.TrimSpace(siteName)
+	if name == "" {
+		return titleDescriptor
+	}
+	if utf8.RuneCountInString(name) >= 15 {
+		return name
+	}
+	return name + "｜" + titleDescriptor
+}
+
+func defaultDescription(siteName string) string {
+	name := strings.TrimSpace(siteName)
+	if name == "" {
+		return "Minecraft 皮肤站：上传与分享皮肤、披风，管理角色、衣柜与皮肤库，支持 Yggdrasil 外置登录与启动器接入。"
+	}
+	return name + "：上传与分享 Minecraft 皮肤和披风，管理角色、衣柜与皮肤库，支持 Yggdrasil 外置登录与启动器接入。"
+}
+
 // FillDefaults returns a ready-to-save Settings with one-click suggestions.
 func (e *Engine) FillDefaults(ctx context.Context) Settings {
 	s := e.Settings(ctx)
 	if s.Title == "" {
-		s.Title = e.def.SiteName
+		s.Title = defaultTitle(e.def.SiteName)
 	}
 	if s.Description == "" {
-		s.Description = e.def.SiteName + " — Minecraft 皮肤站 · Yggdrasil 外置登录"
+		s.Description = defaultDescription(e.def.SiteName)
 	}
 	s.SitemapOn = true
 	s.NoIndex = false

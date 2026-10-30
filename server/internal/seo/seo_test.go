@@ -25,8 +25,11 @@ func (f *fakeOpts) SetOption(_ context.Context, k, v string) error {
 func TestSettingsDefaults(t *testing.T) {
 	e := NewEngine(&fakeOpts{}, Defaults{SiteName: "SkinNexus", BaseURL: "https://skin.test"})
 	s := e.Settings(context.Background())
-	if s.Title != "SkinNexus" {
+	if s.Title != defaultTitle("SkinNexus") {
 		t.Fatalf("title = %q", s.Title)
+	}
+	if len([]rune(s.Title)) < 15 {
+		t.Fatalf("default title too short for search engines: %q", s.Title)
 	}
 	if !s.SitemapOn {
 		t.Fatal("sitemap should default on")
@@ -144,8 +147,17 @@ func TestPerPageOGImage(t *testing.T) {
 	}
 }
 
-func TestSaveRoundTrip(t *testing.T) {
-	e := NewEngine(&fakeOpts{}, Defaults{SiteName: "X", BaseURL: "https://skin.test"})
+func TestDefaultTitleKeepsLongSiteName(t *testing.T) {
+	long := "这是一个足够长的站点名称不需要后缀"
+	if got := defaultTitle(long); got != long {
+		t.Fatalf("long site name got %q", got)
+	}
+	if got := defaultTitle("示例站"); !strings.HasPrefix(got, "示例站｜") || len([]rune(got)) < 15 {
+		t.Fatalf("short site name got %q", got)
+	}
+}
+
+func TestSaveRoundTrip(t *testing.T) {	e := NewEngine(&fakeOpts{}, Defaults{SiteName: "X", BaseURL: "https://skin.test"})
 	s := e.FillDefaults(context.Background())
 	s.Title = "新标题"
 	if err := e.Save(context.Background(), s); err != nil {
